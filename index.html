@@ -358,7 +358,14 @@
         .personnel-data-table th:nth-child(12), .personnel-data-table td:nth-child(12) { width:9%; }
         .personnel-data-table th:nth-child(13), .personnel-data-table td:nth-child(13) { width:10%; }
         .personnel-data-table .personnel-actions-cell { width:10%; text-align:center; white-space:nowrap; }
-        .personnel-data-table .personnel-actions-cell .action-btn { padding:5px 8px; margin:0 2px; font-size:11px; line-height:1.2; }
+        .personnel-data-table .personnel-actions-cell .action-btn {
+            padding:5px; margin:0 2px; font-size:0; line-height:1;
+            width:32px; min-width:32px; height:32px;
+            display:inline-flex; align-items:center; justify-content:center;
+        }
+        .personnel-data-table .personnel-actions-cell .action-btn svg {
+            width:17px; height:17px; display:block;
+        }
         body.compact-mode .personnel-data-table th, body.compact-mode .personnel-data-table td { padding:8px; height:38px; font-size:11px; }
         body.compact-mode .personnel-data-table th { font-size:10px; }
 
@@ -390,6 +397,18 @@
         .users-chat-composer { padding:10px; border-top:1px solid var(--border-color); display:flex; gap:8px; background:var(--glass-bg); }
         .users-chat-composer textarea { flex:1; margin:0; min-height:42px; max-height:110px; resize:vertical; padding:10px 12px; font-size:12px; }
         .users-chat-send { width:auto !important; min-width:76px; margin:0 !important; align-self:flex-end; padding:10px 14px !important; font-size:12px !important; }
+        .users-chat-attach-btn { width:42px !important; min-width:42px; height:42px; padding:9px !important; margin:0 !important; align-self:flex-end; }
+        .users-chat-attach-btn svg { width:18px; height:18px; display:block; fill:none; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
+        .users-chat-file-input { display:none !important; }
+        .users-chat-attachment { display:flex; align-items:center; gap:8px; max-width:100%; min-width:0; margin:0 0 7px; padding:7px 9px; border:1px solid var(--border-color); border-radius:9px; background:rgba(0,0,0,.025); font-size:11px; color:var(--text-main); }
+        .users-chat-attachment-name { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+        .users-chat-attachment-remove { width:24px !important; min-width:24px; height:24px; padding:0 !important; margin:0 !important; border-radius:50%; font-size:14px; line-height:1; background:transparent; color:var(--text-muted); }
+        .users-chat-attachment-remove:hover { background:rgba(239,68,68,.1); color:var(--danger); transform:none; }
+        .chat-attachment-link { display:inline-flex; align-items:center; gap:6px; margin-top:7px; padding:6px 8px; border-radius:8px; border:1px solid rgba(79,70,229,.18); background:rgba(79,70,229,.06); color:inherit; text-decoration:none; font-size:11px; max-width:100%; }
+        .chat-attachment-link:hover { text-decoration:underline; }
+        .chat-attachment-link span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+        body.dark-mode .users-chat-attachment { background:rgba(255,255,255,.04); }
+        body.dark-mode .chat-attachment-link { background:rgba(129,140,248,.12); border-color:rgba(129,140,248,.22); }
         .users-chat-note { font-size:10px; color:var(--text-muted); margin:6px 2px 0; }
         body.dark-mode .users-chat-sidebar, body.dark-mode .users-chat-main { background:#1e293b; }
         body.dark-mode .chat-mode-tab { background:rgba(255,255,255,.05); }
@@ -1639,9 +1658,21 @@ body.dark-mode .exec-card,body.dark-mode .exec-kpi{background:#111827}
                         <div id="usersChatMessages" class="users-chat-messages">
                             <div style="text-align:center;color:var(--text-muted);font-size:12px;padding:25px;">Loading messages...</div>
                         </div>
-                        <div class="users-chat-composer">
-                            <textarea id="usersChatInput" placeholder="Write a message..." maxlength="2000" onkeydown="handleUsersChatKeydown(event)"></textarea>
-                            <button class="users-chat-send" onclick="sendUsersChatMessage()">Send</button>
+                        <div class="users-chat-composer-wrap">
+                            <div id="usersChatAttachment" class="users-chat-attachment hidden">
+                                <span aria-hidden="true">📎</span>
+                                <span id="usersChatAttachmentName" class="users-chat-attachment-name"></span>
+                                <button type="button" class="users-chat-attachment-remove" title="Remove attachment" aria-label="Remove attachment" onclick="clearChatAttachment()">×</button>
+                            </div>
+                            <div class="users-chat-composer">
+                                <input id="usersChatFile" class="users-chat-file-input" type="file" onchange="handleChatAttachmentChange(event)">
+                                <button type="button" class="action-btn users-chat-attach-btn" title="Attach file" aria-label="Attach file" onclick="document.getElementById('usersChatFile').click()">
+                                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21.4 11.6l-8.9 8.9a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.7-8.7"/></svg>
+                                </button>
+                                <textarea id="usersChatInput" placeholder="Write a message or attach a file..." maxlength="2000" onkeydown="handleUsersChatKeydown(event)"></textarea>
+                                <button class="users-chat-send" onclick="sendUsersChatMessage()">Send</button>
+                            </div>
+                            <div class="users-chat-note" style="margin:4px 2px 0;">Attachments are stored in the backend and automatically moved to Trash after 7 days. Maximum file size: 10 MB.</div>
                         </div>
                     </section>
                 </div>
@@ -2163,6 +2194,8 @@ body.dark-mode .exec-card,body.dark-mode .exec-kpi{background:#111827}
         let chatUsers = [];
         let chatMessagesTimer = null;
         let chatUsersLoaded = false;
+        let chatAttachmentFile = null;
+        const CHAT_MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 
         // Incoming chat notification monitor. This runs independently from the
         // Users Chat page so messages can alert the user from any dashboard page.
@@ -2674,6 +2707,64 @@ body.dark-mode .exec-card,body.dark-mode .exec-kpi{background:#111827}
             }
         }
 
+        function formatChatFileSize(bytes) {
+            const n = Number(bytes || 0);
+            if (!n) return '0 B';
+            const units = ['B','KB','MB','GB'];
+            const i = Math.min(Math.floor(Math.log(n) / Math.log(1024)), units.length - 1);
+            return `${(n / Math.pow(1024, i)).toFixed(i ? 1 : 0)} ${units[i]}`;
+        }
+
+        function handleChatAttachmentChange(event) {
+            const file = event?.target?.files?.[0] || null;
+            if (!file) {
+                clearChatAttachment();
+                return;
+            }
+            if (file.size > CHAT_MAX_ATTACHMENT_BYTES) {
+                event.target.value = '';
+                clearChatAttachment();
+                return customAlert('The selected file is larger than 10 MB. Please choose a smaller file.', 'Attachment');
+            }
+            chatAttachmentFile = file;
+            const wrap = document.getElementById('usersChatAttachment');
+            const name = document.getElementById('usersChatAttachmentName');
+            if (name) name.textContent = `${file.name} · ${formatChatFileSize(file.size)}`;
+            wrap?.classList.remove('hidden');
+        }
+
+        function clearChatAttachment() {
+            chatAttachmentFile = null;
+            const input = document.getElementById('usersChatFile');
+            const wrap = document.getElementById('usersChatAttachment');
+            const name = document.getElementById('usersChatAttachmentName');
+            if (input) input.value = '';
+            if (name) name.textContent = '';
+            wrap?.classList.add('hidden');
+        }
+
+        function readChatFileAsBase64(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => {
+                    const result = String(reader.result || '');
+                    const comma = result.indexOf(',');
+                    resolve(comma >= 0 ? result.slice(comma + 1) : result);
+                };
+                reader.onerror = () => reject(new Error('Unable to read the selected file.'));
+                reader.readAsDataURL(file);
+            });
+        }
+
+        function renderChatAttachmentMarkup(message) {
+            const url = String(message?.attachmentUrl || '').trim();
+            const name = String(message?.attachmentName || '').trim();
+            if (!url || !name) return '';
+            return `<a class="chat-attachment-link" href="${escapeAttr(url)}" target="_blank" rel="noopener noreferrer" title="Open attachment">
+                <span aria-hidden="true">📎</span><span>${escapeHtml(name)}</span>
+            </a>`;
+        }
+
         function renderChatMessages(messages) {
             const box = document.getElementById('usersChatMessages');
             if (!box) return;
@@ -2685,9 +2776,12 @@ body.dark-mode .exec-card,body.dark-mode .exec-kpi{background:#111827}
             box.innerHTML = messages.map(m => {
                 const mine = String(m.sender || '') === String(currentUser);
                 const time = m.timestamp ? new Date(m.timestamp).toLocaleString(undefined,{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '';
+                const body = String(m.message || '');
+                const attachment = renderChatAttachmentMarkup(m);
                 return `<div class="user-chat-message${mine ? ' mine' : ''}">
                     <div class="meta">${escapeHtml(m.sender || '')}${time ? ' · ' + escapeHtml(time) : ''}</div>
-                    <div class="body">${escapeHtml(m.message || '')}</div>
+                    ${body ? `<div class="body">${escapeHtml(body)}</div>` : ''}
+                    ${attachment}
                 </div>`;
             }).join('');
             box.scrollTop = box.scrollHeight;
@@ -2703,12 +2797,22 @@ body.dark-mode .exec-card,body.dark-mode .exec-kpi{background:#111827}
         async function sendUsersChatMessage() {
             const input = document.getElementById('usersChatInput');
             const message = String(input?.value || '').trim();
-            if (!message) return;
+            if (!message && !chatAttachmentFile) return;
             if (chatMode === 'private' && !chatSelectedUser) return customAlert('Select a user before sending a private message.', 'Chat');
             const btn = document.querySelector('.users-chat-send');
             if (btn) { btn.disabled = true; btn.innerText = 'Sending...'; }
             try {
                 const auth = chatCredentialPayload();
+                let attachment = null;
+                if (chatAttachmentFile) {
+                    const base64 = await readChatFileAsBase64(chatAttachmentFile);
+                    attachment = {
+                        name: chatAttachmentFile.name,
+                        mimeType: chatAttachmentFile.type || 'application/octet-stream',
+                        size: chatAttachmentFile.size,
+                        base64: base64
+                    };
+                }
                 const res = await fetch(API_URL, {
                     method:'POST', mode:'cors',
                     headers:{'Content-Type':'text/plain;charset=utf-8'},
@@ -2716,12 +2820,19 @@ body.dark-mode .exec-card,body.dark-mode .exec-kpi{background:#111827}
                         action:'send_chat_message', ...auth,
                         recipient:chatMode === 'private' ? chatSelectedUser : '',
                         message:message,
-                        type:chatMode === 'private' ? 'Private' : 'Global'
+                        type:chatMode === 'private' ? 'Private' : 'Global',
+                        attachment:attachment
                     })
                 });
-                const data = await res.json();
+                let data;
+                try {
+                    data = await res.json();
+                } catch (parseErr) {
+                    throw new Error('The server returned an invalid response. Confirm that the current Web App deployment is being used and that it executes as the account with access to the Chat Attachments folder.');
+                }
                 if (!data.success) throw new Error(data.error || 'Unable to send message.');
                 input.value = '';
+                clearChatAttachment();
                 await loadChatMessages();
             } catch (err) {
                 customAlert(err.message || 'Unable to send message.', 'Chat Error');
@@ -2801,7 +2912,9 @@ body.dark-mode .exec-card,body.dark-mode .exec-kpi{background:#111827}
 
             const body = document.createElement('div');
             body.className = 'incoming-chat-message';
-            body.textContent = String(message.message || '');
+            const messageText = String(message.message || '').trim();
+            const attachmentName = String(message.attachmentName || '').trim();
+            body.textContent = messageText || (attachmentName ? `📎 ${attachmentName}` : 'Attachment');
 
             const time = document.createElement('div');
             time.className = 'incoming-chat-time';
@@ -3559,8 +3672,12 @@ body.dark-mode .exec-card,body.dark-mode .exec-kpi{background:#111827}
                 if (!dataRows.length) return '';
                 const bodyHtml = dataRows.map((p, index) => {
                     const action = can && !archived ? `<td class="personnel-actions-cell">
-                        <button class="action-btn" onclick="editPersonnel(${Number(p.no)})">Edit</button>
-                        <button class="action-btn delete-btn" style="color:white;" onclick="archivePersonnel(${Number(p.no)})">Archive</button>
+                        <button class="action-btn icon-action-btn" title="Edit Personnel" aria-label="Edit Personnel" onclick="editPersonnel(${Number(p.no)})">
+                            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4l10.5-10.5a2.12 2.12 0 0 0 0-3L17.5 5a2.12 2.12 0 0 0-3 0L4 15.5V20zM13.5 6.5l4 4"/></svg>
+                        </button>
+                        <button class="action-btn icon-action-btn delete-btn" title="Archive Personnel" aria-label="Archive Personnel" onclick="archivePersonnel(${Number(p.no)})">
+                            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M9 7V4h6v3M6 7l1 14h10l1-14"/></svg>
+                        </button>
                     </td>` : '';
 
                     return `<tr>
