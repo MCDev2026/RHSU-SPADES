@@ -4,7 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>RHSU Data Entry System</title>
-        <link rel="stylesheet" href="css/styles.css">
+    <link rel="icon" type="image/png" href="images/RHSU Spades.png">
+    <link rel="apple-touch-icon" href="images/RHSU Spades.png">
+    <link rel="stylesheet" href="css/styles.css">
 
 </head>
 <body>
@@ -21,6 +23,7 @@
             <div class="header-chat-wrap" id="headerChatWrap">
                 <button class="profile-btn header-icon-btn" id="usersChatHeaderBtn" type="button" onclick="toggleUsersChatDropdown(event)" title="Users Chat" aria-label="Users Chat" aria-expanded="false">
                     <img src="images/Message.png" alt="Users Chat" style="filter: invert(1);" onerror="this.src='data:image/svg+xml;utf8,<svg viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'currentColor\' stroke-width=\'2\' stroke-linecap=\'round\' stroke-linejoin=\'round\' xmlns=\'http://www.w3.org/2000/svg\'><path d=\'M21 11.5a8.38 8.38 0 0 1-9 8.5 8.5 8.5 0 0 1-7.3-4.1L3 21l1.1-4.2A8.4 8.4 0 1 1 21 11.5z\'></path></svg>'">
+                    <span id="usersChatUnreadBadge" class="users-chat-unread-badge hidden" aria-label="Unread messages">0</span>
                 </button>
                 <div id="usersChatDropdown" class="users-chat-dropdown hidden" role="menu" aria-label="Users Chat">
                     <div class="users-chat-dropdown-head">
@@ -664,6 +667,7 @@
                 </div>
             </div>
             <div class="users-chat-floating-actions">
+                <button type="button" onclick="minimizeUsersChatWindow()" title="Minimize chat" aria-label="Minimize chat">−</button>
                 <button type="button" onclick="loadChatMessages()" title="Refresh" aria-label="Refresh">↻</button>
                 <button type="button" onclick="closeUsersChatWindow()" title="Close chat" aria-label="Close chat">×</button>
             </div>
@@ -697,6 +701,7 @@
 
     <!-- INCOMING CHAT POPUPS (Messenger-style) -->
     <div id="incomingChatContainer" aria-live="polite" aria-atomic="false"></div>
+    <div id="usersChatMinimizedStack" class="users-chat-minimized-stack" aria-label="Minimized chat conversations"></div>
 
     <!-- MODALS -->
     <div id="systemAnnouncementModal" class="modal-overlay hidden" style="z-index: 1000;">

@@ -46,6 +46,10 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         let chatNotificationInitialized = false;
         const CHAT_NOTIFICATION_POLL_MS = 4000;
         const CHAT_POPUP_MAX = 4;
+        const CHAT_MINIMIZED_MAX = 6;
+        let chatUnreadCount = 0;
+        const chatUnreadByConversation = Object.create(null);
+        let minimizedChatInstances = [];
 
         let allActivities = [];
         let filteredActivities = [];
@@ -327,6 +331,11 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
 
         async function logActivity(actionText) {
             const user = localStorage.getItem('loggedInUser') || 'Unknown User';
+
+            // Do not even send Alpha Admin actions to the activity-log endpoint.
+            // The backend repeats this check to keep the exclusion authoritative.
+            if (user === ALPHA_ADMIN_NAME) return;
+
             try {
                 await fetch(API_URL, {
                     method: 'POST',
@@ -825,8 +834,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 container.lastElementChild?.remove();
             }
 
-            // Use the existing user-configurable notification sound.
-            playNotificationSound();
+            // Sound is handled by the application notification toast so each new message plays once.
         }
 
         async function pollChatNotifications() {
@@ -874,7 +882,21 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                     newMessages.forEach(message => {
                         const ts = new Date(message.timestamp || 0).getTime();
                         if (!isNaN(ts)) chatNotificationSince = Math.max(chatNotificationSince, ts);
+
+                        const messageMode = String(message.type || '').toLowerCase() === 'private' ? 'private' : 'global';
+                        const messageUser = messageMode === 'private' ? String(message.sender || '') : '';
+                        const conversationOpen = isCurrentChatConversation(messageMode, messageUser);
+
+                        if (!conversationOpen) markChatConversationUnread(messageMode, messageUser);
+
+                        const sender = chatNotificationDisplayName(message);
+                        const preview = String(message.message || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
                         showIncomingChatPopup(message);
+                        showNotification(
+                            messageMode === 'private' ? 'New Private Message' : 'New Global Message',
+                            `${sender}: ${preview || (message.attachmentName ? 'sent an attachment.' : 'sent a message.')}`,
+                            () => openIncomingChatMessage(message)
+                        );
                     });
                 }
             } catch (err) {
@@ -898,6 +920,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             }
             chatNotificationInitialized = false;
             chatNotificationSince = 0;
+            resetChatUnreadState();
         }
 
         function unlockNotificationAudio() {
@@ -916,6 +939,108 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         document.addEventListener('pointerdown', unlockNotificationAudio, {passive:true});
         document.addEventListener('keydown', unlockNotificationAudio, {passive:true});
 
+        function chatConversationKey(mode = chatMode, username = chatSelectedUser) {
+            return mode === 'private' ? `private:${String(username || '').trim()}` : 'global';
+        }
+
+        function updateChatUnreadBadge() {
+            const badge = document.getElementById('usersChatUnreadBadge');
+            if (!badge) return;
+            const count = Math.max(0, Number(chatUnreadCount) || 0);
+            badge.textContent = count > 99 ? '99+' : String(count);
+            badge.classList.toggle('hidden', count === 0);
+            badge.setAttribute('aria-label', `${count} unread chat message${count === 1 ? '' : 's'}`);
+        }
+
+        function chatConversationLabel(mode, username) {
+            if (mode !== 'private') return 'Global Chat';
+            const target = String(username || '').trim();
+            const found = chatUsers.find(u => String(u.username || '') === target);
+            return found?.name ? `Private: ${found.name}` : `Private: ${target || 'Chat'}`;
+        }
+
+        function renderMinimizedChatStack() {
+            const stack = document.getElementById('usersChatMinimizedStack');
+            if (!stack) return;
+
+            stack.innerHTML = minimizedChatInstances.map(item => {
+                const unread = Math.max(0, Number(item.unread) || 0);
+                const label = chatConversationLabel(item.mode, item.username);
+                const key = escapeAttr(item.key);
+                return `<div class="users-chat-minimized-item" data-chat-key="${key}">
+                    <button type="button" class="users-chat-minimized-open" title="Restore ${escapeAttr(label)}" aria-label="Restore ${escapeAttr(label)}">
+                        <span class="users-chat-minimized-avatar">💬</span>
+                        <span class="users-chat-minimized-label">${escapeHtml(label)}</span>
+                        ${unread ? `<span class="users-chat-minimized-badge">${unread > 99 ? '99+' : unread}</span>` : ''}
+                    </button>
+                    <button type="button" class="users-chat-minimized-close" title="Remove minimized chat" aria-label="Remove minimized chat">×</button>
+                </div>`;
+            }).join('');
+
+            stack.querySelectorAll('.users-chat-minimized-item').forEach(itemEl => {
+                const key = itemEl.getAttribute('data-chat-key') || '';
+                const record = minimizedChatInstances.find(item => item.key === key);
+                itemEl.querySelector('.users-chat-minimized-open')?.addEventListener('click', () => {
+                    if (!record) return;
+                    minimizedChatInstances = minimizedChatInstances.filter(item => item.key !== key);
+                    renderMinimizedChatStack();
+                    openUsersChatWindow(record.mode, record.username);
+                });
+                itemEl.querySelector('.users-chat-minimized-close')?.addEventListener('click', event => {
+                    event.stopPropagation();
+                    minimizedChatInstances = minimizedChatInstances.filter(item => item.key !== key);
+                    renderMinimizedChatStack();
+                });
+            });
+        }
+
+        function addMinimizedChatInstance(mode = chatMode, username = chatSelectedUser, unreadDelta = 0) {
+            const key = chatConversationKey(mode, username);
+            let item = minimizedChatInstances.find(entry => entry.key === key);
+            if (!item) {
+                item = { key, mode: mode === 'private' ? 'private' : 'global', username: mode === 'private' ? String(username || '') : '', unread: 0 };
+                minimizedChatInstances.unshift(item);
+            } else {
+                minimizedChatInstances = [item, ...minimizedChatInstances.filter(entry => entry.key !== key)];
+            }
+            item.unread = Math.max(0, (Number(item.unread) || 0) + (Number(unreadDelta) || 0));
+            if (minimizedChatInstances.length > CHAT_MINIMIZED_MAX) minimizedChatInstances = minimizedChatInstances.slice(0, CHAT_MINIMIZED_MAX);
+            renderMinimizedChatStack();
+        }
+
+        function markChatConversationUnread(mode, username) {
+            const key = chatConversationKey(mode, username);
+            chatUnreadByConversation[key] = (Number(chatUnreadByConversation[key]) || 0) + 1;
+            chatUnreadCount += 1;
+            addMinimizedChatInstance(mode, username, 1);
+            updateChatUnreadBadge();
+        }
+
+        function markChatConversationRead(mode, username) {
+            const key = chatConversationKey(mode, username);
+            const amount = Math.max(0, Number(chatUnreadByConversation[key]) || 0);
+            if (amount) chatUnreadCount = Math.max(0, chatUnreadCount - amount);
+            delete chatUnreadByConversation[key];
+            minimizedChatInstances = minimizedChatInstances.filter(item => item.key !== key);
+            updateChatUnreadBadge();
+            renderMinimizedChatStack();
+        }
+
+        function resetChatUnreadState() {
+            chatUnreadCount = 0;
+            Object.keys(chatUnreadByConversation).forEach(key => delete chatUnreadByConversation[key]);
+            minimizedChatInstances = [];
+            updateChatUnreadBadge();
+            renderMinimizedChatStack();
+        }
+
+        function isCurrentChatConversation(mode, username) {
+            const win = document.getElementById('usersChatFloatingWindow');
+            if (!win || win.classList.contains('hidden')) return false;
+            if (mode === 'private') return chatMode === 'private' && String(chatSelectedUser || '') === String(username || '');
+            return chatMode === 'global';
+        }
+
         function toggleUsersChatDropdown(event, forceState) {
             if (event) event.stopPropagation();
             const dropdown = document.getElementById('usersChatDropdown');
@@ -932,14 +1057,32 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         }
 
         function closeUsersChatWindow() {
-            document.getElementById('usersChatFloatingWindow')?.classList.add('hidden');
+            const win = document.getElementById('usersChatFloatingWindow');
+            win?.classList.add('hidden');
+            win?.setAttribute('aria-hidden', 'true');
+            renderMinimizedChatStack();
+        }
+
+        function minimizeUsersChatWindow() {
+            const win = document.getElementById('usersChatFloatingWindow');
+            if (!win || win.classList.contains('hidden')) return;
+            if (chatMode === 'private' && !chatSelectedUser) return;
+            addMinimizedChatInstance(chatMode, chatSelectedUser, 0);
+            win.classList.add('hidden');
+            win.setAttribute('aria-hidden', 'true');
+            if (chatMessagesTimer) {
+                clearInterval(chatMessagesTimer);
+                chatMessagesTimer = null;
+            }
         }
 
         function openUsersChatWindow(mode = 'global', username = '') {
             if (mode === 'private' && !username) return;
             chatMode = mode === 'private' ? 'private' : 'global';
             chatSelectedUser = chatMode === 'private' ? String(username) : '';
+            markChatConversationRead(chatMode, chatSelectedUser);
             document.getElementById('usersChatFloatingWindow')?.classList.remove('hidden');
+            document.getElementById('usersChatFloatingWindow')?.setAttribute('aria-hidden', 'false');
             toggleUsersChatDropdown(null, false);
             setChatMode(chatMode);
             if (chatMode === 'private') renderChatUserList();
@@ -1123,8 +1266,9 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 if (userSettings.autoOpenChatbot && userSettings.showChatbot) document.getElementById('chatbot-window').classList.remove('hidden'); else document.getElementById('chatbot-window').classList.add('hidden');
                 
                 // Authentication survives browser refresh through localStorage.
-                // A fresh page load always starts on the Dashboard, regardless of the
-                // tab that was open before the refresh.
+                // Every successful login/session restoration starts on the Dashboard,
+                // regardless of the tab that was open before the refresh.
+                sessionStorage.setItem('activeTab', 'dashboard');
                 switchTab('dashboard');
                 
                 fetchActivityLogs();
@@ -1578,14 +1722,22 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             const buildTable = (title, dataRows, archived = false) => {
                 if (!dataRows.length) return '';
                 const bodyHtml = dataRows.map((p, index) => {
-                    const action = can && !archived ? `<td class="personnel-actions-cell">
-                        <button class="action-btn icon-action-btn" title="Edit Personnel" aria-label="Edit Personnel" onclick="editPersonnel(${Number(p.no)})">
-                            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4l10.5-10.5a2.12 2.12 0 0 0 0-3L17.5 5a2.12 2.12 0 0 0-3 0L4 15.5V20zM13.5 6.5l4 4"/></svg>
-                        </button>
-                        <button class="action-btn icon-action-btn delete-btn" title="Archive Personnel" aria-label="Archive Personnel" onclick="archivePersonnel(${Number(p.no)})">
-                            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M9 7V4h6v3M6 7l1 14h10l1-14"/></svg>
-                        </button>
-                    </td>` : '';
+                    const action = can
+                        ? (archived
+                            ? `<td class="personnel-actions-cell">
+                                <button class="action-btn icon-action-btn approve-btn" title="Restore Personnel" aria-label="Restore Personnel" onclick="restorePersonnel(${Number(p.archiveRow)})">
+                                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v6h6"/><path d="M12 7v5l3 2"/></svg>
+                                </button>
+                            </td>`
+                            : `<td class="personnel-actions-cell">
+                                <button class="action-btn icon-action-btn" title="Edit Personnel" aria-label="Edit Personnel" onclick="editPersonnel(${Number(p.no)})">
+                                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4l10.5-10.5a2.12 2.12 0 0 0 0-3L17.5 5a2.12 2.12 0 0 0-3 0L4 15.5V20zM13.5 6.5l4 4"/>
+                                </button>
+                                <button class="action-btn icon-action-btn delete-btn" title="Archive Personnel" aria-label="Archive Personnel" onclick="archivePersonnel(${Number(p.no)})">
+                                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M9 7V4h6v3M6 7l1 14h10l1-14"/>
+                                </button>
+                            </td>`)
+                        : '';
 
                     return `<tr>
                         <td>${index + 1}</td>
@@ -1598,27 +1750,25 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                         <td>${escapeHtml(p.section)}</td>
                         <td><span style="font-weight:600;color:${archived ? 'var(--danger)' : 'var(--success)'};">${escapeHtml(p.status || (archived ? 'Archived' : 'Active'))}</span></td>
                         <td>${escapeHtml(p.contactNo)}</td>
-                        <td>${escapeHtml(p.remarks)}</td>
-                        ${archived ? `<td>${escapeHtml(p.archivedDate || '')}</td>` : ''}
+                        ${archived ? `<td>${escapeHtml(p.archivedDate || '')}</td>` : `<td>${escapeHtml(p.remarks || '')}</td>`}
                         ${action}
                     </tr>`;
                 }).join('');
 
-                const archiveExtra = archived ? '<th>Archived Date</th>' : '';
+                const extraHeader = archived ? '<th>Archived Date</th>' : '<th>Remarks</th>';
                 return `<h3 style="margin-top:25px;margin-bottom:10px;color:${archived ? 'var(--danger)' : 'var(--primary)'};font-size:16px;">${escapeHtml(title)}</h3>
                 <div class="table-wrapper" style="margin-bottom:20px;margin-top:0;">
-                    <table class="personnel-data-table">
+                    <table class="personnel-data-table${archived ? ' archived-personnel-table' : ''}">
                         <thead><tr>
                             <th>No.</th><th>Rank</th><th>Last Name</th><th>First Name</th><th>Middle Name</th>
-                            <th>Qualifiers</th><th>Designation</th><th>Section</th><th>Status</th><th>Contact No.</th><th>Remarks</th>
-                            ${archiveExtra}
-                            ${can && !archived ? '<th>Actions</th>' : ''}
+                            <th>Qualifiers</th><th>Designation</th><th>Section</th><th>Status</th><th>Contact No.</th>
+                            ${extraHeader}
+                            ${can ? '<th>Actions</th>' : ''}
                         </tr></thead>
                         <tbody>${bodyHtml}</tbody>
                     </table>
                 </div>`;
             };
-
             let activeHtml = '';
             orderedSections.forEach(section => { activeHtml += buildTable(section, groups.get(section)); });
             activeHtml += buildTable('Detached Service', detached);
@@ -1793,6 +1943,34 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                     logActivity(`archived personnel record: ${p.rank} ${p.lastName}, ${p.firstName}`);
                     customAlert('Personnel record archived successfully.','Success'); await loadPersonnel();
                 } catch(e){ customAlert(e.message||'Unable to archive personnel record.','Error'); }
+            });
+        }
+
+        async function restorePersonnel(archiveRow) {
+            if(!canManagePersonnel()) return customAlert("Only the Alpha Admin and designated Admin users can restore archived personnel.","Permission Denied");
+            const p = (archivedPersonnel || []).find(x => Number(x.archiveRow) === Number(archiveRow));
+            const name = p ? `${p.rank} ${p.lastName}, ${p.firstName}` : 'this archived personnel record';
+
+            customConfirm(`Restore ${name} to the active Personnel list?`, async confirmed => {
+                if(!confirmed) return;
+                try {
+                    const res = await fetch(API_URL, {
+                        method:'POST', mode:'cors', headers:{'Content-Type':'text/plain;charset=utf-8'},
+                        body:JSON.stringify({
+                            action:'restore_personnel',
+                            archiveRow:Number(archiveRow),
+                            userName:localStorage.getItem('loggedInUser'),
+                            credential:localStorage.getItem('loggedCred') || ''
+                        })
+                    });
+                    const data = await res.json();
+                    if(!data.success) throw new Error(data.error || 'Restore failed');
+                    logActivity(`restored personnel record${p ? `: ${p.rank} ${p.lastName}, ${p.firstName}` : ''}`);
+                    customAlert('Personnel record restored to the active list.','Success');
+                    await loadPersonnel();
+                } catch(e) {
+                    customAlert(e.message || 'Unable to restore personnel record.','Error');
+                }
             });
         }
 
