@@ -2622,7 +2622,18 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 categoryCounts[category] = (categoryCounts[category] || 0) + 1; userCounts[encodedBy] = (userCounts[encodedBy] || 0) + 1;
             });
 
-            const catHtml = Object.keys(categoryCounts).map(k => `<div style="display:flex; justify-content:space-between; font-size:14px; margin-bottom:8px; border-bottom: 1px solid var(--border-color); padding-bottom: 4px;"><span>${k}</span> <strong style="color:var(--primary);">${categoryCounts[k]}</strong></div>`).join('');
+            const categoryFullNames = {
+                A: "Admin",
+                S: "Supply",
+                GSS: "General Services Section",
+                BP: "Base Police",
+                SSB: "Special Services Band",
+                RCIA: "Regional Committee on Inspection & Acceptance"
+            };
+            const catHtml = Object.keys(categoryCounts).map(k => {
+                const fullName = categoryFullNames[k] || (k === "Uncategorized" ? k : k);
+                return `<div style="display:flex; justify-content:space-between; gap:12px; font-size:14px; margin-bottom:8px; border-bottom: 1px solid var(--border-color); padding-bottom: 4px;"><span>${fullName}</span> <strong style="color:var(--primary);">${categoryCounts[k]}</strong></div>`;
+            }).join('');
             document.getElementById('dashCategories').innerHTML = catHtml || '<div style="font-size:13px; color:var(--text-muted)">No data</div>';
 
             const userHtml = Object.keys(userCounts).map(k => `<div style="display:flex; justify-content:space-between; font-size:14px; margin-bottom:8px; border-bottom: 1px solid var(--border-color); padding-bottom: 4px;"><span>${k}</span> <strong style="color:var(--primary);">${userCounts[k]}</strong></div>`).join('');
@@ -2665,11 +2676,73 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
 
         function changeMemoPage(direction) { currentMemoPage += direction; renderMemoTable(); }
 
+        let generatedMemoControlNumber = "";
+
+        function showMemoControlNumberModal(controlNumber) {
+            generatedMemoControlNumber = String(controlNumber || "").trim();
+            document.getElementById('generatedMemoControlNumber').textContent = generatedMemoControlNumber || "Control number unavailable";
+            document.getElementById('memoControlCopyFeedback').textContent = "";
+            document.getElementById('copyMemoControlNumberBtn').disabled = !generatedMemoControlNumber;
+            document.getElementById('memoControlNumberModal').classList.remove('hidden');
+        }
+
+        async function copyGeneratedMemoControlNumber() {
+            if (!generatedMemoControlNumber) return;
+            const feedback = document.getElementById('memoControlCopyFeedback');
+            try {
+                if (navigator.clipboard && window.isSecureContext) {
+                    await navigator.clipboard.writeText(generatedMemoControlNumber);
+                } else {
+                    const temp = document.createElement('textarea');
+                    temp.value = generatedMemoControlNumber;
+                    temp.style.position = 'fixed'; temp.style.opacity = '0';
+                    document.body.appendChild(temp); temp.select();
+                    const copied = document.execCommand('copy'); temp.remove();
+                    if (!copied) throw new Error('Clipboard copy failed');
+                }
+                feedback.textContent = "Control number copied to clipboard.";
+            } catch (err) {
+                feedback.textContent = "Copy was blocked. Please select and copy the control number above.";
+            }
+        }
+
+        function closeMemoControlNumberModal() {
+            document.getElementById('memoControlNumberModal').classList.add('hidden');
+            generatedMemoControlNumber = "";
+        }
+
         document.getElementById('memoForm').addEventListener('submit', async (e) => {
-            e.preventDefault(); const submitBtn = document.getElementById('memoSubmitBtn'); const subject = document.getElementById('memoSubject').value.trim(); const officeDestination = getSelectedOfficeDestination('memoOfficeDestination', 'memoOfficeDestinationOther'); const classification = document.getElementById('memoClassification').value; 
-            if (!subject) return customAlert("Please enter a Memo Subject.", "Error"); if (!officeDestination) return customAlert("Please select or enter the Office Destination.", "Error");
+            e.preventDefault();
+            const submitBtn = document.getElementById('memoSubmitBtn');
+            const subject = document.getElementById('memoSubject').value.trim();
+            const officeDestination = getSelectedOfficeDestination('memoOfficeDestination', 'memoOfficeDestinationOther');
+            const classification = document.getElementById('memoClassification').value;
+            if (!subject) return customAlert("Please enter a Memo Subject.", "Error");
+            if (!officeDestination) return customAlert("Please select or enter the Office Destination.", "Error");
             submitBtn.disabled = true; submitBtn.innerText = "Submitting...";
-            try { await fetch(API_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify({ action: 'create', memoSubject: subject, officeDestination: officeDestination, classification: classification, userName: localStorage.getItem('loggedInUser') }) }); logActivity(`encoded a new memo: "${subject}" for ${officeDestination}`); document.getElementById('memoSubject').value = ""; setOfficeDestination('memoOfficeDestination', 'memoOfficeDestinationOther', ""); closeMemoModal(); setTimeout(loadData, 1500); customAlert("Memo created!", "Success"); } catch (err) { submitBtn.disabled = false; submitBtn.innerText = "Submit Data"; }
+            try {
+                // CORS mode is required to read the backend's JSON response containing the actual generated control number.
+                const response = await fetch(API_URL, {
+                    method: 'POST', mode: 'cors',
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                    body: JSON.stringify({ action: 'create', memoSubject: subject, officeDestination: officeDestination, classification: classification, userName: localStorage.getItem('loggedInUser') })
+                });
+                if (!response.ok) throw new Error('The server could not confirm the submission.');
+                const result = await response.json();
+                if (!result || result.success !== true || !result.controlNumber) {
+                    throw new Error((result && result.error) || 'The server did not return a control number.');
+                }
+                logActivity(`encoded a new memo: "${subject}" for ${officeDestination}`);
+                document.getElementById('memoSubject').value = "";
+                setOfficeDestination('memoOfficeDestination', 'memoOfficeDestinationOther', "");
+                closeMemoModal();
+                setTimeout(loadData, 1500);
+                showMemoControlNumberModal(result.controlNumber);
+            } catch (err) {
+                customAlert("Memo submission could not be confirmed. Please check the Memo Database before retrying to avoid creating a duplicate. " + (err.message || ""), "Submission Status");
+            } finally {
+                submitBtn.disabled = false; submitBtn.innerText = "Submit Data";
+            }
         });
 
         function initiateEdit(controlNum, currentSubject, currentOfficeDestination = "", currentStatus = "For Dispatched") {
