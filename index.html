@@ -156,6 +156,7 @@
             </button>
             
             <div style="flex-grow: 1;"></div>
+            <div class="sidebar-version" aria-label="Application version">v1.0.1</div>
         </aside>
 
         <main class="main-content">
@@ -175,9 +176,9 @@
                             <span class="exec-pill" id="execDashUpdated">Data not loaded</span>
                         </div>
                         <div class="exec-hero-actions">
-                            <button class="rhsu-dashboard-action-btn" onclick="dashboardAddMemo()">Add Memo</button>
-                            <button class="rhsu-dashboard-action-btn" onclick="switchTab('personnel')">Personnel</button>
-                            <button class="rhsu-dashboard-action-btn" onclick="switchTab('activityManagement')">Add Activity</button>
+                            <button class="rhsu-dashboard-action-btn" onclick="dashboardAddMemo()" aria-label="Add Memo" title="Add Memo"><span class="dashboard-action-icon" aria-hidden="true">＋</span><span class="dashboard-action-label">Add Memo</span></button>
+                            <button class="rhsu-dashboard-action-btn" onclick="switchTab('personnel')" aria-label="Personnel" title="Personnel"><span class="dashboard-action-icon" aria-hidden="true">♙</span><span class="dashboard-action-label">Personnel</span></button>
+                            <button class="rhsu-dashboard-action-btn" onclick="switchTab('activityManagement')" aria-label="Add Activity" title="Add Activity"><span class="dashboard-action-icon" aria-hidden="true">▦</span><span class="dashboard-action-label">Add Activity</span></button>
                         </div>
                     </div>
                 </section>
@@ -468,6 +469,13 @@
                     </div>
                 </div>
 
+                <section class="activity-overview-calendar" aria-label="Activity calendar overview">
+                    <div class="activity-overview-head">
+                        <div><h3>Activity Calendar</h3><p>Scheduled activities by date. Select an activity to view its details.</p></div>
+                        <div class="activity-calendar-nav"><button type="button" onclick="changeActivityOverviewMonth(-1)" aria-label="Previous month">‹</button><strong id="activityOverviewMonthTitle"></strong><button type="button" onclick="changeActivityOverviewMonth(1)" aria-label="Next month">›</button></div>
+                    </div>
+                    <div id="activityOverviewCalendar" class="activity-overview-grid"></div>
+                </section>
                 <div class="activity-toolbar">
                     <button id="activityAddBtn" class="action-btn approve-btn" onclick="openActivityModal()" style="color:white;font-weight:bold;width:auto;">
                         ＋ Add Activity
@@ -973,6 +981,14 @@
                 <button id="activitySaveBtn" class="approve-btn" style="flex:1;margin:0;color:white;font-family:inherit;" onclick="saveActivity()">Add Activity</button>
                 <button type="button" style="flex:1;margin:0;background:#e2e8f0;color:#475569;font-family:inherit;" onclick="closeActivityModal()">Cancel</button>
             </div>
+        </div>
+    </div>
+
+    <div id="activityDetailsModal" class="modal-overlay hidden">
+        <div class="modal-content glass-panel modal-large activity-details-modal">
+            <div class="activity-details-heading"><h2 id="activityDetailsTitle">Activity Details</h2><button type="button" class="action-btn" onclick="closeActivityDetails()" aria-label="Close">×</button></div>
+            <div id="activityDetailsContent" class="activity-details-content"></div>
+            <div class="activity-details-footer"><button type="button" class="action-btn" onclick="closeActivityDetails()">Close</button><button type="button" id="activityDetailsEditBtn" class="approve-btn" onclick="editActivityFromDetails()">Edit Activity</button></div>
         </div>
     </div>
 

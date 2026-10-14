@@ -1722,24 +1722,8 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             const buildTable = (title, dataRows, archived = false) => {
                 if (!dataRows.length) return '';
                 const bodyHtml = dataRows.map((p, index) => {
-                    const action = can
-                        ? (archived
-                            ? `<td class="personnel-actions-cell">
-                                <button class="action-btn icon-action-btn approve-btn" title="Restore Personnel" aria-label="Restore Personnel" onclick="restorePersonnel(${Number(p.archiveRow)})">
-                                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v6h6"/><path d="M12 7v5l3 2"/></svg>
-                                </button>
-                            </td>`
-                            : `<td class="personnel-actions-cell">
-                                <button class="action-btn icon-action-btn" title="Edit Personnel" aria-label="Edit Personnel" onclick="editPersonnel(${Number(p.no)})">
-                                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4l10.5-10.5a2.12 2.12 0 0 0 0-3L17.5 5a2.12 2.12 0 0 0-3 0L4 15.5V20zM13.5 6.5l4 4"/>
-                                </button>
-                                <button class="action-btn icon-action-btn delete-btn" title="Archive Personnel" aria-label="Archive Personnel" onclick="archivePersonnel(${Number(p.no)})">
-                                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M9 7V4h6v3M6 7l1 14h10l1-14"/>
-                                </button>
-                            </td>`)
-                        : '';
-
-                    return `<tr>
+                    const clickAction = archived ? `onclick="openArchivedPersonnelDetails(${Number(p.archiveRow)})"` : `onclick="editPersonnel(${Number(p.no)})"`;
+                    return `<tr class="personnel-clickable-row" ${clickAction} tabindex="0" role="button" aria-label="View personnel ${escapeAttr((p.rank||'')+' '+(p.firstName||'')+' '+(p.lastName||''))}" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();${archived ? `openArchivedPersonnelDetails(${Number(p.archiveRow)})` : `editPersonnel(${Number(p.no)})`};}">
                         <td>${index + 1}</td>
                         <td>${escapeHtml(p.rank)}</td>
                         <td>${escapeHtml(p.lastName)}</td>
@@ -1751,7 +1735,6 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                         <td><span style="font-weight:600;color:${archived ? 'var(--danger)' : 'var(--success)'};">${escapeHtml(p.status || (archived ? 'Archived' : 'Active'))}</span></td>
                         <td>${escapeHtml(p.contactNo)}</td>
                         ${archived ? `<td>${escapeHtml(p.archivedDate || '')}</td>` : `<td>${escapeHtml(p.remarks || '')}</td>`}
-                        ${action}
                     </tr>`;
                 }).join('');
 
@@ -1763,7 +1746,6 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                             <th>No.</th><th>Rank</th><th>Last Name</th><th>First Name</th><th>Middle Name</th>
                             <th>Qualifiers</th><th>Designation</th><th>Section</th><th>Status</th><th>Contact No.</th>
                             ${extraHeader}
-                            ${can ? '<th>Actions</th>' : ''}
                         </tr></thead>
                         <tbody>${bodyHtml}</tbody>
                     </table>
@@ -2295,6 +2277,54 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             });
         }
 
+        let activityOverviewMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+        let selectedActivityDetailsId = null;
+
+        function changeActivityOverviewMonth(delta) {
+            activityOverviewMonth = new Date(activityOverviewMonth.getFullYear(), activityOverviewMonth.getMonth() + delta, 1);
+            renderActivityOverviewCalendar();
+        }
+
+        function renderActivityOverviewCalendar() {
+            const host = document.getElementById('activityOverviewCalendar');
+            const title = document.getElementById('activityOverviewMonthTitle');
+            if (!host || !title) return;
+            const year = activityOverviewMonth.getFullYear(), month = activityOverviewMonth.getMonth();
+            title.textContent = activityOverviewMonth.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+            const weekdays = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+            let html = weekdays.map(day => `<div class="activity-overview-weekday">${day}</div>`).join('');
+            const first = new Date(year, month, 1).getDay(), count = new Date(year, month + 1, 0).getDate();
+            const previousCount = new Date(year, month, 0).getDate();
+            const today = localDateKey(new Date());
+            for (let i = 0; i < 42; i++) {
+                const raw = i - first + 1;
+                const date = raw < 1 ? new Date(year, month - 1, previousCount + raw) : raw > count ? new Date(year, month + 1, raw - count) : new Date(year, month, raw);
+                const key = localDateKey(date), other = date.getMonth() !== month;
+                const matches = (allActivities || []).filter(a => String(a.date || '').split(',').map(d => d.trim().slice(0,10)).includes(key));
+                html += `<div class="activity-overview-day${other ? ' is-other-month' : ''}${key === today ? ' is-today' : ''}"><span class="activity-overview-day-number">${date.getDate()}</span><div class="activity-overview-events">${matches.slice(0,3).map(a => `<button type="button" class="activity-overview-event" title="${escapeAttr(a.activityTitle || 'Activity')}" onclick="showActivityDetails('${escapeAttr(a.id)}')">${escapeHtml(a.activityTitle || 'Untitled activity')}</button>`).join('')}${matches.length > 3 ? `<span class="activity-overview-more">+${matches.length-3} more</span>` : ''}</div></div>`;
+            }
+            host.innerHTML = html;
+        }
+
+        function showActivityDetails(id) {
+            const activity = (allActivities || []).find(a => String(a.id) === String(id)) || (archivedActivities || []).find(a => String(a.id) === String(id));
+            if (!activity) return;
+            selectedActivityDetailsId = String(activity.id);
+            document.getElementById('activityDetailsTitle').textContent = activity.activityTitle || 'Activity Details';
+            const fields = [['Date / Schedule', activity.date], ['Activity Title', activity.activityTitle], ['Assigned Venue', activity.assignedVenue], ['Requesting Office', activity.requestingOffice], ['Concerned Office', activity.concernedOffice], ['Time', formatActivityTime(activity.time)], ['Frequency', activity.frequency], ['Status', activity.status]];
+            document.getElementById('activityDetailsContent').innerHTML = fields.map(([label,value]) => `<div class="activity-detail-field"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value || '—')}</strong></div>`).join('');
+            document.getElementById('activityDetailsEditBtn').classList.toggle('hidden', !canManageActivities() || !(allActivities || []).some(a => String(a.id) === String(id)));
+            document.getElementById('activityDetailsModal').classList.remove('hidden');
+        }
+        function closeActivityDetails() { document.getElementById('activityDetailsModal').classList.add('hidden'); selectedActivityDetailsId = null; }
+        function editActivityFromDetails() { const id = selectedActivityDetailsId; closeActivityDetails(); if (id) editActivity(id); }
+
+        function openArchivedPersonnelDetails(archiveRow) {
+            const p = (archivedPersonnel || []).find(x => Number(x.archiveRow) === Number(archiveRow));
+            if (!p) return;
+            customAlert(`${p.rank || ''} ${p.firstName || ''} ${p.middleName || ''} ${p.lastName || ''}\nDesignation: ${p.designation || '—'}\nSection: ${p.section || '—'}\nStatus: ${p.status || 'Archived'}\nContact: ${p.contactNo || '—'}\nRemarks: ${p.remarks || '—'}`, 'Archived Personnel');
+        }
+
         async function loadActivities() {
             try {
                 const res = await fetch(API_URL + '?action=get_activities');
@@ -2305,6 +2335,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 // Backend status synchronization keeps current-date rows Ongoing and past rows archived.
                 filterActivities();
                 renderArchivedActivities();
+                renderActivityOverviewCalendar();
                 updateActivityPermissions();
                 startActivityReminderMonitor();
                 if (!document.getElementById('tabDashboard').classList.contains('hidden')) renderExecutiveDashboard();
@@ -2327,6 +2358,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         }
 
         function renderActivities() {
+            renderActivityOverviewCalendar();
             const body = document.getElementById('activityTableBody');
             const can = canManageActivities();
             const perPage = Math.max(1, parseInt(userSettings.recordsPerPage,10) || 10);
@@ -2339,7 +2371,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 const statusClass = status.toLowerCase() === 'ongoing' ? 'ongoing' : status.toLowerCase() === 'archive' ? 'archive' : 'recurring';
                 return `<tr>
                     <td>${escapeHtml(a.date)}</td>
-                    <td>${escapeHtml(a.activityTitle)}</td>
+                    <td><button type="button" class="activity-title-link" onclick="showActivityDetails('${escapeAttr(a.id)}')">${escapeHtml(a.activityTitle)}</button></td>
                     <td>${escapeHtml(a.assignedVenue)}</td>
                     <td>${escapeHtml(a.requestingOffice)}</td>
                     <td>${escapeHtml(a.concernedOffice)}</td>
