@@ -1255,6 +1255,11 @@ body.dark-mode .exec-card,body.dark-mode .exec-kpi{background:#111827}
 /* SPADES v1.0.0 requested responsive refinements */
 .sidebar-version{width:100%;padding:12px 14px 4px;margin-top:12px;border-top:1px solid rgba(255,255,255,.18);color:rgba(255,255,255,.72);font-size:11px;font-weight:700;letter-spacing:.12em;text-align:center;flex-shrink:0}
 .sidebar.collapsed .sidebar-version{padding-left:0;padding-right:0;font-size:10px;letter-spacing:0}
+.sidebar-developer{margin-top:5px;font-size:11px;font-weight:800;letter-spacing:.08em;color:rgba(255,255,255,.92)}
+.sidebar-rights{margin-top:4px;font-size:9px;font-weight:500;line-height:1.35;letter-spacing:0;color:rgba(255,255,255,.62);white-space:normal}
+.sidebar.collapsed .sidebar-rights{font-size:8px;overflow-wrap:anywhere}
+#pageRefreshBtn{display:inline-flex;align-items:center;justify-content:center;min-width:34px;min-height:34px;font-weight:700}
+#pageRefreshBtn:hover{transform:rotate(20deg)}
 .dashboard-action-icon{display:none;font-size:22px;line-height:1;font-weight:700}
 .personnel-clickable-row{cursor:pointer;transition:background .15s ease}
 .personnel-clickable-row:hover{background:rgba(59,130,246,.08)}
