@@ -1278,3 +1278,122 @@ body.dark-mode .exec-card,body.dark-mode .exec-kpi{background:#111827}
 .activity-details-modal{max-width:760px!important}.activity-details-heading{display:flex;justify-content:space-between;align-items:center;gap:12px}.activity-details-heading h2{margin:0;color:var(--primary)}.activity-details-content{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:18px}.activity-detail-field{padding:12px;border:1px solid var(--border-color);border-radius:10px;min-width:0}.activity-detail-field span{display:block;margin-bottom:5px;color:var(--text-muted);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em}.activity-detail-field strong{display:block;color:var(--text-main);font-size:14px;overflow-wrap:anywhere}.activity-details-footer{display:flex;justify-content:flex-end;gap:10px;margin-top:18px}
 @media(max-width:760px){.exec-hero-actions{gap:8px}.rhsu-dashboard-action-btn{min-width:42px!important;width:42px;height:42px;padding:0!important;display:inline-flex;align-items:center;justify-content:center}.dashboard-action-icon{display:inline-block}.dashboard-action-label{display:none}.activity-overview-calendar{padding:10px}.activity-overview-day{min-height:66px;padding:4px}.activity-overview-event{font-size:9px;padding:3px}.activity-overview-weekday{font-size:10px;padding:7px 2px}.activity-overview-head{align-items:flex-start}.activity-details-content{grid-template-columns:1fr}}
 @media(max-width:420px){.activity-overview-day{min-height:52px}.activity-overview-event{font-size:8px}.activity-overview-more{font-size:8px}.activity-overview-head .activity-calendar-nav{width:100%;justify-content:space-between}}
+
+/* Facebook-inspired list layout for Settings and My Profile.
+   Presentation-only overrides: existing IDs, handlers and settings logic remain unchanged. */
+#tabSettings #settingsMainPanel > .settings-grid,
+#tabProfile .profile-options-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-top: 16px;
+    width: 100%;
+}
+#tabSettings .settings-section,
+#tabProfile .settings-section {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 0;
+    overflow: hidden;
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    background: var(--surface, var(--card-bg, #fff));
+    box-shadow: 0 1px 3px rgba(15, 23, 42, .045);
+}
+body.dark-mode #tabSettings .settings-section,
+body.dark-mode #tabProfile .settings-section {
+    background: var(--surface, rgba(255,255,255,.025));
+}
+#tabSettings .settings-section h3,
+#tabProfile .settings-section h3 {
+    margin: 0;
+    padding: 16px 18px;
+    border-bottom: 1px solid var(--border-color);
+    font-size: 15px;
+    font-weight: 750;
+    line-height: 1.35;
+    color: var(--text-main, var(--primary));
+}
+#tabSettings .setting-row,
+#tabProfile .setting-row {
+    min-height: 54px;
+    box-sizing: border-box;
+    margin: 0;
+    padding: 11px 18px;
+    gap: 18px;
+    border-bottom: 1px solid var(--border-color);
+    font-size: 14px;
+}
+#tabSettings .setting-row:last-child,
+#tabProfile .setting-row:last-child { border-bottom: 0; }
+#tabSettings .setting-row > span:first-child,
+#tabProfile .setting-row > span:first-child {
+    color: var(--text-main);
+    font-weight: 550;
+    line-height: 1.45;
+}
+#tabSettings .setting-row select,
+#tabProfile .setting-row select {
+    max-width: min(48%, 260px);
+    min-width: 135px;
+    border-radius: 8px;
+}
+#tabSettings .settings-section > div[style*="display:flex"],
+#tabProfile .settings-section > div[style*="display:flex"] {
+    padding: 14px 18px;
+}
+#tabProfile .profile-identity-card {
+    padding: 22px 18px;
+    text-align: left;
+}
+#tabProfile .profile-identity-card .profile-avatar {
+    margin-left: 0;
+    margin-right: 0;
+}
+#tabProfile .profile-identity-card h3 {
+    padding: 0 0 12px;
+    border-bottom: 0;
+}
+#tabProfile .profile-identity-card .profile-display-name,
+#tabProfile .profile-identity-card .profile-role-badge {
+    margin-left: 0;
+}
+#tabProfile .profile-meta-list {
+    max-width: 560px;
+}
+#tabProfile .settings-section > div[style*="margin-bottom:15px"] {
+    margin: 0 !important;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border-color);
+}
+#tabProfile .settings-section > div[style*="margin-bottom:15px"] label {
+    margin-bottom: 8px !important;
+}
+#tabProfile .settings-section > div[style*="margin-top:15px"] {
+    margin-top: 0 !important;
+    padding: 14px 18px;
+}
+#tabProfile .settings-section > button {
+    margin: 12px 18px;
+}
+#tabSettings #settingsMainPanel > .settings-section { margin-top: 12px; }
+#tabSettings .controls { align-items: center; }
+#tabSettings .settings-section .setting-row small { line-height: 1.4; }
+@media (max-width: 640px) {
+    #tabSettings .setting-row,
+    #tabProfile .setting-row {
+        align-items: flex-start;
+        padding: 13px 14px;
+        gap: 12px;
+    }
+    #tabSettings .setting-row select,
+    #tabProfile .setting-row select {
+        max-width: 52%;
+        min-width: 115px;
+        padding: 8px 9px;
+    }
+    #tabSettings .settings-section h3,
+    #tabProfile .settings-section h3 { padding: 14px; }
+    #tabProfile .profile-identity-card { padding: 18px 14px; }
+    #tabProfile .settings-section > div[style*="display:flex"] { padding: 12px 14px; }
+}
