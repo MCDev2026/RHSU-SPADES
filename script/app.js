@@ -1721,8 +1721,14 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
 
             const buildTable = (title, dataRows, archived = false) => {
                 if (!dataRows.length) return '';
+                // Restore controls are shown only to Alpha Admin and Admin users who
+                // pass the same personnel-management permission check used elsewhere.
+                const showRestoreAction = archived && (isAlphaAdmin() || localStorage.getItem('userRole') === 'Admin');
                 const bodyHtml = dataRows.map((p, index) => {
                     const clickAction = archived ? `onclick="openArchivedPersonnelDetails(${Number(p.archiveRow)})"` : `onclick="editPersonnel(${Number(p.no)})"`;
+                    const restoreActionCell = showRestoreAction
+                        ? `<td class="personnel-actions-cell"><button type="button" class="action-btn approve-btn" title="Restore personnel" aria-label="Restore ${escapeAttr((p.rank||'')+' '+(p.firstName||'')+' '+(p.lastName||''))}" onclick="event.stopPropagation();restorePersonnel(${Number(p.archiveRow)})" style="font-size:12px;padding:6px 10px;width:auto;min-width:76px;height:auto;">↻ Restore</button></td>`
+                        : '';
                     return `<tr class="personnel-clickable-row" ${clickAction} tabindex="0" role="button" aria-label="View personnel ${escapeAttr((p.rank||'')+' '+(p.firstName||'')+' '+(p.lastName||''))}" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();${archived ? `openArchivedPersonnelDetails(${Number(p.archiveRow)})` : `editPersonnel(${Number(p.no)})`};}">
                         <td>${index + 1}</td>
                         <td>${escapeHtml(p.rank)}</td>
@@ -1735,10 +1741,13 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                         <td><span style="font-weight:600;color:${archived ? 'var(--danger)' : 'var(--success)'};">${escapeHtml(p.status || (archived ? 'Archived' : 'Active'))}</span></td>
                         <td>${escapeHtml(p.contactNo)}</td>
                         ${archived ? `<td>${escapeHtml(p.archivedDate || '')}</td>` : `<td>${escapeHtml(p.remarks || '')}</td>`}
+                        ${restoreActionCell}
                     </tr>`;
                 }).join('');
 
-                const extraHeader = archived ? '<th>Archived Date</th>' : '<th>Remarks</th>';
+                const extraHeader = archived
+                    ? `<th>Archived Date</th>${showRestoreAction ? '<th>Action</th>' : ''}`
+                    : '<th>Remarks</th>';
                 return `<h3 style="margin-top:25px;margin-bottom:10px;color:${archived ? 'var(--danger)' : 'var(--primary)'};font-size:16px;">${escapeHtml(title)}</h3>
                 <div class="table-wrapper" style="margin-bottom:20px;margin-top:0;">
                     <table class="personnel-data-table${archived ? ' archived-personnel-table' : ''}">
@@ -1929,7 +1938,8 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         }
 
         async function restorePersonnel(archiveRow) {
-            if(!canManagePersonnel()) return customAlert("Only the Alpha Admin and designated Admin users can restore archived personnel.","Permission Denied");
+            const role = localStorage.getItem('userRole') || '';
+            if(!isAlphaAdmin() && role !== 'Admin') return customAlert("Only the Alpha Admin and Admin users can restore archived personnel.","Permission Denied");
             const p = (archivedPersonnel || []).find(x => Number(x.archiveRow) === Number(archiveRow));
             const name = p ? `${p.rank} ${p.lastName}, ${p.firstName}` : 'this archived personnel record';
 
@@ -2319,10 +2329,60 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         function closeActivityDetails() { document.getElementById('activityDetailsModal').classList.add('hidden'); selectedActivityDetailsId = null; }
         function editActivityFromDetails() { const id = selectedActivityDetailsId; closeActivityDetails(); if (id) editActivity(id); }
 
+        let selectedArchivedPersonnelRow = null;
+
         function openArchivedPersonnelDetails(archiveRow) {
             const p = (archivedPersonnel || []).find(x => Number(x.archiveRow) === Number(archiveRow));
             if (!p) return;
-            customAlert(`${p.rank || ''} ${p.firstName || ''} ${p.middleName || ''} ${p.lastName || ''}\nDesignation: ${p.designation || '—'}\nSection: ${p.section || '—'}\nStatus: ${p.status || 'Archived'}\nContact: ${p.contactNo || '—'}\nRemarks: ${p.remarks || '—'}`, 'Archived Personnel');
+            selectedArchivedPersonnelRow = Number(archiveRow);
+            const canEditStatus = isAlphaAdmin() || localStorage.getItem('userRole') === 'Admin';
+            const name = `${p.rank || ''} ${p.firstName || ''} ${p.middleName || ''} ${p.lastName || ''}`.replace(/\s+/g, ' ').trim();
+            document.getElementById('archivedPersonnelDetailsName').textContent = name || 'Archived Personnel';
+            document.getElementById('archivedPersonnelDetailsContent').innerHTML = [
+                ['Designation', p.designation], ['Section', p.section], ['Contact', p.contactNo],
+                ['Archived Date', p.archivedDate], ['Archived By', p.archivedBy], ['Archive Note', p.archiveAction]
+            ].map(([label, value]) => `<div class="activity-detail-field"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value || '—')}</strong></div>`).join('');
+            const statusSelect = document.getElementById('archivedPersonnelStatus');
+            const statuses = ['Active', 'Resigned', 'Deceased', 'Dismissed', 'Suspended', 'Reassigned'];
+            statusSelect.innerHTML = statuses.map(status => `<option value="${status}"${status === (p.status || 'Active') ? ' selected' : ''}>${status}</option>`).join('');
+            statusSelect.disabled = !canEditStatus;
+            document.getElementById('saveArchivedPersonnelStatusBtn').classList.toggle('hidden', !canEditStatus);
+            document.getElementById('archivedPersonnelStatusPermissionNote').classList.toggle('hidden', canEditStatus);
+            document.getElementById('archivedPersonnelDetailsModal').classList.remove('hidden');
+        }
+
+        function closeArchivedPersonnelDetails() {
+            document.getElementById('archivedPersonnelDetailsModal').classList.add('hidden');
+            selectedArchivedPersonnelRow = null;
+        }
+
+        async function saveArchivedPersonnelStatus() {
+            const role = localStorage.getItem('userRole') || '';
+            if (!isAlphaAdmin() && role !== 'Admin') return customAlert('Only the Alpha Admin and Admin users can change archived personnel status.', 'Permission Denied');
+            if (!selectedArchivedPersonnelRow) return;
+            const status = document.getElementById('archivedPersonnelStatus').value;
+            const p = (archivedPersonnel || []).find(x => Number(x.archiveRow) === selectedArchivedPersonnelRow);
+            const name = p ? `${p.rank || ''} ${p.firstName || ''} ${p.lastName || ''}`.trim() : 'personnel';
+            const btn = document.getElementById('saveArchivedPersonnelStatusBtn');
+            btn.disabled = true;
+            const oldText = btn.textContent;
+            btn.textContent = 'Saving…';
+            try {
+                const res = await fetch(API_URL, { method: 'POST', mode: 'cors', headers: {'Content-Type':'text/plain;charset=utf-8'},
+                    body: JSON.stringify({ action: 'update_archived_personnel_status', archiveRow: selectedArchivedPersonnelRow, status,
+                        userName: localStorage.getItem('loggedInUser'), credential: localStorage.getItem('loggedCred') || '' }) });
+                const data = await res.json();
+                if (!data.success) throw new Error(data.error || 'Unable to update archived personnel status.');
+                logActivity(`changed archived personnel status for ${name} to ${status}`);
+                closeArchivedPersonnelDetails();
+                customAlert(`Archived personnel status updated to ${status}.`, 'Success');
+                await loadPersonnel();
+            } catch (e) {
+                customAlert(e.message || 'Unable to update archived personnel status.', 'Error');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = oldText;
+            }
         }
 
         async function loadActivities() {
