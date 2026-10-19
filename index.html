@@ -725,6 +725,20 @@
         </div>
     </div>
 
+    <div id="archivedPersonnelDetailsModal" class="modal-overlay hidden" style="z-index: 2050;" role="dialog" aria-modal="true" aria-labelledby="archivedPersonnelDetailsName">
+        <div class="modal-content glass-panel" style="max-width:560px;text-align:left;">
+            <h2 id="archivedPersonnelDetailsName" style="margin-top:0;color:var(--primary);">Archived Personnel</h2>
+            <div id="archivedPersonnelDetailsContent" class="activity-details-grid" style="margin-bottom:18px;"></div>
+            <label for="archivedPersonnelStatus" style="display:block;font-weight:600;margin-bottom:7px;">Personnel Status</label>
+            <select id="archivedPersonnelStatus" style="width:100%;margin-bottom:8px;padding:10px;border:1px solid var(--border-color);border-radius:8px;"></select>
+            <p id="archivedPersonnelStatusPermissionNote" class="hidden" style="font-size:13px;color:var(--text-muted);margin:8px 0 14px;">Only the Alpha Admin and Admin users can change this status.</p>
+            <div style="display:flex;gap:10px;margin-top:14px;">
+                <button id="saveArchivedPersonnelStatusBtn" type="button" onclick="saveArchivedPersonnelStatus()" class="approve-btn" style="flex:1;">Save Status</button>
+                <button type="button" onclick="closeArchivedPersonnelDetails()" style="flex:1;background:#e2e8f0;color:#475569;">Close</button>
+            </div>
+        </div>
+    </div>
+
     <div id="customConfirmModal" class="modal-overlay hidden" style="z-index: 2000;">
         <div class="modal-content glass-panel">
             <h3 id="customConfirmTitle" style="margin-top:0; color: var(--danger);">Confirm Action</h3>
