@@ -419,6 +419,22 @@
                     </div>
                 </div>
 
+                <div class="personnel-subnav" id="personnelSubNav" role="tablist" aria-label="Personnel sub-pages">
+                    <button type="button" class="personnel-subnav-btn active" data-sub="list" onclick="switchPersonnelSubPage('list')" role="tab">Personnel List</button>
+                    <span class="personnel-subnav-sep" aria-hidden="true">|</span>
+                    <button type="button" class="personnel-subnav-btn" data-sub="duty" onclick="switchPersonnelSubPage('duty')" role="tab">Duty Office</button>
+                    <span class="personnel-subnav-sep" aria-hidden="true">|</span>
+                    <button type="button" class="personnel-subnav-btn" data-sub="bmi" onclick="switchPersonnelSubPage('bmi')" role="tab">BMI Monitoring</button>
+                    <span class="personnel-subnav-sep" aria-hidden="true">|</span>
+                    <button type="button" class="personnel-subnav-btn" data-sub="squad" onclick="switchPersonnelSubPage('squad')" role="tab">Squadding</button>
+                    <span class="personnel-subnav-sep" aria-hidden="true">|</span>
+                    <button type="button" class="personnel-subnav-btn" data-sub="leave" onclick="switchPersonnelSubPage('leave')" role="tab">Leave Management</button>
+                    <span class="personnel-subnav-sep" aria-hidden="true">|</span>
+                    <button type="button" class="personnel-subnav-btn" data-sub="aor" onclick="switchPersonnelSubPage('aor')" role="tab">Area of Responsibilities</button>
+                </div>
+
+                <div id="subPersonnelList" class="personnel-subpage">
+
                 <div class="personnel-dashboard rhsu-summary-dashboard personnel-summary-dashboard">
                     <div class="personnel-card rhsu-summary-panel rhsu-summary-panel-primary"><h4>Total Personnel</h4><div class="count" id="personnelTotal">0</div></div>
                     <div class="personnel-card rhsu-summary-panel"><h4>PNCO (Pat–PEMS)</h4><div class="count" id="personnelPNCO">0</div></div>
@@ -461,6 +477,126 @@
                         </div>
                     </aside>
                 </div>
+                </div>
+
+                <!-- DUTY OFFICE SUB-PAGE -->
+                <div id="subDutyOffice" class="personnel-subpage hidden">
+                    <div class="subpage-controls">
+                        <div>
+                            <h3 style="margin:0;color:var(--primary);">Duty Office</h3>
+                            <div style="font-size:12px;color:var(--text-muted);margin-top:4px;">Duty personnel schedule and sequence management</div>
+                        </div>
+                        <div class="personnel-actions">
+                            <button class="action-btn approve-btn" id="dutyEditSeqBtn" onclick="openDutySequenceModal()" style="color:white;font-weight:bold;display:none;">⚙ Modify Duty Sequence</button>
+                        </div>
+                    </div>
+                    <div class="duty-calendar-wrap glass-panel">
+                        <div class="duty-calendar-header">
+                            <button type="button" class="action-btn" onclick="changeDutyMonth(-1)" aria-label="Previous month">‹</button>
+                            <strong id="dutyCalendarTitle" style="font-size:16px;color:var(--primary);">Duty Calendar</strong>
+                            <button type="button" class="action-btn" onclick="changeDutyMonth(1)" aria-label="Next month">›</button>
+                        </div>
+                        <div id="dutyCalendarGrid" class="duty-calendar-grid"></div>
+                    </div>
+                    <div class="table-wrapper" style="margin-top:20px;">
+                        <h4 style="margin:0 0 10px;color:var(--primary);">Duty Office Schedule</h4>
+                        <table class="data-table">
+                            <thead><tr><th>Rank/Name</th><th>Date (Month D, YYYY)</th><th>Day</th><th>Remarks</th></tr></thead>
+                            <tbody id="dutyTableBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- BMI MONITORING SUB-PAGE -->
+                <div id="subBmiMonitoring" class="personnel-subpage hidden">
+                    <div class="subpage-controls">
+                        <div>
+                            <h3 style="margin:0;color:var(--primary);">BMI Monitoring</h3>
+                            <div style="font-size:12px;color:var(--text-muted);margin-top:4px;">Monthly and yearly BMI records of all personnel</div>
+                        </div>
+                        <div class="personnel-actions">
+                            <select id="bmiPeriodSelect" onchange="renderBmiTable()" style="margin:0;padding:8px 12px;font-size:13px;border-radius:var(--radius-sm);border:1px solid var(--border-color);">
+                                <option value="">Select Period...</option>
+                            </select>
+                            <select id="bmiViewMode" onchange="renderBmiTable()" style="margin:0;padding:8px 12px;font-size:13px;border-radius:var(--radius-sm);border:1px solid var(--border-color);">
+                                <option value="monthly">Monthly</option>
+                                <option value="yearly">Yearly</option>
+                            </select>
+                            <button class="action-btn approve-btn" id="bmiAddBtn" onclick="openBmiModal()" style="color:white;font-weight:bold;display:none;">＋ Add BMI Record</button>
+                            <button class="action-btn" id="bmiDownloadBtn" onclick="downloadBmiExcel()" style="margin:0;display:none;">⬇ Download Excel</button>
+                        </div>
+                    </div>
+                    <div id="bmiClassificationSummary" class="bmi-classification-summary"></div>
+                    <div id="bmiRankRecap" style="margin-top:10px;"></div>
+                    <div class="table-wrapper" style="margin-top:15px;">
+                        <table class="data-table">
+                            <thead><tr><th>No.</th><th>Rank/Full Name</th><th>Age</th><th>Height (cm)</th><th>Weight (kg)</th><th>Waist (cm)</th><th>Hip (cm)</th><th>Wrist (cm)</th><th>BMI Result</th><th>BMI Classification</th><th id="bmiActionHeader" style="display:none;">Actions</th></tr></thead>
+                            <tbody id="bmiTableBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- SQUADDING SUB-PAGE -->
+                <div id="subSquadding" class="personnel-subpage hidden">
+                    <div class="subpage-controls">
+                        <div>
+                            <h3 style="margin:0;color:var(--primary);">Squadding</h3>
+                            <div style="font-size:12px;color:var(--text-muted);margin-top:4px;">Group personnel into squads</div>
+                        </div>
+                        <div class="personnel-actions">
+                            <button class="action-btn approve-btn" id="squadAddBtn" onclick="openSquadModal()" style="color:white;font-weight:bold;display:none;">＋ Create Squad</button>
+                        </div>
+                    </div>
+                    <div id="squadCarouselContainer" class="squad-carousel-container">
+                        <button type="button" class="squad-carousel-nav" onclick="scrollSquadCarousel(-1)" aria-label="Previous squad">‹</button>
+                        <div id="squadCarousel" class="squad-carousel"></div>
+                        <button type="button" class="squad-carousel-nav" onclick="scrollSquadCarousel(1)" aria-label="Next squad">›</button>
+                    </div>
+                </div>
+
+                <!-- LEAVE MANAGEMENT SUB-PAGE -->
+                <div id="subLeaveManagement" class="personnel-subpage hidden">
+                    <div class="subpage-controls">
+                        <div>
+                            <h3 style="margin:0;color:var(--primary);">Leave Management</h3>
+                            <div style="font-size:12px;color:var(--text-muted);margin-top:4px;">Track and encode personnel leave entries</div>
+                        </div>
+                        <div class="personnel-actions">
+                            <button class="action-btn approve-btn" id="leaveAddBtn" onclick="openLeaveModal()" style="color:white;font-weight:bold;display:none;">＋ Add Leave Entry</button>
+                        </div>
+                    </div>
+                    <div class="duty-calendar-wrap glass-panel">
+                        <div class="duty-calendar-header">
+                            <button type="button" class="action-btn" onclick="changeLeaveMonth(-1)" aria-label="Previous month">‹</button>
+                            <strong id="leaveCalendarTitle" style="font-size:16px;color:var(--primary);">Leave Calendar</strong>
+                            <button type="button" class="action-btn" onclick="changeLeaveMonth(1)" aria-label="Next month">›</button>
+                        </div>
+                        <div id="leaveCalendarGrid" class="duty-calendar-grid"></div>
+                    </div>
+                    <div class="table-wrapper" style="margin-top:20px;">
+                        <div id="leaveTypeRecap" class="bmi-classification-summary" style="margin-bottom:12px;"></div>
+                        <h4 style="margin:0 0 10px;color:var(--primary);">Leave Entries</h4>
+                        <table class="data-table">
+                            <thead><tr><th>Personnel Name</th><th>Leave Type</th><th>Dates</th><th>Encoded By</th><th id="leaveActionHeader" style="display:none;">Actions</th></tr></thead>
+                            <tbody id="leaveTableBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- AREA OF RESPONSIBILITIES SUB-PAGE -->
+                <div id="subAreaOfResponsibility" class="personnel-subpage hidden">
+                    <div class="subpage-controls">
+                        <div>
+                            <h3 style="margin:0;color:var(--primary);">Area of Responsibilities</h3>
+                            <div style="font-size:12px;color:var(--text-muted);margin-top:4px;">Deploy personnel to designated areas within PRO 1 Camp</div>
+                        </div>
+                        <div class="personnel-actions">
+                            <button class="action-btn approve-btn" id="areaAddBtn" onclick="openAreaModal()" style="color:white;font-weight:bold;display:none;">＋ Add Area</button>
+                        </div>
+                    </div>
+                    <div id="areaCardsContainer" class="area-cards-grid"></div>
+                </div>
+
             </div>
 
 
@@ -866,9 +1002,12 @@
     </div>
 
 
-    <div id="personnelModal" class="modal-overlay hidden">
+    <div id="personnelModal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="personnelModalTitle" onclick="if(event.target===this)closePersonnelModal()">
         <div class="modal-content glass-panel modal-large">
-            <h2 id="personnelModalTitle" style="margin-top:0;color:var(--primary);">Add Personnel</h2>
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;">
+                <h2 id="personnelModalTitle" style="margin:0;color:var(--primary);">Add Personnel</h2>
+                <button type="button" class="action-btn" onclick="closePersonnelModal()" aria-label="Close" title="Close">×</button>
+            </div>
             <div class="personnel-form-grid">
                 <input id="pNo" type="text" placeholder="No. (auto)" disabled>
                 <select id="pRank">
@@ -1033,5 +1172,247 @@
 
         <script src="script/app.js"></script>
 
+
+    <!-- DUTY SEQUENCE MODAL -->
+    <div id="dutySequenceModal" class="modal-overlay hidden" style="z-index:2200;" role="dialog" aria-modal="true" onclick="if(event.target===this)closeDutySequenceModal()">
+        <div class="modal-content glass-panel modal-large" style="max-width:560px;text-align:left;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px;">
+                <h2 style="margin:0;color:var(--primary);font-size:20px;">Modify Duty Sequence</h2>
+                <button type="button" class="action-btn" onclick="closeDutySequenceModal()" style="margin:0;padding:6px 12px;">×</button>
+            </div>
+            <p style="font-size:13px;color:var(--text-muted);margin:0 0 12px;">Drag or use the arrows to reorder. Mondays–Thursdays rotate through this sequence; Fridays (Duty Supply), Saturdays (Duty RBand), and Sundays (Duty Water Operator) are persistent.</p>
+            <div id="dutySequenceList" class="duty-sequence-list"></div>
+            <div style="display:flex;gap:10px;margin-top:18px;">
+                <button class="approve-btn" style="flex:1;margin:0;color:white;" onclick="saveDutySequence()">Save Sequence</button>
+                <button class="action-btn" style="flex:1;margin:0;" onclick="closeDutySequenceModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- BMI RECORD MODAL -->
+    <div id="bmiRecordModal" class="modal-overlay hidden" style="z-index:2200;" role="dialog" aria-modal="true" onclick="if(event.target===this)closeBmiModal()">
+        <div class="modal-content glass-panel modal-large" style="max-width:640px;text-align:left;max-height:90vh;overflow-y:auto;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px;">
+                <h2 style="margin:0;color:var(--primary);font-size:20px;" id="bmiModalTitle">Add BMI Record</h2>
+                <button type="button" class="action-btn" onclick="closeBmiModal()" style="margin:0;padding:6px 12px;">×</button>
+            </div>
+            <div class="auth-grid" style="grid-template-columns:1fr 1fr;gap:12px;">
+                <div class="full-width">
+                    <label style="font-size:13px;font-weight:600;">Personnel</label>
+                    <select id="bmiPersonnelSelect" onchange="fillBmiPersonnelDetails()" style="width:100%;">
+                        <option value="">Select personnel...</option>
+                    </select>
+                </div>
+                <div>
+                    <label style="font-size:13px;font-weight:600;">Period (Month)</label>
+                    <input type="month" id="bmiPeriodInput" style="width:100%;">
+                </div>
+                <div>
+                    <label style="font-size:13px;font-weight:600;">Age</label>
+                    <input type="number" id="bmiAge" min="0" placeholder="Age" style="width:100%;">
+                </div>
+                <div>
+                    <label style="font-size:13px;font-weight:600;">Height (cm)</label>
+                    <input type="number" id="bmiHeight" min="0" step="0.1" placeholder="Height in cm" style="width:100%;" oninput="recalcBmi()">
+                </div>
+                <div>
+                    <label style="font-size:13px;font-weight:600;">Weight (kg)</label>
+                    <input type="number" id="bmiWeight" min="0" step="0.1" placeholder="Weight in kg" style="width:100%;" oninput="recalcBmi()">
+                </div>
+                <div>
+                    <label style="font-size:13px;font-weight:600;">Waist (cm)</label>
+                    <input type="number" id="bmiWaist" min="0" step="0.1" placeholder="Waist circumference" style="width:100%;">
+                </div>
+                <div>
+                    <label style="font-size:13px;font-weight:600;">Hip (cm)</label>
+                    <input type="number" id="bmiHip" min="0" step="0.1" placeholder="Hip circumference" style="width:100%;">
+                </div>
+                <div>
+                    <label style="font-size:13px;font-weight:600;">Wrist (cm)</label>
+                    <input type="number" id="bmiWrist" min="0" step="0.1" placeholder="Wrist circumference" style="width:100%;">
+                </div>
+                <div class="full-width" style="background:rgba(79,70,229,0.06);border:1px solid var(--border-color);border-radius:var(--radius-md);padding:12px;display:flex;gap:20px;align-items:center;">
+                    <div><span style="font-size:13px;color:var(--text-muted);">BMI Result:</span> <strong id="bmiResultPreview" style="font-size:18px;color:var(--primary);">—</strong></div>
+                    <div><span style="font-size:13px;color:var(--text-muted);">Classification:</span> <strong id="bmiClassPreview" style="font-size:14px;color:var(--success);">—</strong></div>
+                </div>
+            </div>
+            <div style="display:flex;gap:10px;margin-top:18px;">
+                <button class="approve-btn" style="flex:1;margin:0;color:white;" onclick="saveBmiRecord()">Save Record</button>
+                <button class="action-btn" style="flex:1;margin:0;" onclick="closeBmiModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- SQUAD MODAL -->
+    <div id="squadModal" class="modal-overlay hidden" style="z-index:2200;" role="dialog" aria-modal="true" onclick="if(event.target===this)closeSquadModal()">
+        <div class="modal-content glass-panel modal-large" style="max-width:640px;text-align:left;max-height:90vh;overflow-y:auto;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px;">
+                <h2 style="margin:0;color:var(--primary);font-size:20px;" id="squadModalTitle">Create Squad</h2>
+                <button type="button" class="action-btn" onclick="closeSquadModal()" style="margin:0;padding:6px 12px;">×</button>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:12px;">
+                <div>
+                    <label style="font-size:13px;font-weight:600;">Squad Name</label>
+                    <input type="text" id="squadNameInput" placeholder="e.g. Alpha Squad, Team 1" style="width:100%;">
+                </div>
+                <div>
+                    <label style="font-size:13px;font-weight:600;">Squad Leader</label>
+                    <select id="squadLeaderSelect" style="width:100%;">
+                        <option value="">Select squad leader...</option>
+                    </select>
+                </div>
+                <div>
+                    <label style="font-size:13px;font-weight:600;">Select Squad Members</label>
+                    <div style="border:1px solid var(--border-color);border-radius:var(--radius-md);max-height:240px;overflow-y:auto;padding:10px;background:rgba(0,0,0,0.02);" id="squadMemberList"></div>
+                    <div style="font-size:12px;color:var(--text-muted);margin-top:6px;"><span id="squadMemberCount">0</span> member(s) selected</div>
+                </div>
+            </div>
+            <div style="display:flex;gap:10px;margin-top:18px;">
+                <button class="approve-btn" style="flex:1;margin:0;color:white;" onclick="saveSquad()">Save Squad</button>
+                <button class="action-btn" style="flex:1;margin:0;" onclick="closeSquadModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- LEAVE ENTRY MODAL -->
+    <div id="leaveEntryModal" class="modal-overlay hidden" style="z-index:2200;" role="dialog" aria-modal="true" onclick="if(event.target===this)closeLeaveModal()">
+        <div class="modal-content glass-panel modal-large" style="max-width:600px;text-align:left;max-height:90vh;overflow-y:auto;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px;">
+                <h2 style="margin:0;color:var(--primary);font-size:20px;">Add Leave Entry</h2>
+                <button type="button" class="action-btn" onclick="closeLeaveModal()" style="margin:0;padding:6px 12px;">×</button>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:12px;">
+                <div>
+                    <label style="font-size:13px;font-weight:600;">Name of Personnel</label>
+                    <input type="text" id="leavePersonnelSearch" class="leave-personnel-search" placeholder="🔍 Search personnel by name or rank..." oninput="filterLeavePersonnel(this.value)">
+                        <select id="leavePersonnelSelect" style="width:100%;">
+                        <option value="">Select personnel...</option>
+                    </select>
+                </div>
+                <div>
+                    <label style="font-size:13px;font-weight:600;">Type of Leave</label>
+                    <select id="leaveTypeSelect" onchange="toggleLeaveOtherType()" style="width:100%;">
+                        <option value="">Select leave type...</option>
+                        <option value="Mandatory">Mandatory</option>
+                        <option value="Sick Leave">Sick Leave</option>
+                        <option value="Special Privilege Leave">Special Privilege Leave</option>
+                        <option value="Service Leave">Service Leave</option>
+                        <option value="Others">Others</option>
+                    </select>
+                </div>
+                <div id="leaveOtherTypeWrap" class="hidden">
+                    <label style="font-size:13px;font-weight:600;">Specify Leave Type</label>
+                    <input type="text" id="leaveOtherTypeInput" placeholder="Manually encode the type of leave" style="width:100%;">
+                </div>
+                <div>
+                    <label style="font-size:13px;font-weight:600;">Select Leave Dates (multiple)</label>
+                    <div style="border:1px solid var(--border-color);border-radius:var(--radius-sm);padding:10px;margin-bottom:8px;background:rgba(0,0,0,0.02);">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                            <button type="button" class="action-btn" style="margin:0;padding:2px 10px;font-size:13px;" onclick="changeLeavePickerMonth(-1)">&#8249;</button>
+                            <strong id="leavePickerTitle" style="font-size:13px;color:var(--primary);"></strong>
+                            <button type="button" class="action-btn" style="margin:0;padding:2px 10px;font-size:13px;" onclick="changeLeavePickerMonth(1)">&#8250;</button>
+                        </div>
+                        <div id="leavePickerCalendar" class="duty-calendar-grid" style="gap:2px;"></div>
+                        <div style="font-size:11px;color:var(--text-muted);margin-top:6px;">Click a date to toggle it on/off. Selected dates appear below.</div>
+                    </div>
+                    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">
+                        <input type="date" id="leaveDatePicker" style="flex:1;min-width:180px;margin:0;">
+                        <button type="button" class="action-btn" style="margin:0;" onclick="addLeaveDate()">＋ Add Date</button>
+                        <button type="button" class="action-btn" style="margin:0;" onclick="clearLeaveDates()">Clear All</button>
+                    </div>
+                    <div id="leaveSelectedDates" class="leave-selected-dates" style="display:flex;flex-wrap:wrap;gap:6px;min-height:32px;padding:6px;border:1px dashed var(--border-color);border-radius:var(--radius-sm);background:rgba(0,0,0,0.02);">
+                        <span style="font-size:12px;color:var(--text-muted);">No dates selected.</span>
+                    </div>
+                </div>
+            </div>
+            <div style="display:flex;gap:10px;margin-top:18px;">
+                <button class="approve-btn" style="flex:1;margin:0;color:white;" onclick="saveLeaveEntry()">Save Leave Entry</button>
+                <button class="action-btn" style="flex:1;margin:0;" onclick="closeLeaveModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- AREA MODAL -->
+    <div id="areaModal" class="modal-overlay hidden" style="z-index:2200;" role="dialog" aria-modal="true" onclick="if(event.target===this)closeAreaModal()">
+        <div class="modal-content glass-panel modal-large" style="max-width:600px;text-align:left;max-height:90vh;overflow-y:auto;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px;">
+                <h2 style="margin:0;color:var(--primary);font-size:20px;" id="areaModalTitle">Add Area of Responsibility</h2>
+                <button type="button" class="action-btn" onclick="closeAreaModal()" style="margin:0;padding:6px 12px;">×</button>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:12px;">
+                <div>
+                    <label style="font-size:13px;font-weight:600;">Area Name</label>
+                    <input type="text" id="areaNameInput" placeholder="e.g. Gate 1, Headquarters Building" style="width:100%;">
+                </div>
+                <div>
+                    <label style="font-size:13px;font-weight:600;">Camp</label>
+                    <select id="areaCampSelect" style="width:100%;">
+                        <option value="PRO 1 Camp">PRO 1 Camp</option>
+                    </select>
+                </div>
+                <div>
+                    <label style="font-size:13px;font-weight:600;">Deploy Personnel to this Area</label>
+                    <div style="border:1px solid var(--border-color);border-radius:var(--radius-md);max-height:240px;overflow-y:auto;padding:10px;background:rgba(0,0,0,0.02);" id="areaPersonnelList"></div>
+                    <div style="font-size:12px;color:var(--text-muted);margin-top:6px;"><span id="areaPersonnelCount">0</span> personnel selected</div>
+                </div>
+            </div>
+            <div style="display:flex;gap:10px;margin-top:18px;">
+                <button class="approve-btn" style="flex:1;margin:0;color:white;" onclick="saveArea()">Save Area</button>
+                <button class="action-btn" style="flex:1;margin:0;" onclick="closeAreaModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- AREA DETAILS MODAL -->
+    <div id="areaDetailsModal" class="modal-overlay hidden" style="z-index:2200;" role="dialog" aria-modal="true" onclick="if(event.target===this)closeAreaDetailsModal()">
+        <div class="modal-content glass-panel" style="max-width:520px;text-align:left;max-height:85vh;overflow-y:auto;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px;">
+                <h2 style="margin:0;color:var(--primary);font-size:18px;" id="areaDetailsTitle">Area Details</h2>
+                <button type="button" class="action-btn" onclick="closeAreaDetailsModal()" style="margin:0;padding:6px 12px;">×</button>
+            </div>
+            <div style="font-size:13px;color:var(--text-muted);margin-bottom:10px;" id="areaDetailsCamp"></div>
+            <h4 style="margin:0 0 10px;font-size:14px;color:var(--primary);">Designated Personnel In-Charge</h4>
+            <div id="areaDetailsPersonnel" style="display:flex;flex-direction:column;gap:8px;"></div>
+            <div style="display:flex;gap:10px;margin-top:18px;" id="areaDetailsActions">
+                <button class="action-btn approve-btn" id="areaEditBtn" style="flex:1;margin:0;color:white;display:none;" onclick="editAreaFromDetails()">Edit Personnel</button>
+                <button class="action-btn delete-btn" id="areaDeleteBtn" style="flex:1;margin:0;display:none;" onclick="deleteAreaFromDetails()">Delete Area</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- USER ACCESS MODAL -->
+    <div id="userAccessModal" class="modal-overlay hidden" style="z-index:2200;" role="dialog" aria-modal="true" onclick="if(event.target===this)closeUserAccessModal()">
+        <div class="modal-content glass-panel" style="max-width:480px;text-align:left;max-height:85vh;overflow-y:auto;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px;">
+                <h2 style="margin:0;color:var(--primary);font-size:18px;">Allowed Access</h2>
+                <button type="button" class="action-btn" onclick="closeUserAccessModal()" style="margin:0;padding:6px 12px;">×</button>
+            </div>
+            <div style="font-size:13px;color:var(--text-muted);margin-bottom:12px;">User: <strong id="userAccessUsername" style="color:var(--text-main);"></strong></div>
+            <p style="font-size:12px;color:var(--text-muted);margin:0 0 12px;">Select the pages this user and admin role are allowed to access. If none are selected, full access is retained by default.</p>
+            <div id="userAccessCheckboxes" style="display:flex;flex-direction:column;gap:10px;"></div>
+            <div style="display:flex;gap:10px;margin-top:18px;">
+                <button class="approve-btn" style="flex:1;margin:0;color:white;" onclick="saveUserAccess()">Save Access</button>
+                <button class="action-btn" style="flex:1;margin:0;" onclick="closeUserAccessModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- SQUAD DETAILS MODAL -->
+    <div id="squadDetailsModal" class="modal-overlay hidden" style="z-index:2200;" role="dialog" aria-modal="true" onclick="if(event.target===this)closeSquadDetailsModal()">
+        <div class="modal-content glass-panel" style="max-width:520px;text-align:left;max-height:85vh;overflow-y:auto;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px;">
+                <h2 style="margin:0;color:var(--primary);font-size:18px;" id="squadDetailsTitle">Squad Details</h2>
+                <button type="button" class="action-btn" onclick="closeSquadDetailsModal()" style="margin:0;padding:6px 12px;">×</button>
+            </div>
+            <div style="font-size:13px;color:var(--text-muted);margin-bottom:12px;" id="squadDetailsLeader"></div>
+            <h4 style="margin:0 0 10px;font-size:14px;color:var(--primary);">Squad Members</h4>
+            <div id="squadDetailsMembers" style="display:flex;flex-direction:column;gap:8px;"></div>
+            <div style="display:flex;gap:10px;margin-top:18px;" id="squadDetailsActions">
+                <button class="action-btn approve-btn" id="squadDetailsEditBtn" style="flex:1;margin:0;color:white;display:none;" onclick="editSquadFromDetails()">Edit Squad</button>
+                <button class="action-btn delete-btn" id="squadDetailsDeleteBtn" style="flex:1;margin:0;display:none;" onclick="deleteSquadFromDetails()">Delete Squad</button>
+            </div>
+        </div>
+    </div>
 </body>
 </html>
