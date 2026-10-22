@@ -1271,6 +1271,18 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 sessionStorage.setItem('activeTab', 'dashboard');
                 switchTab('dashboard');
                 
+                // Apply per-user allowed-access restrictions to navigation after login/restore.
+                loadUserAccessMap().then(() => applyAccessRestrictions()).catch(() => {});
+                // Force read-only if the current user is restricted by Alpha Admin.
+                loadUserRestrictions().then(() => {
+                    const me = localStorage.getItem('loggedInUser');
+                    if (me && userRestrictedMap[me]) {
+                        localStorage.setItem('canEdit', 'No');
+                        localStorage.setItem('userRole', 'Regular User');
+                        applyAccessRestrictions();
+                    }
+                }).catch(() => {});
+                
                 fetchActivityLogs();
                 if (activityLogRefreshTimer) clearInterval(activityLogRefreshTimer);
                 activityLogRefreshTimer = setInterval(fetchActivityLogs, 2000);
@@ -1448,6 +1460,8 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
 
         async function loadAdminUsers() {
             const res = await fetch(`${API_URL}?action=get_all_users&password=${encodeURIComponent(sessionAdminPass)}`); const data = await res.json(); const resAnnounce = await fetch(API_URL + "?action=get_announcement"); const dataAnnounce = await resAnnounce.json(); document.getElementById('adminAnnouncementText').value = (dataAnnounce.success && dataAnnounce.message) ? dataAnnounce.message : "";
+            try { await loadUserAccessMap(); } catch(e) {}
+            try { await loadUserRestrictions(); } catch(e) {}
             const tbody = document.getElementById('adminUsersTableBody'); tbody.innerHTML = "";
             if (data.success) {
                 if(data.users.length === 0) { tbody.innerHTML = "<tr><td colspan='5' style='text-align:center;'>No accounts.</td></tr>"; return; }
@@ -1460,11 +1474,15 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                     const roleSelect = `<select onchange="changeUserRole('${safeUser}', this.value)" style="margin:0; padding: 6px 10px; font-size: 13px; width: auto; border-radius: var(--radius-sm); background: white;">
                         <option value="Regular User" ${userRole === 'Regular User' ? 'selected' : ''}>Regular User</option>
                         <option value="Admin" ${userRole === 'Admin' ? 'selected' : ''}>Admin (Add/Edit/Update)</option>
-                    </select>`;
+                    </select>
+                    <br><button type="button" class="action-btn" style="margin-top:5px;padding:3px 10px;font-size:11px;width:auto;" onclick="openUserAccessModal('${safeUser}')" title="Configure allowed page access">⚙ Allowed Access</button>`;
 
-                    const actionHtml = isPending ? 
+                    const isRestricted = !!userRestrictedMap[safeUser];
+                    const restrictBtn = isPending ? '' :
+                        `<button class="action-btn" style="margin:0 6px 0 0;padding:3px 8px;font-size:11px;${isRestricted ? 'background:var(--danger);color:white;border:none;' : ''}" onclick="toggleUserRestriction('${safeUser}', ${!isRestricted})" title="${isRestricted ? 'Remove read-only restriction' : 'Restrict user to view-only (cannot add/edit/modify)'}">${isRestricted ? '🔒 Restricted' : '🔓 Restrict'}</button>`;
+                    const actionHtml = restrictBtn + (isPending ? 
                         `<button class="action-btn approve-btn" onclick="processApproval('${safeUser}', 'approve_user')">Approve</button> <button class="action-btn delete-btn" onclick="processApproval('${safeUser}', 'reject_user')">Reject</button>` : 
-                        `<button class="action-btn delete-btn" onclick="adminDeleteUser('${safeUser}')">Delete</button>`;
+                        `<button class="action-btn delete-btn" onclick="adminDeleteUser('${safeUser}')">Delete</button>`);
                     
                     tbody.innerHTML += `<tr>
                         <td>${u.rank || ''} ${u.name || ''}</td>
@@ -1861,6 +1879,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             document.getElementById('personnelSaveBtn').innerText='Add Personnel';
             populatePersonnelRemarks('');
             document.getElementById('personnelModal').classList.remove('hidden');
+            focusPersonnelModalField();
         }
 
         function editPersonnel(no) {
@@ -1881,9 +1900,27 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             populatePersonnelRemarks(p.remarks||'');
             document.getElementById('personnelSaveBtn').innerText='Update Personnel';
             document.getElementById('personnelModal').classList.remove('hidden');
+            focusPersonnelModalField();
         }
 
         function closePersonnelModal(){ document.getElementById('personnelModal').classList.add('hidden'); personnelEditNo=null; }
+
+        // --- Personnel modal UX enhancements (additive; existing logic/payload unchanged) ---
+        // Autofocus the Rank field when the modal opens.
+        function focusPersonnelModalField(){
+            const rank = document.getElementById('pRank');
+            if (rank) { try { rank.focus(); } catch(e){ /* no-op */ } }
+        }
+        // Escape closes the modal; Enter inside a text input submits (guarded while saving).
+        document.addEventListener('keydown', function(e){
+            const modal = document.getElementById('personnelModal');
+            if (!modal || modal.classList.contains('hidden')) return;
+            if (e.key === 'Escape') { e.preventDefault(); closePersonnelModal(); return; }
+            if (e.key === 'Enter' && e.target && e.target.tagName === 'INPUT' && e.target.closest && e.target.closest('#personnelModal')) {
+                const saveBtn = document.getElementById('personnelSaveBtn');
+                if (saveBtn && !saveBtn.disabled) { e.preventDefault(); savePersonnel(); }
+            }
+        });
 
         async function savePersonnel() {
             if(!canManagePersonnel()) return customAlert("Permission denied.","Error");
@@ -2521,6 +2558,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
 
         function setExecActivityUserFilter(username) {
             execActivityUserFilter = String(username || '');
+            execActivityPage = 1;
             renderExecutiveDashboard();
         }
 
@@ -2592,33 +2630,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             const venues = execCountMap(allActivities, a => a.assignedVenue);
             execRenderList('execVenues', venues, totalActivities);
 
-            const recent = document.getElementById('execRecentMemos');
-            if (recent) {
-                // Display the complete activity-log dataset returned by the backend.
-                // No user filtering or row limit is applied so the dashboard shows
-                // activity from every user, while the existing polling/notification
-                // logic remains unchanged.
-                const logs = sortActivityLogsLatestFirst(liveActivityLogs);
-                populateExecActivityUserFilter(logs);
-                const getLogTime = (log) => log && (log.timestamp || log.time || log.datetime || log.date || log.createdAt || log.created_at || '');
-                const getLogUser = (log) => log && (log.user || log.username || log.name || 'Unknown User');
-                const getLogAction = (log) => log && (log.actionText || log.action || log.activity || log.message || '—');
-                const visibleLogs = execActivityUserFilter
-                    ? logs.filter(log => String(getLogUser(log)).trim() === execActivityUserFilter)
-                    : logs;
-                const filterLabel = execActivityUserFilter ? ` • ${execActivityUserFilter}` : ' • all users';
-                const countText = `${visibleLogs.length} entr${visibleLogs.length === 1 ? 'y' : 'ies'}${filterLabel}`;
-
-                if (visibleLogs.length) {
-                    recent.innerHTML = `<div style="margin-bottom:10px;font-size:11px;color:var(--text-muted);font-weight:600;">${escapeHtml(countText)}</div><div style="overflow:auto;max-height:520px"><table class="exec-table"><thead><tr><th>Time</th><th>User</th><th>Activity</th></tr></thead><tbody>${
-                        visibleLogs.map(log => `<tr><td>${escapeHtml(execFormatDate(getLogTime(log)))}</td><td>${escapeHtml(getLogUser(log))}</td><td>${escapeHtml(getLogAction(log))}</td></tr>`).join('')
-                    }</tbody></table></div>`;
-                } else if (execActivityUserFilter && logs.length) {
-                    recent.innerHTML = '<div class="exec-empty">No activity logs found for the selected user.</div>';
-                } else {
-                    recent.innerHTML = '<div class="exec-empty">No activity logs are currently available from the backend.</div>';
-                }
-            }
+            renderExecActivityLogs();
 
             document.getElementById('execDashUser').innerText = `Signed in: ${localStorage.getItem('loggedInUser') || 'Guest'}`;
             document.getElementById('execDashUpdated').innerText = `Updated ${new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}`;
@@ -3046,3 +3058,1386 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         // Restore the authenticated session whenever the page is loaded or refreshed.
         // Authentication state is stored in localStorage and is not cleared by a refresh.
         window.addEventListener('load', checkAuth);
+
+        /* ============================================================
+           SPADES ENHANCEMENTS: Duty Office / BMI / Squadding / Leave /
+           Area of Responsibilities / User Access / Activity Pagination
+           ============================================================ */
+        let execActivityPage = 1;
+        const EXEC_ACTIVITY_PAGE_SIZE = 5;
+        let currentPersonnelSubPage = 'list';
+        let dutySequence = [];
+        let dutyCalendarDate = new Date();
+        let bmiRecords = [];
+        let squads = [];
+        let leaveEntries = [];
+        let leaveCalendarDate = new Date();
+        let areas = [];
+        let editingAreaId = null;
+        let editingSquadId = null;
+        let selectedLeaveDates = [];
+        let userAccessMap = {};
+        let currentAccessUsername = null;
+        let bmiEditingId = null;
+        let dutySequenceWorking = [];
+
+        const ACCESS_PAGES = [
+            {key:'dashboard', label:'Dashboard'},
+            {key:'home', label:'Memo Database'},
+            {key:'personnel', label:'Personnel Management'},
+            {key:'activityManagement', label:'Activity Management'},
+            {key:'settings', label:'Settings'},
+            {key:'adminMgmt', label:'User Management'},
+            {key:'usersChat', label:'Users Chat'}
+        ];
+
+        function personnelFullName(p) {
+            if (!p) return '';
+            const parts = [p.rank, p.firstName, p.middleName, p.lastName, p.qualifiers]
+                .map(s => String(s || '').trim()).filter(Boolean);
+            return parts.join(' ');
+        }
+        function personnelShortName(p) {
+            if (!p) return '';
+            return [p.rank, p.lastName].map(s => String(s || '').trim()).filter(Boolean).join(' ');
+        }
+
+        /* ---------- Dashboard Live Activity Log: 5 latest + pagination ---------- */
+        function renderExecActivityLogs() {
+            const recent = document.getElementById('execRecentMemos');
+            if (!recent) return;
+            const logs = sortActivityLogsLatestFirst(liveActivityLogs);
+            populateExecActivityUserFilter(logs);
+            const getLogTime = (log) => log && (log.timestamp || log.time || log.datetime || log.date || log.createdAt || log.created_at || '');
+            const getLogUser = (log) => log && (log.user || log.username || log.name || 'Unknown User');
+            const getLogAction = (log) => log && (log.actionText || log.action || log.activity || log.message || '—');
+            const visibleLogs = execActivityUserFilter
+                ? logs.filter(log => String(getLogUser(log)).trim() === execActivityUserFilter)
+                : logs;
+            const filterLabel = execActivityUserFilter ? ` • ${execActivityUserFilter}` : ' • all users';
+            const totalPages = Math.max(1, Math.ceil(visibleLogs.length / EXEC_ACTIVITY_PAGE_SIZE));
+            if (execActivityPage > totalPages) execActivityPage = totalPages;
+            if (execActivityPage < 1) execActivityPage = 1;
+            const start = (execActivityPage - 1) * EXEC_ACTIVITY_PAGE_SIZE;
+            const pageLogs = visibleLogs.slice(start, start + EXEC_ACTIVITY_PAGE_SIZE);
+            const countText = `${visibleLogs.length} entr${visibleLogs.length === 1 ? 'y' : 'ies'}${filterLabel} • Page ${execActivityPage}/${totalPages}`;
+
+            if (visibleLogs.length) {
+                let paginationHtml = '';
+                if (totalPages > 1) {
+                    paginationHtml = `<div style="display:flex;justify-content:center;align-items:center;gap:8px;margin-top:10px;">
+                        <button type="button" class="action-btn page-btn" style="margin:0;padding:4px 10px;font-size:12px;" ${execActivityPage<=1?'disabled':''} onclick="setExecActivityPage(${execActivityPage-1})">‹ Prev</button>
+                        <span style="font-size:12px;color:var(--text-muted);">${execActivityPage} / ${totalPages}</span>
+                        <button type="button" class="action-btn page-btn" style="margin:0;padding:4px 10px;font-size:12px;" ${execActivityPage>=totalPages?'disabled':''} onclick="setExecActivityPage(${execActivityPage+1})">Next ›</button>
+                    </div>`;
+                }
+                recent.innerHTML = `<div style="margin-bottom:10px;font-size:11px;color:var(--text-muted);font-weight:600;">${escapeHtml(countText)}</div><div style="overflow:auto;"><table class="exec-table"><thead><tr><th>Time</th><th>User</th><th>Activity</th></tr></thead><tbody>${
+                    pageLogs.map(log => `<tr><td>${escapeHtml(execFormatDate(getLogTime(log)))}</td><td>${escapeHtml(getLogUser(log))}</td><td>${escapeHtml(getLogAction(log))}</td></tr>`).join('')
+                }</tbody></table></div>${paginationHtml}`;
+            } else if (execActivityUserFilter && logs.length) {
+                recent.innerHTML = '<div class="exec-empty">No activity logs found for the selected user.</div>';
+            } else {
+                recent.innerHTML = '<div class="exec-empty">No activity logs are currently available from the backend.</div>';
+            }
+        }
+        function setExecActivityPage(page) {
+            execActivityPage = Math.max(1, Number(page) || 1);
+            renderExecutiveDashboard();
+        }
+
+        /* ---------- Personnel Sub-Page Navigation ---------- */
+        function switchPersonnelSubPage(sub) {
+            currentPersonnelSubPage = sub;
+            const map = {
+                'list':'subPersonnelList', 'duty':'subDutyOffice', 'bmi':'subBmiMonitoring',
+                'squad':'subSquadding', 'leave':'subLeaveManagement', 'aor':'subAreaOfResponsibility'
+            };
+            Object.values(map).forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.classList.add('hidden');
+            });
+            const target = document.getElementById(map[sub]);
+            if (target) target.classList.remove('hidden');
+            document.querySelectorAll('.personnel-subnav-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.getAttribute('data-sub') === sub);
+            });
+            const can = canManagePersonnel();
+            if (sub === 'duty') {
+                const btn = document.getElementById('dutyEditSeqBtn');
+                if (btn) btn.style.display = can ? '' : 'none';
+                loadDutySequence();
+            } else if (sub === 'bmi') {
+                const btn = document.getElementById('bmiAddBtn');
+                if (btn) btn.style.display = can ? '' : 'none';
+                const hdr = document.getElementById('bmiActionHeader');
+                if (hdr) hdr.style.display = can ? '' : 'none';
+                loadBmiRecords();
+            } else if (sub === 'squad') {
+                const btn = document.getElementById('squadAddBtn');
+                if (btn) btn.style.display = can ? '' : 'none';
+                loadSquads();
+            } else if (sub === 'leave') {
+                const btn = document.getElementById('leaveAddBtn');
+                if (btn) btn.style.display = can ? '' : 'none';
+                const hdr = document.getElementById('leaveActionHeader');
+                if (hdr) hdr.style.display = can ? '' : 'none';
+                loadLeaveEntries();
+            } else if (sub === 'aor') {
+                const btn = document.getElementById('areaAddBtn');
+                if (btn) btn.style.display = can ? '' : 'none';
+                loadAreas();
+            }
+        }
+
+        /* ---------- Duty Office ---------- */
+        async function loadDutySequence() {
+            try {
+                const res = await fetch(API_URL + "?action=get_duty_sequence&_ts=" + Date.now(), {cache:'no-store'});
+                const data = await res.json();
+                if (data.success && Array.isArray(data.sequence)) dutySequence = data.sequence;
+                else dutySequence = ['PMSg Siobal','PCMS Tayab','PMSg Graycochea','PMSg Oligo','PCpl Gandia','Pat Bao-anen','Pat Benitez','Pat Obra'];
+            } catch (e) {
+                dutySequence = ['PMSg Siobal','PCMS Tayab','PMSg Graycochea','PMSg Oligo','PCpl Gandia','Pat Bao-anen','Pat Benitez','Pat Obra'];
+            }
+            renderDutyCalendar();
+            renderDutyTable();
+        }
+        function getDutyAssignment(dateObj, seq) {
+            const day = dateObj.getDay(); // 0=Sun ... 6=Sat
+            if (day === 5) return {name:'Duty Supply', remarks:'Persistent Friday duty'};
+            if (day === 6) return {name:'Duty RBand', remarks:'Persistent Saturday duty'};
+            if (day === 0) return {name:'Duty Water Operator', remarks:'Persistent Sunday duty'};
+            // Mon-Thu: rotate through sequence using week-based index
+            if (!seq || !seq.length) return {name:'—', remarks:''};
+            const onejan = new Date(dateObj.getFullYear(), 0, 1);
+            const weekNum = Math.ceil((((dateObj - onejan) / 86400000) + onejan.getDay() + 1) / 7);
+            const dayOffset = day === 1 ? 0 : day === 2 ? 1 : day === 3 ? 2 : 3; // Mon=0..Thu=3
+            const idx = (weekNum * 4 + dayOffset) % seq.length;
+            return {name: seq[idx], remarks:'Rotating duty (Mon–Thu)'};
+        }
+        function renderDutyCalendar() {
+            const grid = document.getElementById('dutyCalendarGrid');
+            const title = document.getElementById('dutyCalendarTitle');
+            if (!grid || !title) return;
+            const year = dutyCalendarDate.getFullYear();
+            const month = dutyCalendarDate.getMonth();
+            const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+            title.innerText = `${monthNames[month]} ${year}`;
+            const firstDay = new Date(year, month, 1).getDay();
+            const daysInMonth = new Date(year, month + 1, 0).getDate();
+            const dayNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+            let html = dayNames.map(d => `<div class="duty-cal-day duty-cal-head">${d}</div>`).join('');
+            for (let i = 0; i < firstDay; i++) html += '<div class="duty-cal-day duty-cal-empty"></div>';
+            for (let d = 1; d <= daysInMonth; d++) {
+                const dateObj = new Date(year, month, d);
+                const assign = getDutyAssignment(dateObj, dutySequence);
+                const dayOfWeek = dateObj.getDay();
+                const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+                const isToday = dateObj.toDateString() === new Date().toDateString();
+                html += `<div class="duty-cal-day ${isWeekend?'duty-cal-weekend':''} ${isToday?'duty-cal-today':''}" title="${escapeAttr(assign.name)} — ${escapeAttr(assign.remarks)}">
+                    <div class="duty-cal-date">${d}</div>
+                    <div class="duty-cal-personnel">${escapeHtml(assign.name)}</div>
+                </div>`;
+            }
+            grid.innerHTML = html;
+        }
+        function changeDutyMonth(delta) {
+            dutyCalendarDate = new Date(dutyCalendarDate.getFullYear(), dutyCalendarDate.getMonth() + Number(delta), 1);
+            renderDutyCalendar();
+            renderDutyTable();
+        }
+        function renderDutyTable() {
+            const tbody = document.getElementById('dutyTableBody');
+            if (!tbody) return;
+            const year = dutyCalendarDate.getFullYear();
+            const month = dutyCalendarDate.getMonth();
+            const daysInMonth = new Date(year, month + 1, 0).getDate();
+            const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+            const dayNames = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+            const today = new Date(); today.setHours(0,0,0,0);
+
+            const dateInfo = [];
+            for (let d = 1; d <= daysInMonth; d++) {
+                const dateObj = new Date(year, month, d);
+                dateInfo.push({day: d, dateObj: dateObj, assign: getDutyAssignment(dateObj, dutySequence)});
+            }
+
+            // Ongoing = today; Out Going = closest duty day before today; Incoming = closest duty day after today.
+            let ongoingIdx = -1, outgoingIdx = -1, incomingIdx = -1;
+            dateInfo.forEach((info, i) => {
+                const diff = info.dateObj.getTime() - today.getTime();
+                if (diff === 0) ongoingIdx = i;
+                else if (diff < 0) { if (outgoingIdx === -1 || info.dateObj.getTime() > dateInfo[outgoingIdx].dateObj.getTime()) outgoingIdx = i; }
+                else { if (incomingIdx === -1 || info.dateObj.getTime() < dateInfo[incomingIdx].dateObj.getTime()) incomingIdx = i; }
+            });
+
+            // Add per-column copy buttons to the table header.
+            const table = tbody.closest('table');
+            if (table) {
+                const thead = table.querySelector('thead');
+                if (thead) {
+                    const headers = ['Rank/Name','Date (Month D, YYYY)','Day','Remarks'];
+                    thead.innerHTML = '<tr>' + headers.map((h, ci) =>
+                        `<th>${escapeHtml(h)} <button type="button" class="duty-copy-btn" onclick="copyDutyColumn(${ci})" title="Copy ${escapeAttr(h)} column">Copy</button></th>`
+                    ).join('') + '</tr>';
+                }
+            }
+
+            tbody.innerHTML = dateInfo.map((info, i) => {
+                let remarks = info.assign.remarks;
+                let rowClass = '';
+                let remarkStyle = '';
+                if (i === ongoingIdx) { remarks = 'Duty Office'; rowClass = 'duty-row-ongoing'; remarkStyle = 'color:var(--success);font-weight:700;'; }
+                else if (i === outgoingIdx) { remarks = 'Out Going'; remarkStyle = 'color:var(--danger);font-weight:700;'; }
+                else if (i === incomingIdx) { remarks = 'Incoming'; remarkStyle = 'color:#f59e0b;font-weight:700;'; }
+                return `<tr class="${rowClass}">
+                    <td>${escapeHtml(info.assign.name)}</td>
+                    <td>${monthNames[month]} ${info.day}, ${year}</td>
+                    <td>${dayNames[info.dateObj.getDay()]}</td>
+                    <td style="${remarkStyle}">${escapeHtml(remarks)}</td>
+                </tr>`;
+            }).join('');
+        }
+        function copyDutyColumn(colIndex) {
+            const tbody = document.getElementById('dutyTableBody');
+            if (!tbody) return;
+            const values = [];
+            tbody.querySelectorAll('tr').forEach(tr => {
+                const td = tr.querySelectorAll('td')[Number(colIndex)];
+                if (td) values.push(td.innerText.trim());
+            });
+            const text = values.join('\n');
+            const done = () => customAlert("Column copied to clipboard.", "Copied");
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(text).then(done).catch(() => {});
+            } else {
+                const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select();
+                try { document.execCommand('copy'); done(); } catch(e) {}
+                document.body.removeChild(ta);
+            }
+        }
+
+        function openDutySequenceModal() {
+            if (!canManagePersonnel()) { customAlert("Only Alpha Admin and Admin can modify the duty sequence.", "Permission Denied"); return; }
+            dutySequenceWorking = dutySequence.slice();
+            renderDutySequenceList();
+            document.getElementById('dutySequenceModal').classList.remove('hidden');
+        }
+        function closeDutySequenceModal() { document.getElementById('dutySequenceModal').classList.add('hidden'); }
+        let dutyDragIndex = null;
+        function renderDutySequenceList() {
+            const list = document.getElementById('dutySequenceList');
+            if (!list) return;
+            list.innerHTML = dutySequenceWorking.map((name, i) => `<div class="duty-seq-item" draggable="true" data-index="${i}"
+                ondragstart="dutySeqDragStart(event, ${i})"
+                ondragover="dutySeqDragOver(event, ${i})"
+                ondragleave="dutySeqDragLeave(event)"
+                ondrop="dutySeqDrop(event, ${i})"
+                ondragend="dutySeqDragEnd(event)">
+                <span class="duty-seq-drag-handle" aria-hidden="true" title="Drag to reorder">&#x22EE;&#x22EE;</span>
+                <span class="duty-seq-pos">${i + 1}</span>
+                <span class="duty-seq-name">${escapeHtml(name)}</span>
+                <span class="duty-seq-controls">
+                    <button type="button" class="action-btn" style="margin:0;padding:2px 8px;font-size:12px;" ${i===0?'disabled':''} onclick="moveDutyItem(${i}, -1)">&#8593;</button>
+                    <button type="button" class="action-btn" style="margin:0;padding:2px 8px;font-size:12px;" ${i===dutySequenceWorking.length-1?'disabled':''} onclick="moveDutyItem(${i}, 1)">&#8595;</button>
+                </span>
+            </div>`).join('');
+        }
+        function dutySeqDragStart(e, idx) { dutyDragIndex = Number(idx); e.currentTarget.classList.add('dragging'); try { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', String(idx)); } catch(err) {} }
+        function dutySeqDragOver(e, idx) { e.preventDefault(); e.currentTarget.classList.add('drag-over'); try { e.dataTransfer.dropEffect = 'move'; } catch(err) {} }
+        function dutySeqDragLeave(e) { e.currentTarget.classList.remove('drag-over'); }
+        function dutySeqDrop(e, idx) {
+            e.preventDefault();
+            e.currentTarget.classList.remove('drag-over');
+            if (dutyDragIndex === null || dutyDragIndex === Number(idx)) return;
+            const moved = dutySequenceWorking.splice(dutyDragIndex, 1)[0];
+            dutySequenceWorking.splice(Number(idx), 0, moved);
+            dutyDragIndex = null;
+            renderDutySequenceList();
+        }
+        function dutySeqDragEnd(e) {
+            dutyDragIndex = null;
+            document.querySelectorAll('.duty-seq-item').forEach(el => { el.classList.remove('dragging'); el.classList.remove('drag-over'); });
+        }
+
+        function moveDutyItem(index, dir) {
+            const i = Number(index), d = Number(dir);
+            const j = i + d;
+            if (j < 0 || j >= dutySequenceWorking.length) return;
+            [dutySequenceWorking[i], dutySequenceWorking[j]] = [dutySequenceWorking[j], dutySequenceWorking[i]];
+            renderDutySequenceList();
+        }
+        async function saveDutySequence() {
+            try {
+                await fetch(API_URL, {
+                    method:'POST', mode:'no-cors',
+                    body: JSON.stringify({
+                        action:'save_duty_sequence', sequence: dutySequenceWorking,
+                        userName: localStorage.getItem('loggedInUser'),
+                        credential: localStorage.getItem('loggedCred') || ''
+                    })
+                });
+                dutySequence = dutySequenceWorking.slice();
+                closeDutySequenceModal();
+                customAlert("Duty sequence saved successfully.", "Success");
+                renderDutyCalendar();
+                renderDutyTable();
+            } catch (e) { customAlert("Failed to save duty sequence.", "Error"); }
+        }
+
+        /* ---------- BMI Monitoring ---------- */
+        function computeBmiClient(heightCm, weightKg, age) {
+            // BMI Calculator sheet formula: BMI = weight(kg) / height(m)^2
+            // PNP age-adjusted classification (PCPT Jason Ed T. Javier, Medical Officer)
+            const h = Number(heightCm), w = Number(weightKg);
+            if (!h || !w || h <= 0 || w <= 0) return {bmi:'', classification:''};
+            const bmi = Math.round((w / ((h/100)*(h/100))) * 100) / 100;
+            const a = Number(age) || 0;
+            let normalMax;
+            if (a > 0) {
+                if (a < 29) normalMax = 24.9;
+                else if (a < 35) normalMax = 25.0;
+                else if (a < 40) normalMax = 25.5;
+                else if (a < 45) normalMax = 26.0;
+                else if (a < 51) normalMax = 26.5;
+                else normalMax = 27.0;
+            } else { normalMax = 24.9; }
+            let cls = '';
+            if (bmi < 18.5) cls = 'Underweight (UW)';
+            else if (bmi <= normalMax) cls = 'Normal (N)';
+            else if (bmi < 30) cls = 'Overweight (OW)';
+            else if (bmi < 35) cls = 'Obese I (OB 1)';
+            else cls = 'Obese II (OB 2)';
+            return {bmi:bmi, classification:cls};
+        }
+        function bmiClassColor(cls) {
+            if (!cls) return 'var(--text-muted)';
+            if (cls.includes('Underweight')) return '#f59e0b';
+            if (cls.includes('Normal')) return 'var(--success)';
+            if (cls.includes('Acceptable')) return '#0ea5e9';
+            if (cls.includes('Overweight')) return '#f59e0b';
+            if (cls.includes('Obese I')) return '#f97316';
+            if (cls.includes('Obese II')) return '#ef4444';
+            if (cls.includes('Obese III')) return '#b91c1c';
+            return 'var(--text-muted)';
+        }
+        async function loadBmiRecords() {
+            try {
+                const res = await fetch(API_URL + "?action=get_bmi_records&_ts=" + Date.now(), {cache:'no-store'});
+                const data = await res.json();
+                bmiRecords = (data.success && Array.isArray(data.records)) ? data.records : [];
+            } catch (e) { bmiRecords = []; }
+            populateBmiPeriods();
+            renderBmiTable();
+        }
+        function populateBmiPeriods() {
+            const sel = document.getElementById('bmiPeriodSelect');
+            if (!sel) return;
+            const periods = [...new Set(bmiRecords.map(r => String(r.period || '').trim()).filter(Boolean))].sort().reverse();
+            const years = [...new Set(periods.map(p => p.slice(0,4)))].sort().reverse();
+            const mode = document.getElementById('bmiViewMode');
+            const isYearly = mode && mode.value === 'yearly';
+            const current = sel.value;
+            if (isYearly) {
+                sel.innerHTML = '<option value="">All Years</option>' + years.map(y => `<option value="${y}">${y}</option>`).join('');
+            } else {
+                sel.innerHTML = '<option value="">All Months</option>' + periods.map(p => {
+                    const [y,m] = p.split('-');
+                    const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+                    const label = `${monthNames[Number(m)-1]} ${y}`;
+                    return `<option value="${p}">${label}</option>`;
+                }).join('');
+            }
+            if (current && (periods.includes(current) || years.includes(current))) sel.value = current;
+            else sel.value = '';
+        }
+        function renderBmiTable() {
+            const tbody = document.getElementById('bmiTableBody');
+            const summary = document.getElementById('bmiClassificationSummary');
+            if (!tbody) return;
+            populateBmiPeriods();
+            const periodSel = document.getElementById('bmiPeriodSelect');
+            const modeSel = document.getElementById('bmiViewMode');
+            const period = periodSel ? periodSel.value : '';
+            const mode = modeSel ? modeSel.value : 'monthly';
+
+            const can = canManagePersonnel();
+            const dlBtn = document.getElementById('bmiDownloadBtn');
+            if (dlBtn) dlBtn.style.display = can ? '' : 'none';
+
+            // Filter BMI records by the selected period.
+            let filteredRecords = bmiRecords.slice();
+            if (period) {
+                if (mode === 'yearly') filteredRecords = filteredRecords.filter(r => String(r.period || '').startsWith(period));
+                else filteredRecords = filteredRecords.filter(r => String(r.period || '') === period);
+            }
+
+            const recordMap = new Map();
+            filteredRecords.forEach(r => {
+                const key = [r.rank, r.lastName, r.firstName, r.middleName, r.qualifiers].map(s => String(s || '').trim()).join('|');
+                if (!recordMap.has(key) || String(r.period || '') > String(recordMap.get(key).period || '')) recordMap.set(key, r);
+            });
+
+            const classCounts = {};
+            recordMap.forEach(r => { const c = r.bmiClassification || 'Unclassified'; classCounts[c] = (classCounts[c] || 0) + 1; });
+            if (summary) {
+                summary.innerHTML = Object.keys(classCounts).sort().map(c =>
+                    `<span class="bmi-class-chip" style="border-color:${bmiClassColor(c)};color:${bmiClassColor(c)};">${escapeHtml(c)}: <strong>${classCounts[c]}</strong></span>`
+                ).join('') || '<span style="font-size:12px;color:var(--text-muted);">No BMI records encoded yet for the selected period.</span>';
+            }
+
+            const rankOrder = { "PBGEN":1,"PCOL":2,"PLTCOL":3,"PMAJ":4,"PCPT":5,"PLT":6,"PEMS":7,"PCMS":8,"PSMS":9,"PMSG":10,"PSSG":11,"PCPL":12,"PAT":13,"NUP":14 };
+            const personnel = allPersonnel
+                .map((p, origIdx) => ({ p: p, origIdx: origIdx }))
+                .filter(x => String(x.p.section || '').trim().toLowerCase() !== 'detached service')
+                .sort((a, b) => {
+                    const va = rankOrder[String(a.p.rank || '').trim().toUpperCase()] || 99;
+                    const vb = rankOrder[String(b.p.rank || '').trim().toUpperCase()] || 99;
+                    if (va !== vb) return va - vb;
+                    return String(a.p.lastName || '').localeCompare(String(b.p.lastName || ''));
+                });
+
+            // Recapitulation: BMI Classification by Rank (matrix).
+            const rankRecap = document.getElementById('bmiRankRecap');
+            if (rankRecap) {
+                const classOrder = ['Underweight (UW)','Normal (N)','Acceptable BMI (ABMI)','Overweight (OW)','Obese I (OB 1)','Obese II (OB 2)','Obese III (OB 3)'];
+                const rankMatrix = {};
+                personnel.forEach(x => {
+                    const p = x.p;
+                    const rank = String(p.rank || 'Unspecified').trim() || 'Unspecified';
+                    const key = [p.rank, p.lastName, p.firstName, p.middleName, p.qualifiers].map(s => String(s || '').trim()).join('|');
+                    const rec = recordMap.get(key) || null;
+                    const cls = rec ? (rec.bmiClassification || 'Not encoded') : 'Not encoded';
+                    if (!rankMatrix[rank]) rankMatrix[rank] = {};
+                    rankMatrix[rank][cls] = (rankMatrix[rank][cls] || 0) + 1;
+                });
+                const allClasses = classOrder.concat(['Not encoded']);
+                const sortRank = (a,b) => (rankOrder[a.toUpperCase()]||99) - (rankOrder[b.toUpperCase()]||99) || a.localeCompare(b);
+                let html = '<div style="font-size:12px;font-weight:600;color:var(--text-muted);margin-bottom:6px;">Recapitulation by BMI Classification × Rank</div><div style="overflow-x:auto;border:1px solid var(--border-color);border-radius:var(--radius-sm);"><table class="data-table bmi-rank-matrix"><thead><tr><th style="padding:6px 8px;">Rank</th>';
+                allClasses.forEach(c => { const short = c.replace(/\s*\([^)]*\)/,''); html += `<th style="padding:6px 6px;font-size:11px;" title="${escapeAttr(c)}">${escapeHtml(short)}</th>`; });
+                html += '<th style="padding:6px 8px;">Total</th></tr></thead><tbody>';
+                Object.keys(rankMatrix).sort(sortRank).forEach(rank => {
+                    html += `<tr><td style="padding:6px 8px;font-weight:700;">${escapeHtml(rank)}</td>`;
+                    let total = 0;
+                    allClasses.forEach(c => { const n = rankMatrix[rank][c] || 0; total += n; html += `<td style="padding:6px;text-align:center;font-size:12px;">${n || ''}</td>`; });
+                    html += `<td style="padding:6px 8px;text-align:center;font-weight:700;color:var(--primary);">${total}</td></tr>`;
+                });
+                html += '</tbody></table></div>';
+                rankRecap.innerHTML = html;
+            }
+
+            if (!personnel.length) {
+                tbody.innerHTML = `<tr><td colspan="11" style="text-align:center;color:var(--text-muted);padding:20px;">No personnel records available.</td></tr>`;
+                return;
+            }
+
+            tbody.innerHTML = personnel.map((x, i) => {
+                const p = x.p;
+                const key = [p.rank, p.lastName, p.firstName, p.middleName, p.qualifiers].map(s => String(s || '').trim()).join('|');
+                const rec = recordMap.get(key) || null;
+                const fullName = personnelFullName(p);
+                const nameCell = can
+                    ? `<td><span class="bmi-name-link" onclick="openBmiModalForPersonnel(${x.origIdx})" title="Click to encode / edit BMI record">${escapeHtml(fullName)}</span></td>`
+                    : `<td>${escapeHtml(fullName)}</td>`;
+                const actionCell = can
+                    ? (rec
+                        ? `<td><button class="action-btn delete-btn" style="margin:0;padding:4px 8px;font-size:11px;" onclick="event.stopPropagation();deleteBmiRecord('${escapeAttr(rec.id)}')">Del</button></td>`
+                        : `<td style="color:var(--text-muted);font-size:11px;">—</td>`)
+                    : '';
+                return `<tr>
+                    <td>${i + 1}</td>
+                    ${nameCell}
+                    <td>${rec ? escapeHtml(rec.age || '') : ''}</td>
+                    <td>${rec ? escapeHtml(rec.height || '') : ''}</td>
+                    <td>${rec ? escapeHtml(rec.weight || '') : ''}</td>
+                    <td>${rec ? escapeHtml(rec.waist || '') : ''}</td>
+                    <td>${rec ? escapeHtml(rec.hip || '') : ''}</td>
+                    <td>${rec ? escapeHtml(rec.wrist || '') : ''}</td>
+                    <td><strong>${rec ? escapeHtml(rec.bmiResult || '') : ''}</strong></td>
+                    <td style="color:${rec ? bmiClassColor(rec.bmiClassification) : 'var(--text-muted)'};font-weight:600;">${rec ? escapeHtml(rec.bmiClassification || '') : '<span style="font-size:11px;font-weight:400;">Not encoded</span>'}</td>
+                    ${actionCell}
+                </tr>`;
+            }).join('');
+        }
+
+        function downloadBmiExcel() {
+            const periodSel = document.getElementById('bmiPeriodSelect');
+            const modeSel = document.getElementById('bmiViewMode');
+            const period = periodSel ? periodSel.value : '';
+            const mode = modeSel ? modeSel.value : 'monthly';
+            let filteredRecords = bmiRecords.slice();
+            if (period) {
+                if (mode === 'yearly') filteredRecords = filteredRecords.filter(r => String(r.period || '').startsWith(period));
+                else filteredRecords = filteredRecords.filter(r => String(r.period || '') === period);
+            }
+            const recordMap = new Map();
+            filteredRecords.forEach(r => {
+                const key = [r.rank, r.lastName, r.firstName, r.middleName, r.qualifiers].map(s => String(s || '').trim()).join('|');
+                if (!recordMap.has(key) || String(r.period || '') > String(recordMap.get(key).period || '')) recordMap.set(key, r);
+            });
+            const rankOrder = { "PBGEN":1,"PCOL":2,"PLTCOL":3,"PMAJ":4,"PCPT":5,"PLT":6,"PEMS":7,"PCMS":8,"PSMS":9,"PMSG":10,"PSSG":11,"PCPL":12,"PAT":13,"NUP":14 };
+            const personnel = allPersonnel
+                .filter(p => String(p.section || '').trim().toLowerCase() !== 'detached service')
+                .sort((a, b) => (rankOrder[String(a.rank||'').toUpperCase()]||99) - (rankOrder[String(b.rank||'').toUpperCase()]||99) || String(a.lastName||'').localeCompare(String(b.lastName||'')));
+            const escCsv = v => `"${String(v == null ? '' : v).replace(/"/g, '""')}"`;
+            let csv = '\uFEFFNo.,Rank/Full Name,Age,Height (cm),Weight (kg),Waist (cm),Hip (cm),Wrist (cm),BMI Result,BMI Classification\n';
+            personnel.forEach((p, i) => {
+                const key = [p.rank, p.lastName, p.firstName, p.middleName, p.qualifiers].map(s => String(s || '').trim()).join('|');
+                const rec = recordMap.get(key) || null;
+                csv += `${i+1},${escCsv(personnelFullName(p))},${rec?rec.age:''},${rec?rec.height:''},${rec?rec.weight:''},${rec?rec.waist:''},${rec?rec.hip:''},${rec?rec.wrist:''},${rec?rec.bmiResult:''},${escCsv(rec?rec.bmiClassification:'')}\n`;
+            });
+            const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `BMI_Records_${period || 'AllPeriods'}.csv`;
+            document.body.appendChild(a); a.click(); document.body.removeChild(a);
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+            customAlert("BMI data downloaded (Excel-compatible CSV).", "Downloaded");
+        }
+
+        function openBmiModalForPersonnel(origIdx) {
+            if (!canManagePersonnel()) { customAlert("Only Alpha Admin and Admin can encode BMI records.", "Permission Denied"); return; }
+            if (!allPersonnel || !allPersonnel.length) { loadPersonnel(); customAlert("Personnel data is still loading. Please try again in a moment.", "Loading"); return; }
+            const p = allPersonnel[Number(origIdx)];
+            if (!p) return;
+
+            const periodSel = document.getElementById('bmiPeriodSelect');
+            const modeSel = document.getElementById('bmiViewMode');
+            const period = periodSel ? periodSel.value : '';
+            const mode = modeSel ? modeSel.value : 'monthly';
+
+            // Find the latest record for this person within the selected period.
+            const pKey = personnelFullName(p);
+            let candidates = bmiRecords.filter(r => personnelFullName(r) === pKey);
+            if (period) {
+                if (mode === 'yearly') candidates = candidates.filter(r => String(r.period || '').startsWith(period));
+                else candidates = candidates.filter(r => String(r.period || '') === period);
+            }
+            candidates.sort((a, b) => String(b.period || '').localeCompare(String(a.period || '')));
+            const rec = candidates[0] || null;
+
+            bmiEditingId = rec ? rec.id : null;
+            document.getElementById('bmiModalTitle').innerText = rec ? 'Edit BMI Record' : 'Add BMI Record';
+            const sel = document.getElementById('bmiPersonnelSelect');
+            sel.innerHTML = '<option value="">Select personnel...</option>' + allPersonnel.map((pp, i) =>
+                `<option value="${i}">${escapeHtml(personnelFullName(pp))}</option>`).join('');
+            sel.value = String(origIdx);
+
+            ['bmiAge','bmiHeight','bmiWeight','bmiWaist','bmiHip','bmiWrist'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+            const periodInput = document.getElementById('bmiPeriodInput');
+            if (rec) {
+                periodInput.value = rec.period || '';
+                document.getElementById('bmiAge').value = rec.age || '';
+                document.getElementById('bmiHeight').value = rec.height || '';
+                document.getElementById('bmiWeight').value = rec.weight || '';
+                document.getElementById('bmiWaist').value = rec.waist || '';
+                document.getElementById('bmiHip').value = rec.hip || '';
+                document.getElementById('bmiWrist').value = rec.wrist || '';
+            } else {
+                if (period && mode === 'monthly') periodInput.value = period;
+                else { const now = new Date(); periodInput.value = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`; }
+            }
+            recalcBmi();
+            document.getElementById('bmiRecordModal').classList.remove('hidden');
+        }
+
+        function recalcBmi() {
+            const h = document.getElementById('bmiHeight').value;
+            const w = document.getElementById('bmiWeight').value;
+            const age = document.getElementById('bmiAge') ? document.getElementById('bmiAge').value : '';
+            const res = computeBmiClient(h, w, age);
+            const rEl = document.getElementById('bmiResultPreview');
+            const cEl = document.getElementById('bmiClassPreview');
+            if (rEl) rEl.innerText = res.bmi !== '' ? res.bmi : '—';
+            if (cEl) { cEl.innerText = res.classification || '—'; cEl.style.color = bmiClassColor(res.classification); }
+        }
+        function openBmiModal(editId) {
+            if (!canManagePersonnel()) { customAlert("Only Alpha Admin and Admin can encode BMI records.", "Permission Denied"); return; }
+            if (!allPersonnel || !allPersonnel.length) { loadPersonnel(); customAlert("Personnel data is still loading. Please try again in a moment.", "Loading"); return; }
+
+            bmiEditingId = editId || null;
+            document.getElementById('bmiModalTitle').innerText = editId ? 'Edit BMI Record' : 'Add BMI Record';
+            const sel = document.getElementById('bmiPersonnelSelect');
+            sel.innerHTML = '<option value="">Select personnel...</option>' + allPersonnel.map((p, i) =>
+                `<option value="${i}">${escapeHtml(personnelFullName(p))}</option>`).join('');
+            // Reset fields
+            ['bmiAge','bmiHeight','bmiWeight','bmiWaist','bmiHip','bmiWrist'].forEach(id => { const el=document.getElementById(id); if(el) el.value=''; });
+            const now = new Date();
+            const periodInput = document.getElementById('bmiPeriodInput');
+            if (periodInput) periodInput.value = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+            if (editId) {
+                const rec = bmiRecords.find(r => String(r.id) === String(editId));
+                if (rec) {
+                    const idx = allPersonnel.findIndex(p => personnelFullName(p) === personnelFullName(rec));
+                    if (idx >= 0) sel.value = idx;
+                    document.getElementById('bmiPeriodInput').value = rec.period || '';
+                    document.getElementById('bmiAge').value = rec.age || '';
+                    document.getElementById('bmiHeight').value = rec.height || '';
+                    document.getElementById('bmiWeight').value = rec.weight || '';
+                    document.getElementById('bmiWaist').value = rec.waist || '';
+                    document.getElementById('bmiHip').value = rec.hip || '';
+                    document.getElementById('bmiWrist').value = rec.wrist || '';
+                }
+            }
+            recalcBmi();
+            document.getElementById('bmiRecordModal').classList.remove('hidden');
+        }
+        function editBmiRecord(id) { openBmiModal(id); }
+        function closeBmiModal() { document.getElementById('bmiRecordModal').classList.add('hidden'); bmiEditingId = null; }
+        function fillBmiPersonnelDetails() { /* personnel selected from dropdown; fields remain manual entry */ }
+        async function saveBmiRecord() {
+            const selIdx = document.getElementById('bmiPersonnelSelect').value;
+            const period = document.getElementById('bmiPeriodInput').value;
+            if (selIdx === '' || !period) { customAlert("Please select personnel and a period.", "Validation"); return; }
+            const p = allPersonnel[Number(selIdx)];
+            const payload = {
+                action:'save_bmi_record',
+                id: bmiEditingId || undefined,
+                period: period,
+                rank: p.rank, lastName: p.lastName, firstName: p.firstName,
+                middleName: p.middleName, qualifiers: p.qualifiers,
+                age: document.getElementById('bmiAge').value,
+                height: document.getElementById('bmiHeight').value,
+                weight: document.getElementById('bmiWeight').value,
+                waist: document.getElementById('bmiWaist').value,
+                hip: document.getElementById('bmiHip').value,
+                wrist: document.getElementById('bmiWrist').value,
+                userName: localStorage.getItem('loggedInUser'),
+                credential: localStorage.getItem('loggedCred') || ''
+            };
+            if (!payload.height || !payload.weight) { customAlert("Height and Weight are required for BMI calculation.", "Validation"); return; }
+            try {
+                await fetch(API_URL, {method:'POST', mode:'no-cors', body: JSON.stringify(payload)});
+                closeBmiModal();
+                customAlert("BMI record saved. BMI result and classification were computed automatically.", "Success");
+                setTimeout(loadBmiRecords, 1200);
+            } catch (e) { customAlert("Failed to save BMI record.", "Error"); }
+        }
+        function deleteBmiRecord(id) {
+            customConfirm("Delete this BMI record?", async (confirmed) => {
+                if (!confirmed) return;
+                try {
+                    await fetch(API_URL, {method:'POST', mode:'no-cors', body: JSON.stringify({
+                        action:'delete_bmi_record', id:id,
+                        userName: localStorage.getItem('loggedInUser'),
+                        credential: localStorage.getItem('loggedCred') || ''
+                    })});
+                    setTimeout(loadBmiRecords, 1200);
+                } catch (e) {}
+            });
+        }
+
+        /* ---------- Squadding ---------- */
+        async function loadSquads() {
+            try {
+                const res = await fetch(API_URL + "?action=get_squads&_ts=" + Date.now(), {cache:'no-store'});
+                const data = await res.json();
+                squads = (data.success && Array.isArray(data.squads)) ? data.squads : [];
+            } catch (e) { squads = []; }
+            renderSquadCarousel();
+        }
+        function renderSquadCarousel() {
+            const container = document.getElementById('squadCarousel');
+            if (!container) return;
+            if (!squads.length) {
+                container.innerHTML = `<div style="grid-column:1/-1;text-align:center;color:var(--text-muted);padding:40px;">No squads created yet.${canManagePersonnel()?' Click "Create Squad" to group personnel.':''}</div>`;
+                return;
+            }
+            const can = canManagePersonnel();
+            container.innerHTML = squads.map(s => {
+                const membersHtml = s.members.length
+                    ? s.members.map(m => `<div class="squad-member-chip">${escapeHtml([m.rank,m.lastName].filter(Boolean).join(' '))}</div>`).join('')
+                    : '<span style="font-size:12px;color:var(--text-muted);">No members assigned.</span>';
+                const actions = can ? `<div style="margin-top:10px;display:flex;gap:6px;">
+                    <button class="action-btn" style="margin:0;padding:4px 10px;font-size:11px;flex:1;" onclick="event.stopPropagation();editSquad('${escapeAttr(s.squadId)}')">Edit</button>
+                    <button class="action-btn delete-btn" style="margin:0;padding:4px 10px;font-size:11px;flex:1;" onclick="event.stopPropagation();deleteSquad('${escapeAttr(s.squadId)}')">Delete</button>
+                </div>` : '';
+                return `<div class="squad-card glass-panel" onclick="openSquadDetails('${escapeAttr(s.squadId)}')" role="button" tabindex="0" aria-label="View ${escapeAttr(s.squadName)} details" style="cursor:pointer;">
+                    <div class="squad-card-head">
+                        <h4 style="margin:0;color:var(--primary);">${escapeHtml(s.squadName)}</h4>
+                        <span class="squad-member-count">${s.members.length} member${s.members.length===1?'':'s'}</span>
+                    </div>
+                    <div style="font-size:12px;color:var(--text-muted);margin:6px 0 10px;">Leader: <strong style="color:var(--text-main);">${escapeHtml(s.squadLeader||'Not assigned')}</strong></div>
+                    <div style="margin-top:10px;font-size:12px;color:var(--text-muted);">Click card to view full member list</div>
+                    ${actions}
+                </div>`;
+            }).join('');
+        }
+        function scrollSquadCarousel(dir) {
+            const c = document.getElementById('squadCarousel');
+            if (c) c.scrollBy({left: Number(dir) * 320, behavior:'smooth'});
+        }
+        function squaddedPersonnelNames(excludeSquadId) {
+            // Full names of personnel already assigned to any squad (optionally excluding one squad being edited).
+            const names = new Set();
+            squads.forEach(s => {
+                if (excludeSquadId && String(s.squadId) === String(excludeSquadId)) return;
+                (s.members || []).forEach(m => names.add(personnelFullName(m)));
+            });
+            return names;
+        }
+        function openSquadModal(editId) {
+            if (!canManagePersonnel()) { customAlert("Only Alpha Admin and Admin can manage squads.", "Permission Denied"); return; }
+            if (!allPersonnel || !allPersonnel.length) { loadPersonnel(); customAlert("Personnel data is still loading. Please try again in a moment.", "Loading"); return; }
+
+            editingSquadId = editId || null;
+            document.getElementById('squadModalTitle').innerText = editId ? 'Edit Squad' : 'Create Squad';
+            document.getElementById('squadNameInput').value = '';
+            const leaderSel = document.getElementById('squadLeaderSelect');
+            leaderSel.innerHTML = '<option value="">Select squad leader...</option>' + allPersonnel.map((p,i) => `<option value="${i}">${escapeHtml(personnelFullName(p))}</option>`).join('');
+            // When creating a new squad, personnel already in another squad are removed from the available list.
+            const excludeNames = editId ? null : squaddedPersonnelNames(null);
+            renderSquadMemberChecklist(editId ? [] : null, excludeNames);
+            if (editId) {
+                const s = squads.find(x => String(x.squadId) === String(editId));
+                if (s) {
+                    document.getElementById('squadNameInput').value = s.squadName || '';
+                    const leaderIdx = allPersonnel.findIndex(p => personnelFullName(p) === personnelFullName(s.squadLeader ? {rank:(s.squadLeader.split(' ')[0]||''), lastName:(s.squadLeader.split(' ').slice(1).join(' ')||''), firstName:'', middleName:'', qualifiers:''} : {}));
+                    if (leaderIdx >= 0) leaderSel.value = leaderIdx;
+                    renderSquadMemberChecklist(s.members || [], null);
+                }
+            }
+            updateSquadMemberCount();
+            document.getElementById('squadModal').classList.remove('hidden');
+        }
+        function closeSquadModal() { document.getElementById('squadModal').classList.add('hidden'); editingSquadId = null; }
+        function renderSquadMemberChecklist(preselected, excludeNames) {
+            const wrap = document.getElementById('squadMemberList');
+            if (!wrap) return;
+            const preNames = preselected ? preselected.map(m => personnelFullName(m)) : null;
+            const exclude = excludeNames || new Set();
+            let excludedCount = 0;
+            const items = [];
+            allPersonnel.forEach((p, i) => {
+                const full = personnelFullName(p);
+                if (exclude.has(full)) { excludedCount++; return; }
+                const checked = preNames ? preNames.includes(full) : false;
+                items.push(`<label class="checklist-item"><input type="checkbox" class="squad-member-cb" value="${i}" ${checked?'checked':''} onchange="updateSquadMemberCount()"> <span>${escapeHtml(full)}</span></label>`);
+            });
+            const note = excludedCount ? `<div style="font-size:11px;color:var(--text-muted);padding:6px;border-top:1px solid var(--border-color);margin-top:6px;">${excludedCount} personnel already assigned to another squad and excluded from this list.</div>` : '';
+            wrap.innerHTML = items.join('') + note;
+        }
+        function openSquadDetails(squadId) {
+            const s = squads.find(x => String(x.areaId || x.squadId) === String(squadId) || String(x.squadId) === String(squadId));
+            if (!s) return;
+            document.getElementById('squadDetailsTitle').innerText = s.squadName || 'Squad';
+            document.getElementById('squadDetailsLeader').innerHTML = `Squad Leader: <strong style="color:var(--text-main);">${escapeHtml(s.squadLeader || 'Not assigned')}</strong> &bull; ${s.members.length} member${s.members.length===1?'':'s'}`;
+            const membersWrap = document.getElementById('squadDetailsMembers');
+            if (!s.members || !s.members.length) {
+                membersWrap.innerHTML = '<div style="color:var(--text-muted);font-size:13px;">No members assigned to this squad.</div>';
+            } else {
+                membersWrap.innerHTML = s.members.map((m, i) => `<div class="area-personnel-row">
+                    <span class="area-personnel-num">${i+1}</span>
+                    <span>${escapeHtml(personnelFullName(m))}</span>
+                </div>`).join('');
+            }
+            const can = canManagePersonnel();
+            document.getElementById('squadDetailsEditBtn').style.display = can ? '' : 'none';
+            document.getElementById('squadDetailsDeleteBtn').style.display = can ? '' : 'none';
+            document.getElementById('squadDetailsEditBtn').setAttribute('data-squad-id', s.squadId);
+            document.getElementById('squadDetailsDeleteBtn').setAttribute('data-squad-id', s.squadId);
+            document.getElementById('squadDetailsModal').classList.remove('hidden');
+        }
+        function closeSquadDetailsModal() { document.getElementById('squadDetailsModal').classList.add('hidden'); }
+        function editSquadFromDetails() {
+            const id = document.getElementById('squadDetailsEditBtn').getAttribute('data-squad-id');
+            closeSquadDetailsModal();
+            openSquadModal(id);
+        }
+        function deleteSquadFromDetails() {
+            const id = document.getElementById('squadDetailsDeleteBtn').getAttribute('data-squad-id');
+            customConfirm("Delete this squad and remove all member assignments?", async (confirmed) => {
+                if (!confirmed) return;
+                try {
+                    await fetch(API_URL, {method:'POST', mode:'no-cors', body: JSON.stringify({
+                        action:'delete_squad', squadId:id,
+                        userName: localStorage.getItem('loggedInUser'),
+                        credential: localStorage.getItem('loggedCred') || ''
+                    })});
+                    closeSquadDetailsModal();
+                    setTimeout(loadSquads, 1200);
+                } catch (e) {}
+            });
+        }
+
+        function updateSquadMemberCount() {
+            const cbs = document.querySelectorAll('.squad-member-cb:checked');
+            const el = document.getElementById('squadMemberCount');
+            if (el) el.innerText = cbs.length;
+        }
+        async function saveSquad() {
+            const name = document.getElementById('squadNameInput').value.trim();
+            if (!name) { customAlert("Squad name is required.", "Validation"); return; }
+            const leaderIdx = document.getElementById('squadLeaderSelect').value;
+            const leader = leaderIdx !== '' ? personnelShortName(allPersonnel[Number(leaderIdx)]) : '';
+            const selected = [...document.querySelectorAll('.squad-member-cb:checked')].map(cb => {
+                const p = allPersonnel[Number(cb.value)];
+                return {rank:p.rank, lastName:p.lastName, firstName:p.firstName, middleName:p.middleName, qualifiers:p.qualifiers};
+            });
+            try {
+                await fetch(API_URL, {method:'POST', mode:'no-cors', body: JSON.stringify({
+                    action: editingSquadId ? 'update_squad' : 'create_squad',
+                    squadId: editingSquadId || undefined,
+                    squadName: name, squadLeader: leader, members: selected,
+                    userName: localStorage.getItem('loggedInUser'),
+                    credential: localStorage.getItem('loggedCred') || ''
+                })});
+                closeSquadModal();
+                customAlert("Squad saved successfully.", "Success");
+                setTimeout(loadSquads, 1200);
+            } catch (e) { customAlert("Failed to save squad.", "Error"); }
+        }
+        function editSquad(id) { openSquadModal(id); }
+        function deleteSquad(id) {
+            customConfirm("Delete this squad and remove all member assignments?", async (confirmed) => {
+                if (!confirmed) return;
+                try {
+                    await fetch(API_URL, {method:'POST', mode:'no-cors', body: JSON.stringify({
+                        action:'delete_squad', squadId:id,
+                        userName: localStorage.getItem('loggedInUser'),
+                        credential: localStorage.getItem('loggedCred') || ''
+                    })});
+                    setTimeout(loadSquads, 1200);
+                } catch (e) {}
+            });
+        }
+
+        /* ---------- Leave Management ---------- */
+        async function loadLeaveEntries() {
+            try {
+                const res = await fetch(API_URL + "?action=get_leave_entries&_ts=" + Date.now(), {cache:'no-store'});
+                const data = await res.json();
+                leaveEntries = (data.success && Array.isArray(data.entries)) ? data.entries : [];
+            } catch (e) { leaveEntries = []; }
+            renderLeaveCalendar();
+            renderLeaveTable();
+        }
+        const MAX_LEAVE_PER_DATE = 5;
+        let leavePickerDate = new Date();
+
+        function shortLeaveName(fullName) {
+            // Display only Rank + Last Name in the calendar.
+            const match = allPersonnel.find(p => personnelFullName(p) === String(fullName || ''));
+            if (match) return personnelShortName(match);
+            const parts = String(fullName || '').trim().split(/\s+/);
+            if (parts.length >= 2) return parts[0] + ' ' + parts[parts.length - 1];
+            return String(fullName || '');
+        }
+
+        function renderLeaveCalendar() {
+            const grid = document.getElementById('leaveCalendarGrid');
+            const title = document.getElementById('leaveCalendarTitle');
+            if (!grid || !title) return;
+            const year = leaveCalendarDate.getFullYear();
+            const month = leaveCalendarDate.getMonth();
+            const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+            title.innerText = `${monthNames[month]} ${year}`;
+            const firstDay = new Date(year, month, 1).getDay();
+            const daysInMonth = new Date(year, month + 1, 0).getDate();
+            const dayNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+            const leaveMap = {};
+            leaveEntries.forEach(e => {
+                (e.dates || []).forEach(d => {
+                    if (!leaveMap[d]) leaveMap[d] = [];
+                    leaveMap[d].push(e);
+                });
+            });
+            let html = dayNames.map(d => `<div class="duty-cal-day duty-cal-head">${d}</div>`).join('');
+            for (let i = 0; i < firstDay; i++) html += '<div class="duty-cal-day duty-cal-empty"></div>';
+            for (let d = 1; d <= daysInMonth; d++) {
+                const dateStr = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+                const leaves = leaveMap[dateStr] || [];
+                const isToday = new Date(year, month, d).toDateString() === new Date().toDateString();
+                const maxed = leaves.length >= MAX_LEAVE_PER_DATE;
+                // Calendar shows only Rank + Last Name, max 5 list per date.
+                const shown = leaves.slice(0, MAX_LEAVE_PER_DATE).map(l => escapeHtml(shortLeaveName(l.personnelName))).join(', ');
+                const extra = leaves.length > MAX_LEAVE_PER_DATE ? ` +${leaves.length - MAX_LEAVE_PER_DATE}` : '';
+                const leaveLabel = leaves.length ? shown + extra : '';
+                const tooltip = leaves.length ? leaves.map(l => `${l.personnelName} — ${l.leaveType}${l.otherType?' ('+l.otherType+')':''}`).join('\n') : '';
+                html += `<div class="duty-cal-day ${leaves.length?'leave-cal-has-leave':''} ${maxed?'leave-cal-max':''} ${isToday?'duty-cal-today':''}" title="${escapeAttr(tooltip)}">
+                    <div class="duty-cal-date">${d}${maxed?` <span style="color:var(--danger);font-size:9px;">(MAX)</span>`:''}</div>
+                    ${leaves.length ? `<div class="leave-cal-label">${leaveLabel}</div>` : '<div class="duty-cal-personnel">&nbsp;</div>'}
+                </div>`;
+            }
+            grid.innerHTML = html;
+        }
+        function changeLeaveMonth(delta) {
+            leaveCalendarDate = new Date(leaveCalendarDate.getFullYear(), leaveCalendarDate.getMonth() + Number(delta), 1);
+            renderLeaveCalendar();
+        }
+        function renderLeaveTypeRecap() {
+            const wrap = document.getElementById('leaveTypeRecap');
+            if (!wrap) return;
+            const counts = {};
+            leaveEntries.forEach(e => {
+                const label = e.leaveType === 'Others' && e.otherType ? `Others (${e.otherType})` : e.leaveType;
+                counts[label] = (counts[label] || 0) + 1;
+            });
+            const keys = Object.keys(counts).sort();
+            wrap.innerHTML = keys.length
+                ? '<span style="font-size:12px;font-weight:600;color:var(--text-muted);margin-right:8px;">Recap by Leave Type:</span>' + keys.map(k =>
+                    `<span class="bmi-class-chip" style="border-color:var(--primary);color:var(--primary);">${escapeHtml(k)}: <strong>${counts[k]}</strong></span>`).join('')
+                : '<span style="font-size:12px;color:var(--text-muted);">No leave entries recorded.</span>';
+        }
+        function renderLeaveTable() {
+            const tbody = document.getElementById('leaveTableBody');
+            if (!tbody) return;
+            renderLeaveTypeRecap();
+            const can = canManagePersonnel();
+            if (!leaveEntries.length) {
+                tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:20px;">No leave entries recorded.</td></tr>`;
+                return;
+            }
+            tbody.innerHTML = leaveEntries.slice().reverse().map(e => {
+                const typeLabel = e.leaveType === 'Others' && e.otherType ? `Others (${e.otherType})` : e.leaveType;
+                const datesStr = (e.dates || []).join(', ');
+                const actionCell = can ? `<td><button class="action-btn delete-btn" style="margin:0;padding:4px 8px;font-size:11px;" onclick="deleteLeaveEntry('${escapeAttr(e.id)}')">Delete</button></td>` : '';
+                return `<tr>
+                    <td>${escapeHtml(e.personnelName)}</td>
+                    <td>${escapeHtml(typeLabel)}</td>
+                    <td style="font-size:12px;">${escapeHtml(datesStr)}</td>
+                    <td>${escapeHtml(e.encodedBy||'')}</td>
+                    ${actionCell}
+                </tr>`;
+            }).join('');
+        }
+
+        /* Leave-entry modal: clickable multi-date picker calendar */
+        function renderLeavePickerCalendar() {
+            const grid = document.getElementById('leavePickerCalendar');
+            const title = document.getElementById('leavePickerTitle');
+            if (!grid || !title) return;
+            const year = leavePickerDate.getFullYear();
+            const month = leavePickerDate.getMonth();
+            const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+            title.innerText = `${monthNames[month]} ${year}`;
+            const firstDay = new Date(year, month, 1).getDay();
+            const daysInMonth = new Date(year, month + 1, 0).getDate();
+            const dayNames = ['S','M','T','W','T','F','S'];
+            let html = dayNames.map(d => `<div class="leave-picker-head">${d}</div>`).join('');
+            for (let i = 0; i < firstDay; i++) html += '<div class="leave-picker-day empty"></div>';
+            for (let d = 1; d <= daysInMonth; d++) {
+                const dateStr = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+                const selected = selectedLeaveDates.includes(dateStr);
+                html += `<div class="leave-picker-day ${selected?'selected':''}" onclick="toggleLeaveDate('${dateStr}')" role="button" title="${dateStr}">${d}</div>`;
+            }
+            grid.innerHTML = html;
+        }
+        function changeLeavePickerMonth(delta) {
+            leavePickerDate = new Date(leavePickerDate.getFullYear(), leavePickerDate.getMonth() + Number(delta), 1);
+            renderLeavePickerCalendar();
+        }
+        function toggleLeaveDate(dateStr) {
+            if (selectedLeaveDates.includes(dateStr)) {
+                selectedLeaveDates = selectedLeaveDates.filter(d => d !== dateStr);
+            } else {
+                selectedLeaveDates.push(dateStr);
+                selectedLeaveDates.sort();
+            }
+            renderLeaveSelectedDates();
+            renderLeavePickerCalendar();
+        }
+
+        function openLeaveModal() {
+            if (!canManagePersonnel()) { customAlert("Only Alpha Admin and Admin can encode leave entries.", "Permission Denied"); return; }
+            if (!allPersonnel || !allPersonnel.length) { loadPersonnel(); customAlert("Personnel data is still loading. Please try again in a moment.", "Loading"); return; }
+
+            const sel = document.getElementById('leavePersonnelSelect');
+            sel.innerHTML = '<option value="">Select personnel...</option>' + allPersonnel.map((p,i) => `<option value="${i}">${escapeHtml(personnelFullName(p))}</option>`).join('');
+            document.getElementById('leaveTypeSelect').value = '';
+            document.getElementById('leaveOtherTypeInput').value = '';
+            document.getElementById('leaveOtherTypeWrap').classList.add('hidden');
+            document.getElementById('leaveDatePicker').value = '';
+            selectedLeaveDates = [];
+            leavePickerDate = new Date();
+            renderLeaveSelectedDates();
+            renderLeavePickerCalendar();
+            document.getElementById('leaveEntryModal').classList.remove('hidden');
+        }
+        function closeLeaveModal() { document.getElementById('leaveEntryModal').classList.add('hidden'); }
+        function toggleLeaveOtherType() {
+            const val = document.getElementById('leaveTypeSelect').value;
+            const wrap = document.getElementById('leaveOtherTypeWrap');
+            if (wrap) wrap.classList.toggle('hidden', val !== 'Others');
+        }
+        function addLeaveDate() {
+            const val = document.getElementById('leaveDatePicker').value;
+            if (!val) { customAlert("Please pick a date first.", "Validation"); return; }
+            if (!selectedLeaveDates.includes(val)) {
+                selectedLeaveDates.push(val);
+                selectedLeaveDates.sort();
+            }
+            renderLeaveSelectedDates();
+        }
+        function clearLeaveDates() { selectedLeaveDates = []; renderLeaveSelectedDates(); }
+        function removeLeaveDate(dateStr) {
+            selectedLeaveDates = selectedLeaveDates.filter(d => d !== dateStr);
+            renderLeaveSelectedDates();
+        }
+        function renderLeaveSelectedDates() {
+            const wrap = document.getElementById('leaveSelectedDates');
+            if (!wrap) return;
+            if (!selectedLeaveDates.length) { wrap.innerHTML = '<span style="font-size:12px;color:var(--text-muted);">No dates selected.</span>'; return; }
+            wrap.innerHTML = selectedLeaveDates.map(d => `<span class="leave-date-chip">${escapeHtml(d)} <button type="button" onclick="removeLeaveDate('${escapeAttr(d)}')" style="background:none;border:none;color:inherit;cursor:pointer;padding:0;margin:0 0 0 4px;font-size:12px;width:auto;">×</button></span>`).join('');
+        }
+        async function saveLeaveEntry() {
+            const selIdx = document.getElementById('leavePersonnelSelect').value;
+            const leaveType = document.getElementById('leaveTypeSelect').value;
+            if (selIdx === '' || !leaveType) { customAlert("Please select personnel and leave type.", "Validation"); return; }
+            if (leaveType === 'Others' && !document.getElementById('leaveOtherTypeInput').value.trim()) {
+                customAlert("Please specify the leave type under Others.", "Validation"); return;
+            }
+            if (!selectedLeaveDates.length) { customAlert("Please add at least one leave date.", "Validation"); return; }
+            const p = allPersonnel[Number(selIdx)];
+            try {
+                await fetch(API_URL, {method:'POST', mode:'no-cors', body: JSON.stringify({
+                    action:'add_leave_entry',
+                    personnelName: personnelFullName(p),
+                    leaveType: leaveType,
+                    otherType: leaveType === 'Others' ? document.getElementById('leaveOtherTypeInput').value.trim() : '',
+                    dates: selectedLeaveDates,
+                    userName: localStorage.getItem('loggedInUser'),
+                    credential: localStorage.getItem('loggedCred') || ''
+                })});
+                closeLeaveModal();
+                customAlert("Leave entry saved successfully.", "Success");
+                setTimeout(loadLeaveEntries, 1200);
+            } catch (e) { customAlert("Failed to save leave entry.", "Error"); }
+        }
+        function deleteLeaveEntry(id) {
+            customConfirm("Delete this leave entry?", async (confirmed) => {
+                if (!confirmed) return;
+                try {
+                    await fetch(API_URL, {method:'POST', mode:'no-cors', body: JSON.stringify({
+                        action:'delete_leave_entry', id:id,
+                        userName: localStorage.getItem('loggedInUser'),
+                        credential: localStorage.getItem('loggedCred') || ''
+                    })});
+                    setTimeout(loadLeaveEntries, 1200);
+                } catch (e) {}
+            });
+        }
+
+        /* ---------- Area of Responsibilities ---------- */
+        async function loadAreas() {
+            try {
+                const res = await fetch(API_URL + "?action=get_areas&_ts=" + Date.now(), {cache:'no-store'});
+                const data = await res.json();
+                areas = (data.success && Array.isArray(data.areas)) ? data.areas : [];
+            } catch (e) { areas = []; }
+            renderAreaCards();
+        }
+        let areaDragId = null;
+        function renderAreaCards() {
+            const container = document.getElementById('areaCardsContainer');
+            if (!container) return;
+            if (!areas.length) {
+                container.innerHTML = `<div style="grid-column:1/-1;text-align:center;color:var(--text-muted);padding:40px;">No areas created yet.${canManagePersonnel()?' Click "Add Area" to create one and deploy personnel.':''}</div>`;
+                return;
+            }
+            const can = canManagePersonnel();
+            container.innerHTML = areas.map(a => `<div class="area-card glass-panel" draggable="${can?'true':'false'}" data-area-id="${escapeAttr(a.areaId)}"
+                onclick="openAreaDetails('${escapeAttr(a.areaId)}')" role="button" tabindex="0" aria-label="View details for ${escapeAttr(a.areaName)}"
+                ${can ? `ondragstart="areaCardDragStart(event, '${escapeAttr(a.areaId)}')" ondragover="areaCardDragOver(event)" ondragleave="areaCardDragLeave(event)" ondrop="areaCardDrop(event, '${escapeAttr(a.areaId)}')" ondragend="areaCardDragEnd(event)"` : ''}>
+                <div class="area-card-icon" aria-hidden="true">&#9635;</div>
+                <h4 style="margin:8px 0 4px;color:var(--primary);">${escapeHtml(a.areaName)}</h4>
+                <div style="font-size:12px;color:var(--text-muted);">${escapeHtml(a.camp||'PRO 1 Camp')}</div>
+                <div style="margin-top:10px;font-size:13px;"><strong>${a.personnel.length}</strong> personnel assigned</div>
+                <div style="margin-top:6px;font-size:11px;color:var(--text-muted);">${can ? 'Drag to reorder &bull; ' : ''}Click to view personnel in-charge</div>
+            </div>`).join('');
+        }
+        function areaCardDragStart(e, areaId) { areaDragId = String(areaId); e.currentTarget.classList.add('dragging'); try { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', areaId); } catch(err) {} }
+        function areaCardDragOver(e) { e.preventDefault(); e.currentTarget.classList.add('drag-over'); try { e.dataTransfer.dropEffect = 'move'; } catch(err) {} }
+        function areaCardDragLeave(e) { e.currentTarget.classList.remove('drag-over'); }
+        function areaCardDrop(e, targetId) {
+            e.preventDefault();
+            e.stopPropagation();
+            e.currentTarget.classList.remove('drag-over');
+            if (!areaDragId || areaDragId === String(targetId)) return;
+            const fromIdx = areas.findIndex(a => String(a.areaId) === areaDragId);
+            const toIdx = areas.findIndex(a => String(a.areaId) === String(targetId));
+            if (fromIdx < 0 || toIdx < 0) return;
+            const moved = areas.splice(fromIdx, 1)[0];
+            areas.splice(toIdx, 0, moved);
+            areaDragId = null;
+            renderAreaCards();
+            persistAreaOrder();
+        }
+        function areaCardDragEnd(e) {
+            areaDragId = null;
+            document.querySelectorAll('.area-card').forEach(el => { el.classList.remove('dragging'); el.classList.remove('drag-over'); });
+        }
+        async function persistAreaOrder() {
+            try {
+                await fetch(API_URL, {
+                    method:'POST', mode:'no-cors',
+                    body: JSON.stringify({
+                        action:'reorder_areas',
+                        orderedIds: areas.map(a => String(a.areaId)),
+                        userName: localStorage.getItem('loggedInUser'),
+                        credential: localStorage.getItem('loggedCred') || ''
+                    })
+                });
+            } catch (e) { /* order persists on next reload from backend */ }
+        }
+
+        function openAreaModal(editId) {
+            if (!canManagePersonnel()) { customAlert("Only Alpha Admin and Admin can manage areas.", "Permission Denied"); return; }
+            if (!allPersonnel || !allPersonnel.length) { loadPersonnel(); customAlert("Personnel data is still loading. Please try again in a moment.", "Loading"); return; }
+
+            editingAreaId = editId || null;
+            document.getElementById('areaModalTitle').innerText = editId ? 'Edit Area Personnel' : 'Add Area of Responsibility';
+            document.getElementById('areaNameInput').value = '';
+            document.getElementById('areaNameInput').disabled = !!editId;
+            document.getElementById('areaCampSelect').value = 'PRO 1 Camp';
+            let preselected = [];
+            if (editId) {
+                const a = areas.find(x => String(x.areaId) === String(editId));
+                if (a) {
+                    document.getElementById('areaNameInput').value = a.areaName || '';
+                    document.getElementById('areaCampSelect').value = a.camp || 'PRO 1 Camp';
+                    preselected = a.personnel || [];
+                }
+            }
+            renderAreaPersonnelChecklist(preselected);
+            updateAreaPersonnelCount();
+            document.getElementById('areaModal').classList.remove('hidden');
+        }
+        function closeAreaModal() { document.getElementById('areaModal').classList.add('hidden'); editingAreaId = null; }
+        function renderAreaPersonnelChecklist(preselected) {
+            const wrap = document.getElementById('areaPersonnelList');
+            if (!wrap) return;
+            const preNames = (preselected || []).map(m => personnelFullName(m));
+            wrap.innerHTML = allPersonnel.map((p, i) => {
+                const full = personnelFullName(p);
+                const checked = preNames.includes(full);
+                return `<label class="checklist-item"><input type="checkbox" class="area-personnel-cb" value="${i}" ${checked?'checked':''} onchange="updateAreaPersonnelCount()"> <span>${escapeHtml(full)}</span></label>`;
+            }).join('');
+        }
+        function updateAreaPersonnelCount() {
+            const cbs = document.querySelectorAll('.area-personnel-cb:checked');
+            const el = document.getElementById('areaPersonnelCount');
+            if (el) el.innerText = cbs.length;
+        }
+        async function saveArea() {
+            const name = document.getElementById('areaNameInput').value.trim();
+            const camp = document.getElementById('areaCampSelect').value;
+            if (!name) { customAlert("Area name is required.", "Validation"); return; }
+            const selected = [...document.querySelectorAll('.area-personnel-cb:checked')].map(cb => {
+                const p = allPersonnel[Number(cb.value)];
+                return {rank:p.rank, lastName:p.lastName, firstName:p.firstName, middleName:p.middleName, qualifiers:p.qualifiers};
+            });
+            try {
+                if (editingAreaId) {
+                    await fetch(API_URL, {method:'POST', mode:'no-cors', body: JSON.stringify({
+                        action:'update_area_personnel', areaId: editingAreaId, personnel: selected,
+                        userName: localStorage.getItem('loggedInUser'),
+                        credential: localStorage.getItem('loggedCred') || ''
+                    })});
+                } else {
+                    await fetch(API_URL, {method:'POST', mode:'no-cors', body: JSON.stringify({
+                        action:'add_area', areaName: name, camp: camp, personnel: selected,
+                        userName: localStorage.getItem('loggedInUser'),
+                        credential: localStorage.getItem('loggedCred') || ''
+                    })});
+                }
+                closeAreaModal();
+                closeAreaDetailsModal();
+                customAlert("Area saved successfully.", "Success");
+                setTimeout(loadAreas, 1200);
+            } catch (e) { customAlert("Failed to save area.", "Error"); }
+        }
+        function openAreaDetails(areaId) {
+            const a = areas.find(x => String(x.areaId) === String(areaId));
+            if (!a) return;
+            document.getElementById('areaDetailsTitle').innerText = a.areaName;
+            document.getElementById('areaDetailsCamp').innerText = `Camp: ${a.camp || 'PRO 1 Camp'} • Created by: ${a.createdBy || '—'}`;
+            const persWrap = document.getElementById('areaDetailsPersonnel');
+            if (!a.personnel || !a.personnel.length) {
+                persWrap.innerHTML = '<div style="color:var(--text-muted);font-size:13px;">No personnel assigned to this area yet.</div>';
+            } else {
+                persWrap.innerHTML = a.personnel.map((p, i) => `<div class="area-personnel-row">
+                    <span class="area-personnel-num">${i+1}</span>
+                    <span>${escapeHtml(personnelFullName(p))}</span>
+                </div>`).join('');
+            }
+            const can = canManagePersonnel();
+            document.getElementById('areaEditBtn').style.display = can ? '' : 'none';
+            document.getElementById('areaDeleteBtn').style.display = can ? '' : 'none';
+            document.getElementById('areaEditBtn').setAttribute('data-area-id', areaId);
+            document.getElementById('areaDeleteBtn').setAttribute('data-area-id', areaId);
+            document.getElementById('areaDetailsModal').classList.remove('hidden');
+        }
+        function closeAreaDetailsModal() { document.getElementById('areaDetailsModal').classList.add('hidden'); }
+        function editAreaFromDetails() {
+            const id = document.getElementById('areaEditBtn').getAttribute('data-area-id');
+            closeAreaDetailsModal();
+            openAreaModal(id);
+        }
+        function deleteAreaFromDetails() {
+            const id = document.getElementById('areaDeleteBtn').getAttribute('data-area-id');
+            customConfirm("Delete this area of responsibility and unassign all personnel?", async (confirmed) => {
+                if (!confirmed) return;
+                try {
+                    await fetch(API_URL, {method:'POST', mode:'no-cors', body: JSON.stringify({
+                        action:'delete_area', areaId:id,
+                        userName: localStorage.getItem('loggedInUser'),
+                        credential: localStorage.getItem('loggedCred') || ''
+                    })});
+                    closeAreaDetailsModal();
+                    setTimeout(loadAreas, 1200);
+                } catch (e) {}
+            });
+        }
+
+        /* ---------- User Access Control ---------- */
+        async function loadUserAccessMap() {
+            try {
+                const res = await fetch(`${API_URL}?action=get_user_access&password=${encodeURIComponent(sessionAdminPass)}`);
+                const data = await res.json();
+                if (data.success && data.accessMap) userAccessMap = data.accessMap;
+            } catch (e) { userAccessMap = {}; }
+        }
+        function openUserAccessModal(username) {
+            currentAccessUsername = username;
+            document.getElementById('userAccessUsername').innerText = username;
+            const current = userAccessMap[username] || [];
+            const wrap = document.getElementById('userAccessCheckboxes');
+            wrap.innerHTML = ACCESS_PAGES.map(p => `<label class="checklist-item">
+                <input type="checkbox" class="user-access-cb" value="${escapeAttr(p.key)}" ${current.includes(p.key)?'checked':''}>
+                <span>${escapeHtml(p.label)}</span>
+            </label>`).join('') + `<div style="font-size:11px;color:var(--text-muted);margin-top:6px;">Note: If no boxes are checked, the user retains full default access. Checking specific boxes restricts access to only those pages.</div>`;
+            document.getElementById('userAccessModal').classList.remove('hidden');
+        }
+        function closeUserAccessModal() { document.getElementById('userAccessModal').classList.add('hidden'); currentAccessUsername = null; }
+        async function saveUserAccess() {
+            const selected = [...document.querySelectorAll('.user-access-cb:checked')].map(cb => cb.value);
+            try {
+                await fetch(API_URL, {method:'POST', mode:'no-cors', body: JSON.stringify({
+                    action:'set_user_access', username: currentAccessUsername, access: selected,
+                    password: sessionAdminPass
+                })});
+                userAccessMap[currentAccessUsername] = selected;
+                closeUserAccessModal();
+                customAlert("Access permissions updated.", "Success");
+            } catch (e) { customAlert("Failed to save access permissions.", "Error"); }
+        }
+        function userHasAccess(pageKey) {
+            const user = localStorage.getItem('loggedInUser') || '';
+            if (user === ALPHA_ADMIN_NAME) return true;
+            const allowed = userAccessMap[user];
+            if (!allowed || !allowed.length) return true; // empty = full access
+            return allowed.includes(pageKey);
+        }
+        function applyAccessRestrictions() {
+            // Hide sidebar nav buttons for pages the user is not allowed to access.
+            const navMap = {
+                'dashboard':'btnDashboard', 'home':'btnHome', 'personnel':'btnPersonnel',
+                'activityManagement':'btnActivityManagement', 'settings':'btnSettings',
+                'adminMgmt':'btnAdminMgmt'
+            };
+            Object.keys(navMap).forEach(key => {
+                const btn = document.getElementById(navMap[key]);
+                if (btn) btn.style.display = userHasAccess(key) ? '' : 'none';
+            });
+        }
+
+        /* ---------- Squad Carousel: cover-flow + mouse wheel / drag scroll ---------- */
+        let squadDragState = null;
+        let squadDragged = false;
+        function initSquadCarouselInteractions() {
+            const c = document.getElementById('squadCarousel');
+            if (!c) return;
+            if (!c._squadFlowInit) {
+                // Vertical mouse wheel scrolls the carousel horizontally.
+                c.addEventListener('wheel', (e) => {
+                    if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+                        e.preventDefault();
+                        c.scrollLeft += e.deltaY;
+                    }
+                }, {passive: false});
+                // Drag-to-scroll with the mouse.
+                c.addEventListener('mousedown', (e) => {
+                    squadDragState = {startX: e.pageX, scrollLeft: c.scrollLeft};
+                    squadDragged = false;
+                    c.style.cursor = 'grabbing';
+                });
+                c.addEventListener('mouseleave', () => { squadDragState = null; c.style.cursor = ''; });
+                c.addEventListener('mouseup', () => { squadDragState = null; c.style.cursor = ''; });
+                c.addEventListener('mousemove', (e) => {
+                    if (!squadDragState) return;
+                    e.preventDefault();
+                    const dx = e.pageX - squadDragState.startX;
+                    if (Math.abs(dx) > 5) squadDragged = true;
+                    c.scrollLeft = squadDragState.scrollLeft - dx;
+                });
+                // Suppress the card-click detail modal after a drag gesture.
+                c.addEventListener('click', (e) => {
+                    if (squadDragged) { e.stopPropagation(); e.preventDefault(); }
+                    squadDragged = false;
+                }, true);
+                c.addEventListener('scroll', () => updateSquadCarouselFlow(), {passive: true});
+                window.addEventListener('resize', () => updateSquadCarouselFlow());
+                c._squadFlowInit = true;
+            }
+            updateSquadCarouselFlow();
+        }
+        function updateSquadCarouselFlow() {
+            const c = document.getElementById('squadCarousel');
+            if (!c) return;
+            const cards = c.querySelectorAll('.squad-card');
+            if (!cards.length) return;
+            const center = c.scrollLeft + c.clientWidth / 2;
+            const maxDist = c.clientWidth / 2 + 300;
+            cards.forEach(card => {
+                const cardCenter = card.offsetLeft + card.offsetWidth / 2;
+                const dist = Math.abs(cardCenter - center);
+                const ratio = Math.min(dist / maxDist, 1);
+                const scale = 1 - ratio * 0.20;       // centered card largest
+                const opacity = 1 - ratio * 0.40;
+                const z = 100 - Math.round(ratio * 90); // centered card in front
+                card.style.transform = `scale(${scale}) translateY(${ratio * 8}px)`;
+                card.style.opacity = opacity;
+                card.style.zIndex = z;
+                card.style.transition = 'transform 0.25s ease, opacity 0.25s ease, box-shadow 0.25s ease';
+                card.classList.toggle('squad-card-active', ratio < 0.18);
+            });
+        }
+
+        /* Leave modal: filter personnel dropdown by search query */
+        function filterLeavePersonnel(query) {
+            const sel = document.getElementById('leavePersonnelSelect');
+            if (!sel) return;
+            const q = String(query || '').toLowerCase().trim();
+            const prev = sel.value;
+            const opts = allPersonnel.map((p, i) => ({ idx: i, name: personnelFullName(p) }))
+                .filter(o => !q || o.name.toLowerCase().includes(q));
+            sel.innerHTML = '<option value="">Select personnel...</option>' + opts.map(o =>
+                `<option value="${o.idx}">${escapeHtml(o.name)}</option>`).join('');
+            if (prev !== '' && opts.some(o => String(o.idx) === String(prev))) sel.value = prev;
+        }
+
+        /* ---------- User Restriction (read-only mode) ---------- */
+        let userRestrictedMap = {};
+        async function loadUserRestrictions() {
+            try {
+                const res = await fetch(API_URL + "?action=get_user_restrictions&password=" + encodeURIComponent(sessionAdminPass) + "&_ts=" + Date.now(), {cache:'no-store'});
+                const data = await res.json();
+                userRestrictedMap = (data.success && data.restricted) ? data.restricted : {};
+            } catch(e) { userRestrictedMap = {}; }
+        }
+        function toggleUserRestriction(username, restrict) {
+            customConfirm(`${restrict ? 'RESTRICT (make read-only — cannot add/edit/modify anything)' : 'REMOVE restriction from'} user "${username}"?`, async (confirmed) => {
+                if (!confirmed) { loadAdminUsers(); return; }
+                try {
+                    await fetch(API_URL, {method:'POST', mode:'no-cors', body: JSON.stringify({
+                        action:'set_user_restriction', username: username, restricted: !!restrict,
+                        userName: localStorage.getItem('loggedInUser'), credential: localStorage.getItem('loggedCred') || ''
+                    })});
+                    customAlert(`User "${username}" ${restrict ? 'is now RESTRICTED (read-only).' : 'restriction removed.'}`, "Success");
+                    setTimeout(loadAdminUsers, 1200);
+                } catch(e) { customAlert("Failed to update restriction.", "Error"); }
+            });
+        }
+
