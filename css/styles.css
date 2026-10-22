@@ -1397,3 +1397,574 @@ body.dark-mode #tabProfile .settings-section {
     #tabProfile .profile-identity-card { padding: 18px 14px; }
     #tabProfile .settings-section > div[style*="display:flex"] { padding: 12px 14px; }
 }
+/* ============ SPADES ENHANCEMENTS STYLES ============ */
+
+/* Personnel sub-page navigation (single line) */
+.personnel-subnav {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding: 10px 14px;
+    background: var(--glass-bg);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    margin-bottom: 16px;
+    white-space: nowrap;
+}
+.personnel-subnav-btn {
+    width: auto;
+    margin: 0;
+    padding: 6px 12px;
+    font-size: 13px;
+    font-weight: 600;
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+.personnel-subnav-btn:hover { background: rgba(79,70,229,0.08); color: var(--primary); transform: none; }
+.personnel-subnav-btn.active { background: var(--primary); color: white; }
+.personnel-subnav-sep { color: var(--border-color); font-weight: 300; flex-shrink: 0; }
+
+.personnel-subpage { animation: fadeIn 0.25s ease; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+
+.subpage-controls {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+}
+.subpage-controls .personnel-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+
+/* Calendar */
+.duty-calendar-wrap { padding: 18px; background: var(--glass-bg); border-radius: var(--radius-lg); }
+.duty-calendar-header {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 14px; gap: 10px;
+}
+.duty-calendar-header .action-btn { margin: 0; padding: 4px 14px; font-size: 16px; font-weight: bold; }
+.duty-calendar-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 4px;
+}
+.duty-cal-day {
+    min-height: 72px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    padding: 4px 6px;
+    font-size: 11px;
+    background: rgba(255,255,255,0.5);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+.duty-cal-head {
+    min-height: auto;
+    border: none;
+    background: transparent;
+    font-weight: 700;
+    color: var(--primary);
+    text-align: center;
+    padding: 4px;
+    font-size: 12px;
+}
+.duty-cal-empty { background: transparent; border: 1px dashed var(--border-color); opacity: 0.4; }
+.duty-cal-weekend { background: rgba(245,158,11,0.08); }
+.duty-cal-today { border: 2px solid var(--primary); background: rgba(79,70,229,0.08); }
+.duty-cal-date { font-weight: 700; font-size: 12px; color: var(--text-main); }
+.duty-cal-personnel { font-size: 10px; color: var(--text-muted); margin-top: 2px; line-height: 1.3; word-break: break-word; }
+.leave-cal-has-leave { background: rgba(16,185,129,0.12); border-color: var(--success); }
+.leave-cal-label { font-size: 9px; color: var(--success); font-weight: 600; margin-top: 2px; line-height: 1.2; word-break: break-word; }
+
+/* Duty sequence list */
+.duty-sequence-list { display: flex; flex-direction: column; gap: 6px; }
+.duty-seq-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    background: rgba(0,0,0,0.02);
+}
+.duty-seq-pos {
+    width: 26px; height: 26px; border-radius: 50%;
+    background: var(--primary); color: white;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 700; flex-shrink: 0;
+}
+.duty-seq-name { flex: 1; font-weight: 600; font-size: 14px; }
+.duty-seq-controls { display: flex; gap: 4px; }
+
+/* BMI classification chips */
+.bmi-classification-summary { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+.bmi-class-chip {
+    padding: 4px 10px; border-radius: 20px; border: 1.5px solid;
+    font-size: 11px; font-weight: 600; background: rgba(255,255,255,0.6);
+}
+
+/* Data table (shared by sub-pages) */
+.data-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.data-table th {
+    background: var(--primary); color: white; padding: 10px 8px;
+    text-align: left; font-size: 12px; font-weight: 600;
+    position: sticky; top: 0;
+}
+.data-table td { padding: 8px; border-bottom: 1px solid var(--border-color); }
+.data-table tbody tr:hover { background: rgba(79,70,229,0.04); }
+.table-wrapper { overflow-x: auto; border: 1px solid var(--border-color); border-radius: var(--radius-md); background: var(--glass-bg); }
+
+/* Squad carousel */
+.squad-carousel-container {
+    display: flex; align-items: center; gap: 10px;
+}
+.squad-carousel {
+    flex: 1; display: flex; gap: 16px; overflow-x: auto;
+    scroll-behavior: smooth; padding: 10px 4px;
+    scroll-snap-type: x mandatory;
+}
+.squad-carousel-nav {
+    width: 40px; height: 40px; flex-shrink: 0; margin: 0;
+    border-radius: 50%; font-size: 20px; font-weight: bold;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--primary); color: white; border: none; cursor: pointer;
+}
+.squad-carousel-nav:hover { background: var(--primary-hover); }
+.squad-card {
+    min-width: 280px; max-width: 280px; padding: 18px;
+    scroll-snap-align: start; flex-shrink: 0;
+    border: 1px solid var(--border-color);
+}
+.squad-card-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.squad-member-count { font-size: 11px; background: var(--primary); color: white; padding: 2px 8px; border-radius: 12px; }
+.squad-members-wrap { display: flex; flex-wrap: wrap; gap: 5px; max-height: 120px; overflow-y: auto; }
+.squad-member-chip {
+    font-size: 11px; padding: 3px 8px; border-radius: 12px;
+    background: rgba(79,70,229,0.1); color: var(--primary); font-weight: 600;
+}
+
+/* Area cards */
+.area-cards-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 16px;
+}
+.area-card {
+    padding: 20px; border: 1px solid var(--border-color);
+    border-radius: var(--radius-md); cursor: pointer; text-align: center;
+    transition: transform 0.15s, box-shadow 0.15s;
+}
+.area-card:hover { transform: translateY(-3px); box-shadow: 0 8px 24px rgba(79,70,229,0.15); border-color: var(--primary); }
+.area-card-icon { font-size: 32px; color: var(--primary); line-height: 1; }
+.area-personnel-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 10px; border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm); background: rgba(0,0,0,0.02); font-size: 13px;
+}
+.area-personnel-num {
+    width: 22px; height: 22px; border-radius: 50%; background: var(--primary); color: white;
+    display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; flex-shrink: 0;
+}
+
+/* Checklist items (modals) */
+.checklist-item {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 8px; border-radius: var(--radius-sm); cursor: pointer;
+    font-size: 13px;
+}
+.checklist-item:hover { background: rgba(79,70,229,0.06); }
+.checklist-item input[type="checkbox"] { width: auto; margin: 0; cursor: pointer; }
+.checklist-item span { flex: 1; }
+
+/* Leave date chips */
+.leave-date-chip {
+    display: inline-flex; align-items: center;
+    background: var(--primary); color: white;
+    padding: 3px 8px; border-radius: 12px; font-size: 11px; font-weight: 600;
+}
+
+/* Pagination buttons (dashboard activity) */
+.page-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Dark mode overrides for new components */
+body.dark-mode .personnel-subnav { background: rgba(30,41,59,0.85); }
+body.dark-mode .personnel-subnav-btn { color: var(--text-muted); }
+body.dark-mode .personnel-subnav-btn:hover { background: rgba(255,255,255,0.08); color: var(--primary); }
+body.dark-mode .duty-cal-day { background: rgba(255,255,255,0.04); color: var(--text-main); }
+body.dark-mode .duty-cal-empty { background: transparent; }
+body.dark-mode .duty-cal-date { color: var(--text-main); }
+body.dark-mode .duty-seq-item { background: rgba(255,255,255,0.05); }
+body.dark-mode .bmi-class-chip { background: rgba(30,41,59,0.8); }
+body.dark-mode .data-table th { background: var(--primary); }
+body.dark-mode .squad-card { background: rgba(30,41,59,0.85); }
+body.dark-mode .squad-member-chip { background: rgba(129,140,248,0.2); color: var(--primary); }
+body.dark-mode .area-card { background: rgba(30,41,59,0.85); }
+body.dark-mode .area-personnel-row { background: rgba(255,255,255,0.05); }
+body.dark-mode .checklist-item:hover { background: rgba(255,255,255,0.08); }
+body.dark-mode .duty-calendar-wrap { background: rgba(30,41,59,0.85); }
+body.dark-mode .table-wrapper { background: rgba(30,41,59,0.85); }
+
+/* ============ ROUND 2 ENHANCEMENTS ============ */
+.bmi-name-link {
+    color: var(--primary);
+    cursor: pointer;
+    text-decoration: underline;
+    font-weight: 600;
+}
+.bmi-name-link:hover { color: var(--primary-hover); }
+
+/* Duty sequence drag-and-drop */
+.duty-seq-item { cursor: grab; }
+.duty-seq-item:active { cursor: grabbing; }
+.duty-seq-item.dragging { opacity: 0.4; border-style: dashed; }
+.duty-seq-item.drag-over { border-top: 3px solid var(--primary); }
+.duty-seq-drag-handle {
+    color: var(--text-muted);
+    font-size: 14px;
+    letter-spacing: -2px;
+    cursor: grab;
+    user-select: none;
+    flex-shrink: 0;
+}
+
+/* Area card drag-and-drop */
+.area-card { cursor: pointer; }
+.area-card[draggable="true"] { cursor: grab; }
+.area-card[draggable="true"]:active { cursor: grabbing; }
+.area-card.dragging { opacity: 0.4; border-style: dashed; }
+.area-card.drag-over { outline: 3px dashed var(--primary); outline-offset: 2px; }
+
+body.dark-mode .bmi-name-link { color: var(--primary); }
+
+/* ============ ROUND 3 ENHANCEMENTS ============ */
+/* Duty table: copy column buttons + ongoing highlight */
+.duty-copy-btn {
+    width: auto; margin: 0 0 0 6px; padding: 1px 6px; font-size: 10px;
+    background: rgba(255,255,255,0.25); color: white; border: 1px solid rgba(255,255,255,0.4);
+    border-radius: 4px; cursor: pointer; font-weight: 500;
+}
+.duty-copy-btn:hover { background: rgba(255,255,255,0.4); transform: none; }
+.duty-row-ongoing {
+    background: rgba(16,185,129,0.12) !important;
+    box-shadow: inset 3px 0 0 var(--success);
+}
+.duty-row-ongoing td { font-weight: 600; }
+
+/* Leave calendar: max reached */
+.leave-cal-max {
+    background: rgba(239,68,68,0.15) !important;
+    border-color: var(--danger) !important;
+}
+.leave-cal-max .leave-cal-label { color: var(--danger) !important; }
+
+/* Leave modal: clickable date picker calendar */
+#leavePickerCalendar { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+.leave-picker-head {
+    text-align: center; font-size: 11px; font-weight: 700; color: var(--primary);
+    padding: 4px 0;
+}
+.leave-picker-day {
+    text-align: center; padding: 6px 0; font-size: 12px; border-radius: 4px;
+    cursor: pointer; border: 1px solid transparent; user-select: none;
+}
+.leave-picker-day:hover:not(.empty) { background: rgba(79,70,229,0.1); }
+.leave-picker-day.empty { cursor: default; }
+.leave-picker-day.selected {
+    background: var(--primary); color: white; font-weight: 700;
+    border-color: var(--primary-hover);
+}
+
+/* BMI rank matrix table */
+.bmi-rank-matrix thead th { font-size: 11px; white-space: nowrap; }
+.bmi-rank-matrix tbody tr:nth-child(even) { background: rgba(79,70,229,0.03); }
+
+body.dark-mode .duty-row-ongoing { background: rgba(16,185,129,0.15) !important; }
+body.dark-mode .leave-picker-day:hover:not(.empty) { background: rgba(255,255,255,0.08); }
+
+/* ============ ROUND 4: SQUAD CAROUSEL COVER-FLOW ============ */
+.squad-carousel {
+    scroll-snap-type: none;
+    padding: 40px 140px;
+    align-items: center;
+    cursor: grab;
+    user-select: none;
+    -webkit-overflow-scrolling: touch;
+}
+.squad-carousel:active { cursor: grabbing; }
+.squad-carousel::-webkit-scrollbar { display: none; }
+.squad-carousel { scrollbar-width: none; -ms-overflow-style: none; }
+.squad-card {
+    transform-origin: center center;
+    transition: transform 0.3s ease, opacity 0.3s ease, box-shadow 0.3s ease;
+    will-change: transform, opacity;
+}
+.squad-card-active {
+    box-shadow: 0 18px 50px rgba(79, 70, 229, 0.30) !important;
+    border-color: var(--primary) !important;
+}
+body.dark-mode .squad-card-active {
+    box-shadow: 0 18px 50px rgba(129, 140, 248, 0.35) !important;
+}
+
+/* Round 4 fix: keep Squadding page fitted to window — prevent horizontal expansion */
+.squad-carousel-container { min-width: 0; max-width: 100%; overflow: hidden; }
+.squad-carousel { min-width: 0; padding: 20px 40px; max-width: 100%; }
+.personnel-subpage { overflow-x: hidden; max-width: 100%; }
+#subSquadding { overflow-x: hidden; }
+.squad-card { min-width: 240px; max-width: 240px; }
+
+/* ============ ROUND 5 ============ */
+/* Center Personnel sub-page navigation and controls */
+.personnel-subnav { justify-content: center; }
+.subpage-controls { justify-content: center; }
+.personnel-subpage .table-wrapper, .personnel-subpage .duty-calendar-wrap { max-width: 100%; }
+
+/* Squadding: remove carousel, use responsive card grid + hover animation */
+.squad-carousel-container { display: block; }
+.squad-carousel-nav { display: none !important; }
+.squad-carousel {
+    display: grid !important;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 16px;
+    overflow: visible !important;
+    padding: 10px !important;
+    cursor: default !important;
+    scroll-behavior: auto !important;
+    max-width: 100%;
+}
+.squad-card {
+    min-width: 0 !important;
+    max-width: none !important;
+    width: auto !important;
+    transform: none !important;
+    opacity: 1 !important;
+    z-index: auto !important;
+    transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease !important;
+}
+.squad-card:hover {
+    transform: translateY(-6px) scale(1.03) !important;
+    box-shadow: 0 16px 40px rgba(79, 70, 229, 0.28) !important;
+    border-color: var(--primary) !important;
+}
+.squad-card-active { box-shadow: none !important; border-color: var(--border-color) !important; }
+
+/* Leave modal: personnel search bar */
+.leave-personnel-search {
+    width: 100%;
+    margin-bottom: 8px;
+    padding: 8px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    font-size: 13px;
+}
+
+/* ============ ROUND 5: Modernize Settings & My Profile (CSS-only, preserves IDs/logic) ============ */
+#tabSettings .controls, #tabProfile .controls {
+    padding: 18px 22px;
+    background: linear-gradient(135deg, rgba(79,70,229,0.08), rgba(16,185,129,0.06));
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border-color);
+    margin-bottom: 18px;
+}
+#tabSettings .controls h2, #tabProfile .controls h2 {
+    display: flex; align-items: center; gap: 10px;
+}
+#tabSettings .controls h2::before {
+    content: "⚙"; font-size: 22px;
+    background: var(--primary); color: white;
+    width: 38px; height: 38px; border-radius: 10px;
+    display: inline-flex; align-items: center; justify-content: center;
+    box-shadow: 0 4px 14px rgba(79,70,229,0.35);
+}
+#tabProfile .controls h2::before {
+    content: "👤"; font-size: 20px;
+    background: linear-gradient(135deg, var(--primary), #7c3aed); color: white;
+    width: 38px; height: 38px; border-radius: 50%;
+    display: inline-flex; align-items: center; justify-content: center;
+    box-shadow: 0 4px 14px rgba(124,58,237,0.35);
+}
+.settings-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 18px;
+}
+.settings-section {
+    border-radius: var(--radius-lg);
+    padding: 20px 22px;
+    border-top: 3px solid var(--primary);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    position: relative;
+    overflow: hidden;
+}
+.settings-section:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 12px 32px rgba(79,70,229,0.15);
+}
+.settings-section h3 {
+    margin: 0 0 14px 0;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border-color);
+    font-size: 15px;
+    display: flex; align-items: center; gap: 8px;
+}
+.settings-section h3::before {
+    content: "";
+    width: 6px; height: 18px;
+    background: linear-gradient(180deg, var(--primary), #7c3aed);
+    border-radius: 3px;
+    display: inline-block;
+}
+.setting-row {
+    padding: 9px 0;
+    border-bottom: 1px dashed rgba(0,0,0,0.05);
+    transition: background 0.15s ease;
+    border-radius: 6px;
+}
+.setting-row:hover { background: rgba(79,70,229,0.04); padding-left: 6px; padding-right: 6px; }
+.setting-row:last-child { border-bottom: none; }
+body.dark-mode .setting-row { border-bottom-color: rgba(255,255,255,0.06); }
+body.dark-mode .setting-row:hover { background: rgba(255,255,255,0.05); }
+
+/* Profile identity card modernization */
+.profile-identity-card {
+    text-align: center;
+    background: linear-gradient(160deg, rgba(79,70,229,0.10), rgba(16,185,129,0.06));
+}
+.profile-avatar {
+    width: 76px !important; height: 76px !important;
+    background: linear-gradient(135deg, var(--primary), #7c3aed) !important;
+    color: white !important;
+    font-size: 30px !important; font-weight: 700 !important;
+    border-radius: 50% !important;
+    display: flex; align-items: center; justify-content: center;
+    margin: 0 auto 12px auto !important;
+    box-shadow: 0 8px 24px rgba(79,70,229,0.35);
+    border: 3px solid rgba(255,255,255,0.6);
+}
+.profile-display-name {
+    font-size: 18px; font-weight: 700; color: var(--text-main);
+}
+.profile-role-badge {
+    display: inline-block; margin-top: 6px;
+    padding: 4px 14px; border-radius: 20px;
+    background: var(--primary); color: white;
+    font-size: 11px; font-weight: 600; letter-spacing: 0.3px;
+}
+.profile-meta-list { margin-top: 14px; text-align: left; }
+.profile-meta-list > div {
+    display: flex; justify-content: space-between;
+    padding: 7px 0; border-bottom: 1px dashed rgba(0,0,0,0.06);
+    font-size: 13px;
+}
+.profile-meta-list > div span { color: var(--text-muted); }
+.profile-value { font-weight: 600; color: var(--text-main); }
+
+/* Modern toggle switches */
+.switch { position: relative; display: inline-block; width: 44px; height: 24px; }
+.switch input { opacity: 0; width: 0; height: 0; }
+.switch .slider {
+    position: absolute; cursor: pointer; inset: 0;
+    background: #cbd5e1; border-radius: 24px; transition: 0.25s;
+}
+.switch .slider::before {
+    content: ""; position: absolute; height: 18px; width: 18px;
+    left: 3px; bottom: 3px; background: white; border-radius: 50%; transition: 0.25s;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+}
+.switch input:checked + .slider { background: var(--primary); }
+.switch input:checked + .slider::before { transform: translateX(20px); }
+
+/* Modern select dropdowns in settings */
+.settings-section select {
+    padding: 7px 12px; border-radius: var(--radius-sm);
+    border: 1px solid var(--border-color);
+    background: var(--glass-bg);
+    font-size: 13px; cursor: pointer;
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+.settings-section select:hover { border-color: var(--primary); }
+.settings-section select:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(79,70,229,0.15); }
+
+body.dark-mode .settings-section { border-top-color: #818cf8; }
+body.dark-mode .settings-section select { background: rgba(30,41,59,0.8); color: var(--text-main); }
+
+/* ============ ROUND 6 ============ */
+/* 1. Memo Database recap: expand symmetrically when navigation is collapsed */
+.memo-summary-dashboard, .rhsu-summary-dashboard {
+    display: grid !important;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)) !important;
+    gap: 16px;
+    width: 100%;
+}
+.memo-summary-dashboard .rhsu-summary-panel {
+    min-width: 0;
+    width: 100%;
+    transition: all 0.25s ease;
+}
+.nav-collapsed .memo-summary-dashboard,
+.nav-collapsed .rhsu-summary-dashboard {
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)) !important;
+}
+.nav-collapsed .memo-summary-dashboard .rhsu-summary-panel {
+    padding: 24px;
+}
+
+/* 2. Global button redesign — modern, symmetrical width/height */
+button, .action-btn, .approve-btn, .delete-btn {
+    min-height: 38px;
+    padding: 8px 18px;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 13px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    transition: transform 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease, filter 0.15s ease;
+    cursor: pointer;
+    letter-spacing: 0.2px;
+}
+button:hover, .action-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 14px rgba(0,0,0,0.12);
+}
+button:active, .action-btn:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+}
+button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none !important;
+    box-shadow: none !important;
+}
+.approve-btn { background-color: var(--success); color: white; border: none; }
+.approve-btn:hover { background-color: var(--success-hover); filter: brightness(1.05); }
+.delete-btn { background-color: var(--danger); color: white; border: none; }
+.delete-btn:hover { background-color: var(--danger-hover); filter: brightness(1.05); }
+
+/* Exceptions: small / icon / square buttons keep compact size (still symmetrical) */
+.duty-copy-btn, .page-btn, .squad-carousel-nav, .activity-calendar-nav button,
+.duty-calendar-header .action-btn, .leave-picker-day, .bmi-rank-matrix button,
+.settings-section .action-btn[style*="padding:2px"], .action-btn[style*="font-size:10px"],
+.action-btn[style*="font-size:11px"] {
+    min-height: auto !important;
+    padding: 4px 10px !important;
+    font-size: 12px !important;
+}
+.squad-carousel-nav, .activity-calendar-nav button {
+    width: 36px !important;
+    height: 36px !important;
+    padding: 0 !important;
+    border-radius: 50% !important;
+}
+
+body.dark-mode button:hover, body.dark-mode .action-btn:hover {
+    box-shadow: 0 4px 14px rgba(0,0,0,0.4);
+}
