@@ -1968,3 +1968,576 @@ button:disabled {
 body.dark-mode button:hover, body.dark-mode .action-btn:hover {
     box-shadow: 0 4px 14px rgba(0,0,0,0.4);
 }
+
+/* ============ ROUND 7 ============ */
+/* 1. Center sub-page navigation; sub-page title row stays left/right split */
+.personnel-subnav { justify-content: center !important; }
+.subpage-controls { justify-content: space-between !important; }
+
+/* Memo table: ensure edit/delete button icons are visible */
+.memo-data-table .action-btn img, #memoTableBody .action-btn img, .activity-action-cell .action-btn img, table .action-btn img {
+    display: inline-block !important;
+    width: 14px !important; height: 14px !important;
+    filter: none !important;
+    opacity: 1 !important;
+    vertical-align: middle;
+}
+body.dark-mode table .action-btn img { filter: invert(1) !important; }
+
+/* BMI: no highlight/underline on names (still clickable) */
+.bmi-name-link {
+    color: inherit !important;
+    text-decoration: none !important;
+    font-weight: inherit !important;
+    cursor: pointer;
+}
+.bmi-name-link:hover { color: var(--primary) !important; }
+
+/* BMI entry form: semi-rounded input boxes */
+#bmiRecordModal input, #bmiRecordModal select {
+    border-radius: 12px !important;
+    padding: 10px 14px !important;
+    border: 1.5px solid var(--border-color);
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+#bmiRecordModal input:focus, #bmiRecordModal select:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(79,70,229,0.12);
+}
+
+/* BMI section group headers */
+.bmi-section-header {
+    background: linear-gradient(90deg, rgba(79,70,229,0.12), transparent);
+    font-weight: 700;
+    color: var(--primary);
+    padding: 8px 12px;
+    font-size: 13px;
+    border-left: 4px solid var(--primary);
+}
+
+/* Leave modal: personnel selection table */
+.leave-personnel-table {
+    max-height: 220px;
+    overflow-y: auto;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    margin-top: 6px;
+}
+.leave-personnel-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 12px;
+    cursor: pointer;
+    border-bottom: 1px solid var(--border-color);
+    font-size: 13px;
+    transition: background 0.12s;
+}
+.leave-personnel-row:hover { background: rgba(79,70,229,0.06); }
+.leave-personnel-row.selected {
+    background: rgba(79,70,229,0.12);
+    border-left: 3px solid var(--primary);
+    font-weight: 600;
+    color: var(--primary);
+}
+
+/* Personnel profile card modal */
+.profile-card-modal {
+    max-width: 440px !important;
+    text-align: center !important;
+    overflow: hidden !important;
+    padding: 0 !important;
+}
+.profile-card-banner {
+    height: 90px;
+    background: linear-gradient(135deg, var(--primary), #7c3aed);
+}
+.profile-card-avatar {
+    width: 84px; height: 84px; border-radius: 50%;
+    background: linear-gradient(135deg, #f59e0b, var(--primary));
+    color: white; font-size: 32px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+    margin: -44px auto 10px auto;
+    border: 4px solid var(--glass-bg);
+    box-shadow: 0 6px 20px rgba(0,0,0,0.2);
+}
+.profile-card-body { padding: 0 24px 20px 24px; text-align: left; }
+.profile-card-row {
+    display: flex; justify-content: space-between;
+    padding: 8px 0; border-bottom: 1px dashed var(--border-color);
+    font-size: 13px;
+}
+.profile-card-row span:first-child { color: var(--text-muted); }
+.profile-card-row span:last-child { font-weight: 600; text-align: right; }
+
+/* Facebook Meta-style redesign for Profile & Settings */
+#tabProfile .settings-section, #tabSettings .settings-section {
+    border-radius: 12px;
+    border: 1px solid var(--border-color);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    background: var(--glass-bg);
+}
+#tabProfile .settings-section h3, #tabSettings .settings-section h3 {
+    font-size: 16px;
+    font-weight: 700;
+    padding-bottom: 12px;
+}
+#tabProfile .controls, #tabSettings .controls {
+    background: var(--glass-bg);
+    border: 1px solid var(--border-color);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+body.dark-mode #tabProfile .settings-section, body.dark-mode #tabSettings .settings-section {
+    background: rgba(30,41,59,0.85);
+}
+
+/* ============ ROUND 9: Collapsed sidebar — bar stays static, only nav names animate ============ */
+/* The sidebar bar itself has NO animation: it rests at a fixed collapsed width
+   (icon-only) and never expands. Only the navigation names animate: hovering a
+   navigation icon slide-fades its label as a floating popout to the right. */
+@media (min-width: 993px) {
+    .sidebar.collapsed {
+        position: fixed;
+        left: 0;
+        top: 68px;
+        height: calc(100vh - 68px);
+        width: 78px;
+        padding: 18px 10px;
+        align-items: center;
+        z-index: 40;
+        overflow: visible;
+        transition: none;
+    }
+    .app-layout.nav-collapsed .main-content { margin-left: 78px; max-width: none; }
+
+    /* Brand title + version stay hidden while collapsed (not navigation names). */
+    .sidebar.collapsed .sidebar-header h1,
+    .sidebar.collapsed .sidebar-version { display: none !important; }
+    .sidebar.collapsed .sidebar-header { justify-content: center; padding-left: 0; padding-right: 0; }
+    .sidebar.collapsed .nav-icon { margin-right: 0; }
+
+    /* Navigation buttons: icon centered, label hidden at rest. */
+    .sidebar.collapsed .sidebar-btn {
+        position: relative;
+        overflow: visible;
+        justify-content: center;
+        padding-left: 0;
+        padding-right: 0;
+    }
+    .sidebar.collapsed .sidebar-btn .nav-text {
+        display: inline-block !important;
+        position: absolute;
+        left: calc(100% + 12px);
+        top: 50%;
+        transform: translateY(-50%) translateX(-8px);
+        background: #0b1f3a;
+        color: #ffffff;
+        padding: 7px 14px;
+        border-radius: 8px;
+        white-space: nowrap;
+        font-size: 13px;
+        font-weight: 600;
+        letter-spacing: .2px;
+        box-shadow: 4px 6px 18px rgba(2,8,23,.35);
+        border: 1px solid rgba(255,255,255,.12);
+        opacity: 0;
+        visibility: hidden;
+        pointer-events: none;
+        z-index: 80;
+        transition: opacity .22s ease, transform .28s cubic-bezier(.4,0,.2,1), visibility .22s;
+    }
+    /* Little arrow pointer on the popout. */
+    .sidebar.collapsed .sidebar-btn .nav-text::before {
+        content: '';
+        position: absolute;
+        left: -5px;
+        top: 50%;
+        transform: translateY(-50%) rotate(45deg);
+        width: 9px;
+        height: 9px;
+        background: #0b1f3a;
+        border-left: 1px solid rgba(255,255,255,.12);
+        border-bottom: 1px solid rgba(255,255,255,.12);
+    }
+    /* Hover on icon: slide-fade only the name in. Bar remains static. */
+    .sidebar.collapsed .sidebar-btn:hover .nav-text {
+        opacity: 1;
+        visibility: visible;
+        transform: translateY(-50%) translateX(0);
+        transition-delay: .05s;
+    }
+    body.dark-mode .sidebar.collapsed .sidebar-btn .nav-text { background: #0f172a; }
+    body.dark-mode .sidebar.collapsed .sidebar-btn .nav-text::before { background: #0f172a; }
+}
+
+
+/* ============ ROUND 10: Locked leave dates + Dashboard details strip ============ */
+/* Leave picker: dates that reached MAX_LEAVE_PER_DATE are locked (not selectable) */
+.leave-picker-day.locked {
+    background: repeating-linear-gradient(45deg, #f1f5f9, #f1f5f9 4px, #e2e8f0 4px, #e2e8f0 8px);
+    color: #94a3b8;
+    cursor: not-allowed;
+    pointer-events: none;
+    border: 1px dashed #cbd5e1;
+    flex-direction: column;
+    gap: 0;
+    line-height: 1.1;
+    opacity: .85;
+}
+.leave-picker-day.locked .leave-picker-day-num { font-weight: 700; font-size: 13px; text-decoration: line-through; }
+.leave-picker-day.locked .leave-picker-lock {
+    font-size: 8px;
+    font-weight: 800;
+    letter-spacing: .08em;
+    color: #dc2626;
+    background: rgba(220,38,38,.1);
+    padding: 1px 4px;
+    border-radius: 4px;
+    margin-top: 1px;
+}
+body.dark-mode .leave-picker-day.locked {
+    background: repeating-linear-gradient(45deg, #1e293b, #1e293b 4px, #0f172a 4px, #0f172a 8px);
+    border-color: #334155;
+    color: #64748b;
+}
+
+/* Dashboard operational details strip */
+.exec-details {
+    background: var(--glass-bg);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: 16px 18px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+.exec-details-title {
+    margin: 0 0 12px 0;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--primary);
+    letter-spacing: .02em;
+}
+.exec-details-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    gap: 10px;
+}
+.exec-detail-card {
+    background: rgba(100,116,139,.08);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    padding: 12px 10px;
+    text-align: center;
+    transition: transform .15s ease, box-shadow .15s ease;
+}
+.exec-detail-card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(2,8,23,.1); }
+.exec-detail-value {
+    font-size: 24px;
+    font-weight: 800;
+    color: var(--primary);
+    line-height: 1.1;
+}
+.exec-detail-label {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 4px;
+    font-weight: 600;
+    letter-spacing: .02em;
+}
+
+
+/* ============ ROUND 11: Dark-mode readability + Mobile bottom navigation ============ */
+/* Dark-mode contrast for dashboard details strip */
+body.dark-mode .exec-details { background: rgba(15,23,42,.9); border-color: rgba(255,255,255,.08); }
+body.dark-mode .exec-detail-card { background: rgba(148,163,184,.12); border-color: rgba(255,255,255,.08); }
+body.dark-mode .exec-detail-label { color: #94a3b8; }
+body.dark-mode .exec-detail-value { color: #60a5fa; }
+body.dark-mode .exec-details-title { color: #60a5fa; }
+body.dark-mode .leave-picker-day { background: rgba(30,41,59,.6); border-color: #334155; color: #e2e8f0; }
+body.dark-mode .leave-picker-day.selected { background: #2563eb; color: #fff; }
+
+/* Mobile: navigation moves to a fixed bottom bar; all details remain visible above it */
+@media (max-width: 768px) {
+    .sidebar {
+        position: fixed !important;
+        left: 0 !important;
+        right: 0 !important;
+        top: auto !important;
+        bottom: 0 !important;
+        width: 100% !important;
+        height: auto !important;
+        max-height: none !important;
+        flex-direction: row !important;
+        justify-content: space-around !important;
+        align-items: center !important;
+        padding: 6px 4px !important;
+        gap: 2px !important;
+        border-right: none !important;
+        border-top: 1px solid rgba(255,255,255,.1) !important;
+        box-shadow: 0 -4px 18px rgba(2,8,23,.25) !important;
+        z-index: 1000 !important;
+        overflow: visible !important;
+        transform: none !important;
+        transition: none !important;
+        background: #0b1f3a !important;
+    }
+    body.dark-mode .sidebar { background: #0f172a !important; }
+    .sidebar-header, .sidebar-version, .sidebar > div[style*="flex-grow"], .sidebar > div:empty { display: none !important; }
+    .sidebar-btn {
+        flex: 1 1 0;
+        flex-direction: column !important;
+        gap: 2px !important;
+        padding: 6px 2px !important;
+        margin: 0 !important;
+        border-radius: 10px !important;
+        min-height: 54px;
+        justify-content: center !important;
+        align-items: center !important;
+        overflow: visible !important;
+        background: transparent !important;
+    }
+    .sidebar-btn .nav-icon { margin-right: 0 !important; width: 22px !important; height: 22px !important; }
+    .sidebar .sidebar-btn .nav-text {
+        display: block !important;
+        opacity: 1 !important;
+        visibility: visible !important;
+        max-width: none !important;
+        font-size: 9px !important;
+        letter-spacing: 0 !important;
+        white-space: normal !important;
+        text-align: center;
+        line-height: 1.15;
+        position: static !important;
+        transform: none !important;
+        background: transparent !important;
+        color: #cbd5e1 !important;
+        padding: 0 !important;
+        box-shadow: none !important;
+        border: none !important;
+        pointer-events: auto !important;
+    }
+    .sidebar .sidebar-btn .nav-text::before { display: none !important; }
+    .sidebar-btn.active { background: rgba(255,255,255,.12) !important; }
+    .sidebar-btn.active .nav-text { color: #ffffff !important; font-weight: 700; }
+    .main-content { padding-bottom: 88px !important; }
+    .app-layout.nav-collapsed .main-content { margin-left: 0 !important; }
+    .top-bar-left > button { display: none !important; }
+    #chatbot-bubble, #usersChatMinimizedStack { bottom: 78px !important; }
+    .personnel-toolbar { flex-wrap: wrap; }
+    .exec-kpis { grid-template-columns: repeat(2, 1fr) !important; }
+    .exec-details-grid { grid-template-columns: repeat(2, 1fr) !important; }
+}
+
+
+/* ============ ROUND 12: BMI Add-Modal searchable personnel list ============ */
+.bmi-personnel-list {
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    max-height: 240px;
+    overflow-y: auto;
+    padding: 10px;
+    background: rgba(0,0,0,0.02);
+}
+body.dark-mode .bmi-personnel-list { background: rgba(255,255,255,.03); }
+.bmi-personnel-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 7px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    margin-bottom: 4px;
+    border: 1px solid transparent;
+    transition: background .12s ease, border-color .12s ease;
+}
+.bmi-personnel-item:hover { background: rgba(37,99,235,.07); }
+.bmi-personnel-item.selected {
+    background: rgba(37,99,235,.12);
+    border-color: #2563eb;
+}
+.bmi-personnel-name { font-size: 13px; color: var(--text-main); }
+.bmi-personnel-sec {
+    font-size: 10px;
+    color: var(--text-muted);
+    background: rgba(100,116,139,.12);
+    padding: 2px 6px;
+    border-radius: 4px;
+    white-space: nowrap;
+}
+
+
+/* ============ ROUND 13: Profile page redesign (cover + avatar) ============ */
+.pf-hero { padding: 0; overflow: hidden; margin-bottom: 18px; }
+.pf-cover {
+    position: relative;
+    height: 180px;
+    background-color: #0b1f3a;
+    background-image: url("../images/Spades%20Banner.png");
+    background-size: contain;
+    background-position: center;
+    background-repeat: no-repeat;
+    display: flex;
+    align-items: flex-end;
+    justify-content: flex-end;
+    padding: 12px;
+}
+.pf-cover-view { height: 140px; padding: 0; }
+.pf-cover-upload {
+    background: rgba(0,0,0,.55);
+    color: #fff;
+    border: 1px solid rgba(255,255,255,.25);
+    border-radius: 8px;
+    padding: 7px 14px;
+    font-size: 12px;
+    cursor: pointer;
+    backdrop-filter: blur(4px);
+}
+.pf-cover-upload:hover { background: rgba(0,0,0,.75); }
+.pf-cam-icon { margin-right: 4px; }
+.pf-hero-body {
+    position: relative;
+    display: flex;
+    align-items: flex-end;
+    gap: 18px;
+    flex-wrap: wrap;
+    padding: 0 22px 18px 22px;
+    margin-top: -44px;
+}
+.pf-avatar-wrap { position: relative; flex-shrink: 0; }
+.pf-avatar-img {
+    width: 96px; height: 96px; border-radius: 50%;
+    border: 4px solid var(--glass-bg, #fff);
+    object-fit: cover;
+    background: #e2e8f0;
+    display: none;
+}
+.pf-avatar-fallback {
+    width: 96px; height: 96px; border-radius: 50%;
+    border: 4px solid var(--glass-bg, #fff);
+    background: linear-gradient(135deg, #1e3a8a, #2563eb);
+    color: #fff; font-weight: 800; font-size: 38px;
+    display: flex; align-items: center; justify-content: center;
+}
+.pf-avatar-upload {
+    position: absolute; bottom: 2px; right: 2px;
+    width: 30px; height: 30px; border-radius: 50%;
+    background: #2563eb; color: #fff; border: 2px solid #fff;
+    cursor: pointer; font-size: 13px; line-height: 1;
+    display: flex; align-items: center; justify-content: center;
+    padding: 0;
+}
+.pf-hero-info { flex: 1; min-width: 180px; padding-bottom: 6px; }
+.pf-username { font-size: 13px; color: var(--text-muted); margin-bottom: 6px; }
+.pf-hero-stats { display: flex; gap: 22px; padding-bottom: 6px; flex-wrap: wrap; }
+.pf-stat { display: flex; align-items: center; gap: 8px; }
+.pf-stat-icon { font-size: 20px; opacity: .8; }
+.pf-stat strong { display: block; font-size: 18px; color: var(--primary); line-height: 1.1; }
+.pf-stat small { font-size: 11px; color: var(--text-muted); }
+.pf-body-grid { display: grid; grid-template-columns: 340px 1fr; gap: 18px; align-items: start; }
+.pf-left { padding: 18px; }
+.pf-right { display: flex; flex-direction: column; gap: 18px; }
+.pf-panel { padding: 18px; }
+.pf-view-modal { max-height: 90vh; overflow-y: auto; }
+@media (max-width: 900px) {
+    .pf-body-grid { grid-template-columns: 1fr; }
+    .pf-hero-stats { width: 100%; }
+}
+body.dark-mode .pf-avatar-fallback { border-color: #0f172a; }
+body.dark-mode .pf-avatar-img { border-color: #0f172a; background: #1e293b; }
+
+/* ============ ROUND 14: Profile layout/readability and responsive banner fixes ============ */
+#tabProfile { min-width: 0; }
+#tabProfile .pf-hero,
+#tabProfile .pf-body-grid,
+#tabProfile .pf-left,
+#tabProfile .pf-right,
+#tabProfile .pf-panel { min-width: 0; }
+
+/* Keep the static SPADES artwork centered and fully visible without stretching. */
+#tabProfile .pf-cover {
+    width: 100%;
+    height: clamp(190px, 24vw, 280px);
+    box-sizing: border-box;
+    background-color: #0b1f3a;
+    background-image: url("../images/Spades%20Banner.png");
+    background-size: contain;
+    background-position: center;
+    background-repeat: no-repeat;
+}
+
+#tabProfile .pf-hero-body {
+    display: grid;
+    grid-template-columns: 96px minmax(180px, 1fr) minmax(220px, auto);
+    align-items: end;
+    gap: 16px 20px;
+    margin-top: 0;
+    padding: 16px 22px 20px;
+}
+#tabProfile .pf-avatar-wrap { align-self: start; margin-top: -52px; z-index: 1; }
+#tabProfile .pf-avatar-img,
+#tabProfile .pf-avatar-fallback { box-sizing: border-box; }
+#tabProfile .pf-hero-info { min-width: 0; padding: 0 0 4px; overflow-wrap: anywhere; }
+#tabProfile #profileDisplayName { line-height: 1.25; overflow-wrap: anywhere; }
+#tabProfile .pf-username { overflow-wrap: anywhere; }
+#tabProfile .pf-hero-stats { min-width: 0; justify-content: flex-end; align-items: flex-end; gap: 14px 22px; padding: 0 0 4px; }
+#tabProfile .pf-stat { min-width: 0; max-width: 100%; }
+#tabProfile .pf-stat > div { min-width: 0; }
+#tabProfile .pf-stat small { display: block; line-height: 1.35; overflow-wrap: anywhere; }
+
+#tabProfile .pf-body-grid {
+    grid-template-columns: minmax(280px, 0.78fr) minmax(0, 1.5fr);
+    gap: 18px;
+}
+#tabProfile .pf-left,
+#tabProfile .pf-panel { box-sizing: border-box; }
+#tabProfile .pf-left h3,
+#tabProfile .pf-panel h3 { line-height: 1.35; overflow-wrap: anywhere; }
+#tabProfile .pf-left .setting-row {
+    display: grid;
+    grid-template-columns: minmax(95px, 0.75fr) minmax(0, 1.25fr);
+    align-items: start;
+    gap: 8px 14px;
+    padding: 11px 0;
+    line-height: 1.45;
+}
+#tabProfile .pf-left .setting-row > span:first-child { min-width: 0; }
+#tabProfile .pf-left .setting-row .profile-value,
+#tabProfile .pf-left .setting-row strong,
+#tabProfile .pf-left .setting-row > span:last-child {
+    min-width: 0;
+    text-align: right;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+#tabProfile #profileRecentMemos { min-width: 0; overflow-wrap: anywhere; }
+#tabProfile .pf-panel input,
+#tabProfile .pf-panel select,
+#tabProfile .pf-panel button { max-width: 100%; box-sizing: border-box; }
+
+@media (max-width: 1000px) {
+    #tabProfile .pf-hero-body {
+        grid-template-columns: 88px minmax(0, 1fr);
+        align-items: end;
+    }
+    #tabProfile .pf-avatar-wrap { margin-top: -48px; }
+    #tabProfile .pf-hero-stats {
+        grid-column: 1 / -1;
+        justify-content: flex-start;
+        padding-left: 2px;
+    }
+    #tabProfile .pf-body-grid { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 600px) {
+    #tabProfile .pf-cover { height: clamp(150px, 42vw, 210px); }
+    #tabProfile .pf-hero-body { grid-template-columns: 72px minmax(0, 1fr); gap: 12px; padding: 12px 14px 16px; }
+    #tabProfile .pf-avatar-wrap { margin-top: -42px; }
+    #tabProfile .pf-avatar-img,
+    #tabProfile .pf-avatar-fallback { width: 72px; height: 72px; font-size: 28px; }
+    #tabProfile .pf-avatar-upload { width: 26px; height: 26px; right: 0; bottom: 0; }
+    #tabProfile #profileDisplayName { font-size: 19px !important; }
+    #tabProfile .pf-hero-stats { gap: 12px 18px; }
+    #tabProfile .pf-stat-icon { font-size: 17px; }
+    #tabProfile .pf-stat strong { font-size: 16px; }
+    #tabProfile .pf-left,
+    #tabProfile .pf-panel { padding: 14px; }
+    #tabProfile .pf-left .setting-row { grid-template-columns: minmax(88px, .8fr) minmax(0, 1.2fr); gap: 6px 10px; font-size: 13px; }
+}

@@ -21,7 +21,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             // ,{ file: 'Alert.mp3', label: 'Alert' }
         ];
         const DEFAULT_NOTIFICATION_SOUND = 'Notif1.mp3';
-        const DEFAULT_USER_SETTINGS = { theme: 'Light', sidebar: 'Expanded', tableDisplay: 'Comfortable', liveNotif: true, notifSound: true, notificationSound: DEFAULT_NOTIFICATION_SOUND, recordsPerPage: '10', rememberSearch: false, showChatbot: true, autoOpenChatbot: false, autoLogout: 'Never', confirmLogout: true, fontSize: 'Default', reducedMotion: false, highContrast: false, autoRefresh: true, refreshInterval: '60', confirmActions: true, language: 'English', dateFormat: 'US', time24: false };
+        const DEFAULT_USER_SETTINGS = { theme: 'Light', sidebar: 'Collapsed', tableDisplay: 'Comfortable', liveNotif: true, notifSound: true, notificationSound: DEFAULT_NOTIFICATION_SOUND, recordsPerPage: '10', rememberSearch: false, showChatbot: true, autoOpenChatbot: false, autoLogout: 'Never', confirmLogout: true, fontSize: 'Default', reducedMotion: false, highContrast: false, autoRefresh: true, refreshInterval: '60', confirmActions: true, language: 'English', dateFormat: 'US', time24: false };
         let userSettings = { ...DEFAULT_USER_SETTINGS };
         let lastLogCount = 0;
         let liveActivityLogs = [];
@@ -171,7 +171,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
 
         function updateSettingsUI() {
             document.getElementById('setTheme').value = userSettings.theme || 'Light';
-            document.getElementById('setSidebar').value = userSettings.sidebar || 'Expanded';
+            document.getElementById('setSidebar').value = userSettings.sidebar || 'Collapsed';
             document.getElementById('setTableDisplay').value = userSettings.tableDisplay || 'Comfortable';
             document.getElementById('setLiveNotif').checked = userSettings.liveNotif;
             document.getElementById('setNotifSound').checked = userSettings.notifSound !== false;
@@ -245,9 +245,12 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             const sb = document.getElementById('navSidebar');
             const appLayout = document.getElementById('appLayout');
             if (window.innerWidth > 992) {
-                const collapsed = userSettings.sidebar === 'Collapsed';
-                if (collapsed) sb.classList.add('collapsed'); else sb.classList.remove('collapsed');
-                if (appLayout) appLayout.classList.toggle('nav-collapsed', collapsed);
+                // v8: sidebar rests collapsed (icon-only); labels slide-fade in on hover.
+                userSettings.sidebar = 'Collapsed';
+                sb.classList.add('collapsed');
+                if (appLayout) appLayout.classList.add('nav-collapsed');
+                const setSidebarSel = document.getElementById('setSidebar');
+                if (setSidebarSel) setSidebarSel.value = 'Collapsed';
             } else if (appLayout) {
                 appLayout.classList.remove('nav-collapsed');
             }
@@ -496,7 +499,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             box.innerHTML = users.map(u => {
                 return `<button type="button" class="chat-user-item" onclick="openUsersChatWindow('private','${escapeAttr(u.username)}')" role="menuitem">
                     <span class="chat-user-dot"></span>
-                    <span class="chat-user-name">${escapeHtml(u.name || u.username)} <span style="opacity:.6;">(${escapeHtml(u.username)})</span></span>
+                    <span class="chat-user-name">${escapeHtml(u.name || u.username)} <span style="opacity:.6;">(${escapeHtml(u.username)})</span> <small style="opacity:.75;margin-left:6px;cursor:pointer;text-decoration:underline;color:var(--primary);" onclick="event.stopPropagation();viewUserProfile('${escapeAttr(u.username)}')" title="View profile">view profile</small></span>
                 </button>`;
             }).join('');
         }
@@ -1132,6 +1135,80 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         function toggleAuthViews(viewId) { document.getElementById('loginPage').classList.add('hidden'); document.getElementById('registerPage').classList.add('hidden'); document.getElementById('appLayout').classList.add('hidden'); document.getElementById('mainTopBar').classList.add('hidden'); document.getElementById(viewId).classList.remove('hidden'); }
         function toggleInputType(inputId, type) { const input = document.getElementById(inputId); if (type === 'pin') { input.placeholder = "Enter 6-Digit PIN"; input.setAttribute("maxlength", "6"); } else { input.placeholder = "Enter Password"; input.removeAttribute("maxlength"); } input.value = ""; }
 
+        function applyProfilePhotos(profileUrl) {
+            const av = document.getElementById('profileAvatarImg');
+            const fb = document.getElementById('profileAvatarFallback');
+            if (!av || !fb) return;
+            if (profileUrl) {
+                // Set the fallback first, then reveal the image only after it loads successfully.
+                fb.style.display = 'flex';
+                av.onload = function () { av.style.display = 'block'; fb.style.display = 'none'; };
+                av.onerror = function () { av.style.display = 'none'; fb.style.display = 'flex'; };
+                av.src = profileUrl;
+            } else {
+                av.removeAttribute('src');
+                av.style.display = 'none';
+                fb.style.display = 'flex';
+            }
+        }
+        async function uploadProfilePhoto(type, inputEl) {
+            const file = inputEl.files && inputEl.files[0];
+            if (!file) return;
+            if (file.size > 4 * 1024 * 1024) { customAlert("Image too large. Please use an image under 4 MB.", "Validation"); inputEl.value=''; return; }
+            const reader = new FileReader();
+            reader.onload = async function(e) {
+                const payload = {
+                    action: 'upload_photo',
+                    username: localStorage.getItem('loggedInUser') || '',
+                    credential: localStorage.getItem('loggedCred') || '',
+                    photoType: 'profile',
+                    mime: file.type || 'image/jpeg',
+                    dataBase64: e.target.result
+                };
+                try {
+                    const res = await fetch(API_URL, { method:'POST', mode:'cors', headers:{'Content-Type':'text/plain'}, body: JSON.stringify(payload) });
+                    const data = await res.json();
+                    if (data && data.success && data.url) {
+                        applyProfilePhotos(data.url);
+                        customAlert('Profile photo updated successfully.', 'Success');
+                    } else {
+                        customAlert((data && data.error) ? data.error : 'Photo upload failed. Please try again.', 'Error');
+                    }
+                } catch (err) { customAlert('Photo upload failed. Please try again.', 'Error'); }
+                inputEl.value = '';
+            };
+            reader.readAsDataURL(file);
+        }
+        function renderProfileRecentMemos(username) {
+            const box = document.getElementById('profileRecentMemos');
+            if (!box) return;
+            const mine = (allMemos || []).filter(m => String(m[3]||'').trim() === username).slice(-5).reverse();
+            if (!mine.length) { box.innerHTML = '<span style="color:var(--text-muted);font-size:12px;">No memos created yet.</span>'; return; }
+            box.innerHTML = mine.map(m => `<div style="padding:7px 0;border-bottom:1px solid var(--border-color);display:flex;justify-content:space-between;gap:10px;"><span style="color:var(--text-main);">${escapeHtml(String(m[2]||'(no subject)'))}</span><span style="color:var(--text-muted);font-size:11px;white-space:nowrap;">${escapeHtml(String(m[0]||'').slice(0,10))}</span></div>`).join('');
+        }
+        async function viewUserProfile(username) {
+            try {
+                const res = await fetch(`${API_URL}?action=get_user_profile&username=${encodeURIComponent(username)}`);
+                const data = await res.json();
+                if (!data || !data.success || !data.profile) { customAlert('Profile not found.', 'Error'); return; }
+                const p = data.profile;
+                const fullName = [p.rank, p.firstName, p.middleName, p.lastName, p.qlf].filter(Boolean).join(' ') || p.username;
+                document.getElementById('viewProfileName').innerText = fullName;
+                document.getElementById('viewProfileUsername').innerText = p.username;
+                document.getElementById('viewProfileRole').innerText = p.role || 'Regular User';
+                document.getElementById('viewTotalMemos').innerText = (p.totalMemos != null) ? p.totalMemos : 0;
+                const av = document.getElementById('viewAvatarImg'); const fb = document.getElementById('viewAvatarFallback');
+                if (p.profilePhotoUrl) { av.src = p.profilePhotoUrl; av.style.display='block'; fb.style.display='none'; } else { av.style.display='none'; fb.style.display='flex'; fb.innerText = String(fullName.charAt(0)||'U').toUpperCase(); }
+                const cv = document.getElementById('viewCoverBanner');
+                if (p.coverPhotoUrl) cv.style.backgroundImage = `url("${p.coverPhotoUrl}")`; else cv.style.backgroundImage = '';
+                const fbInitial = document.getElementById('viewAvatarFallback'); if (fbInitial && !p.profilePhotoUrl) fbInitial.innerText = String(fullName.charAt(0)||'U').toUpperCase();
+                const rows = [['Rank', p.rank], ['First Name', p.firstName], ['Middle Name', p.middleName], ['Last Name', p.lastName], ['Qualifier', p.qlf], ['Email', p.email], ['Role', p.role], ['Total Memos', p.totalMemos]];
+                document.getElementById('viewProfileInfo').innerHTML = rows.map(([k,v]) => `<div class="setting-row" style="margin:0;"><span>${k}</span><span class="profile-value">${escapeHtml(v || '—')}</span></div>`).join('');
+                document.getElementById('userProfileViewModal').classList.remove('hidden');
+            } catch (err) { customAlert('Could not load profile.', 'Error'); }
+        }
+        function closeUserProfileView() { document.getElementById('userProfileViewModal').classList.add('hidden'); }
+
         async function populateProfileData() {
             const currentUser = localStorage.getItem('loggedInUser') || 'Unknown';
             document.getElementById('profUsername').innerText = currentUser;
@@ -1155,12 +1232,17 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 if (data.success && data.profile) {
                     const updateField = (id, val) => { const el = document.getElementById(id); el.innerText = val || 'Not Available'; if(val) el.style.color = 'var(--text-main)'; };
                     updateField('profRank', data.profile.rank); updateField('profFirstName', data.profile.firstName); updateField('profMiddleName', data.profile.middleName); updateField('profLastName', data.profile.lastName); updateField('profQlf', data.profile.qlf); updateField('profEmail', data.profile.email);
+                    applyProfilePhotos(data.profile.profilePhotoUrl);
+                    const pfFull = [data.profile.rank, data.profile.firstName, data.profile.middleName, data.profile.lastName, data.profile.qlf].filter(Boolean).join(' ');
+                    if (pfFull) { const dn2 = document.getElementById('profileDisplayName'); if (dn2) dn2.innerText = pfFull; const fb2 = document.getElementById('profileAvatarFallback'); if (fb2) fb2.innerText = String(pfFull.charAt(0)||'U').toUpperCase(); }
                 }
             } catch (err) {}
 
             let userMemos = 0; let lastAct = "Not Available";
             if (allMemos && allMemos.length > 0) { const userMemosArr = allMemos.filter(m => m[3] === currentUser); userMemos = userMemosArr.length; if(userMemos > 0) lastAct = userMemosArr[0][0]; }
             document.getElementById('profTotalMemos').innerText = userMemos; document.getElementById('profLastActivity').innerText = lastAct;
+            renderProfileRecentMemos(currentUser);
+            const fbMine = document.getElementById('profileAvatarFallback'); if (fbMine) fbMine.innerText = String((nameParts.join(' ') || currentUser).trim().charAt(0) || 'U').toUpperCase();
         }
 
         function switchTab(tabName) {
@@ -1485,8 +1567,8 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                         `<button class="action-btn delete-btn" onclick="adminDeleteUser('${safeUser}')">Delete</button>`);
                     
                     tbody.innerHTML += `<tr>
-                        <td>${u.rank || ''} ${u.name || ''}</td>
-                        <td>${u.username}</td>
+                        <td><span style="cursor:pointer;color:var(--primary);text-decoration:underline;" onclick="viewUserProfile('${safeUser}')" title="View full profile">${u.rank || ''} ${u.name || ''}</span></td>
+                        <td><span style="cursor:pointer;color:var(--primary);text-decoration:underline;" onclick="viewUserProfile('${safeUser}')" title="View full profile">${u.username}</span></td>
                         <td>${roleSelect}</td>
                         <td style="color:${isPending ? '#f59e0b' : 'var(--success)'}">${u.status || 'Active'}</td>
                         <td>${actionHtml}</td>
@@ -1586,13 +1668,21 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             const rankCounts = {};
             const sectionCounts = {};
             const detachedRankCounts = {};
+            const dsOtherRankCounts = {};
             const isDetached = p => String(p.section || '').trim().toLowerCase() === 'detached service';
+            const isDsOther = p => String(p.section || '').trim().toLowerCase() === 'ds to other office/unit';
 
-            // Detached Service personnel are intentionally excluded from the main totals/recapitulations.
+            // Detached Service and DS to Other Office/Unit personnel are intentionally
+            // excluded from the main totals/recapitulations and tracked separately.
             allPersonnel.forEach(p => {
                 if (isDetached(p)) {
                     const r = p.rank || 'Unspecified';
                     detachedRankCounts[r] = (detachedRankCounts[r] || 0) + 1;
+                    return;
+                }
+                if (isDsOther(p)) {
+                    const r = p.rank || 'Unspecified';
+                    dsOtherRankCounts[r] = (dsOtherRankCounts[r] || 0) + 1;
                     return;
                 }
 
@@ -1606,7 +1696,8 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             });
 
             const mainTotal = Object.values(counts).reduce((a,b)=>a+b,0);
-            document.getElementById('personnelTotal').innerText = mainTotal;
+            const dsOtherTotal = Object.values(dsOtherRankCounts).reduce((a,b)=>a+b,0);
+            document.getElementById('personnelTotal').innerText = mainTotal + dsOtherTotal;
             document.getElementById('personnelPNCO').innerText = counts.PNCO;
             document.getElementById('personnelPCO').innerText = counts.PCO;
             document.getElementById('personnelNUP').innerText = counts.NUP;
@@ -1639,6 +1730,16 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                   Object.keys(detachedRankCounts).sort(sortRanksHighestToLowest).map(r =>
                     `<div class="rank-chip"><span>${escapeHtml(r)}</span><strong>${detachedRankCounts[r]}</strong></div>`).join('')
                 : '<div style="color:var(--text-muted);font-size:13px;">No Detached Service personnel.</div>';
+
+            const dsOtherRecap=document.getElementById('dsOtherOfficeRecap');
+            if (dsOtherRecap) {
+                const dsOtherTotal=Object.values(dsOtherRankCounts).reduce((a,b)=>a+b,0);
+                dsOtherRecap.innerHTML = dsOtherTotal
+                    ? `<div class="rank-chip"><span>Total DS to Other Office/Unit</span><strong>${dsOtherTotal}</strong></div>` +
+                      Object.keys(dsOtherRankCounts).sort(sortRanksHighestToLowest).map(r =>
+                        `<div class="rank-chip"><span>${escapeHtml(r)}</span><strong>${dsOtherRankCounts[r]}</strong></div>`).join('')
+                    : '<div style="color:var(--text-muted);font-size:13px;">No DS to Other Office/Unit personnel.</div>';
+            }
         }
         function populatePersonnelFilters() {
             const ranks=[...new Set(allPersonnel.map(p=>String(p.rank||'').trim()).filter(Boolean))].sort();
@@ -1656,7 +1757,8 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             if (!select) return;
 
             // Preserve the existing/current section values from the backend while also
-            // ensuring Detached Service is always available as a selectable option.
+            // ensuring Detached Service and DS to Other Office/Unit are always available
+            // as selectable options.
             const current = String(select.value || '').trim();
             const sections = [...new Set(
                 allPersonnel
@@ -1666,6 +1768,9 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
 
             if (!sections.some(s => s.toLowerCase() === 'detached service')) {
                 sections.push('Detached Service');
+            }
+            if (!sections.some(s => s.toLowerCase() === 'ds to other office/unit')) {
+                sections.push('DS to Other Office/Unit');
             }
 
             select.innerHTML = '<option value="">Select Section...</option>' +
@@ -1716,10 +1821,16 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             const sortedRows = sortPersonnel(rows);
             const groups = new Map();
             let detached = [];
+            let dsOther = [];
             sortedRows.forEach(p => {
                 const section = String(p.section || '').trim() || 'Unspecified';
-                if (section.toLowerCase() === 'detached service') {
+                const secLower = section.toLowerCase();
+                if (secLower === 'detached service') {
                     detached.push(p);
+                    return;
+                }
+                if (secLower === 'ds to other office/unit') {
+                    dsOther.push(p);
                     return;
                 }
                 if (!groups.has(section)) groups.set(section, []);
@@ -1743,11 +1854,11 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 // pass the same personnel-management permission check used elsewhere.
                 const showRestoreAction = archived && (isAlphaAdmin() || localStorage.getItem('userRole') === 'Admin');
                 const bodyHtml = dataRows.map((p, index) => {
-                    const clickAction = archived ? `onclick="openArchivedPersonnelDetails(${Number(p.archiveRow)})"` : `onclick="editPersonnel(${Number(p.no)})"`;
+                    const clickAction = archived ? `onclick="openArchivedPersonnelDetails(${Number(p.archiveRow)})"` : `onclick="openPersonnelProfile(${Number(p.no)})"`;
                     const restoreActionCell = showRestoreAction
                         ? `<td class="personnel-actions-cell"><button type="button" class="action-btn approve-btn" title="Restore personnel" aria-label="Restore ${escapeAttr((p.rank||'')+' '+(p.firstName||'')+' '+(p.lastName||''))}" onclick="event.stopPropagation();restorePersonnel(${Number(p.archiveRow)})" style="font-size:12px;padding:6px 10px;width:auto;min-width:76px;height:auto;">↻ Restore</button></td>`
                         : '';
-                    return `<tr class="personnel-clickable-row" ${clickAction} tabindex="0" role="button" aria-label="View personnel ${escapeAttr((p.rank||'')+' '+(p.firstName||'')+' '+(p.lastName||''))}" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();${archived ? `openArchivedPersonnelDetails(${Number(p.archiveRow)})` : `editPersonnel(${Number(p.no)})`};}">
+                    return `<tr class="personnel-clickable-row" ${clickAction} tabindex="0" role="button" aria-label="View personnel ${escapeAttr((p.rank||'')+' '+(p.firstName||'')+' '+(p.lastName||''))}" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();${archived ? `openArchivedPersonnelDetails(${Number(p.archiveRow)})` : `openPersonnelProfile(${Number(p.no)})`};}">
                         <td>${index + 1}</td>
                         <td>${escapeHtml(p.rank)}</td>
                         <td>${escapeHtml(p.lastName)}</td>
@@ -1781,6 +1892,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             let activeHtml = '';
             orderedSections.forEach(section => { activeHtml += buildTable(section, groups.get(section)); });
             activeHtml += buildTable('Detached Service', detached);
+            activeHtml += buildTable('DS to Other Office/Unit', dsOther);
 
             const archivedSorted = sortPersonnel(archivedPersonnel || []);
             const archiveHtml = archivedSorted.length
@@ -2461,7 +2573,16 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             const perPage = Math.max(1, parseInt(userSettings.recordsPerPage,10) || 10);
             const totalPages = Math.ceil(filteredActivities.length / perPage) || 1;
             currentActivityPage = Math.min(Math.max(currentActivityPage,1),totalPages);
-            const rows = filteredActivities.slice((currentActivityPage-1)*perPage, currentActivityPage*perPage);
+            // Organize by date; ongoing activities always pinned at top.
+            const sortedActs = filteredActivities.slice().sort((a, b) => {
+                const stA = (a.status || activityStatusForDate(a.date) || '').toLowerCase();
+                const stB = (b.status || activityStatusForDate(b.date) || '').toLowerCase();
+                const aOn = stA === 'ongoing' ? 0 : 1;
+                const bOn = stB === 'ongoing' ? 0 : 1;
+                if (aOn !== bOn) return aOn - bOn;
+                return String(a.date || '').localeCompare(String(b.date || ''));
+            });
+            const rows = sortedActs.slice((currentActivityPage-1)*perPage, currentActivityPage*perPage);
 
             body.innerHTML = rows.length ? rows.map(a => {
                 const status = a.status || activityStatusForDate(a.date);
@@ -2585,9 +2706,13 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
 
         function renderExecutiveDashboard() {
             const totalMemos = allMemos.length;
-            const organicPersonnel = (allPersonnel || []).filter(p => String(p.section || '').trim().toLowerCase() !== 'detached service');
+            const organicPersonnel = (allPersonnel || []).filter(p => {
+                const s = String(p.section || '').trim().toLowerCase();
+                return s !== 'detached service' && s !== 'ds to other office/unit';
+            });
             const detachedPersonnel = (allPersonnel || []).filter(p => String(p.section || '').trim().toLowerCase() === 'detached service');
-            const totalPersonnel = organicPersonnel.length + detachedPersonnel.length;
+            const dsOtherPersonnel = (allPersonnel || []).filter(p => String(p.section || '').trim().toLowerCase() === 'ds to other office/unit');
+            const totalPersonnel = organicPersonnel.length + detachedPersonnel.length + dsOtherPersonnel.length;
             const totalActivities = (allActivities || []).length;
             const totalArchived = (archivedActivities || []).length;
 
@@ -2619,6 +2744,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             const personnelRecap = {
                 'Organic Personnel': organicPersonnel.length,
                 'Detached Service': detachedPersonnel.length,
+                'DS to Other Office/Unit': dsOtherPersonnel.length,
                 'Total Personnel': totalPersonnel,
                 'PNCO': groups.PNCO,
                 'PCO': groups.PCO,
@@ -2629,6 +2755,30 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
 
             const venues = execCountMap(allActivities, a => a.assignedVenue);
             execRenderList('execVenues', venues, totalActivities);
+
+            // Operational details strip
+            (function(){
+                const detailsEl = document.getElementById('execDetailsStrip');
+                if (!detailsEl) return;
+                const now = new Date();
+                const todayStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+                const ym = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+                let onLeaveToday = 0, onLeaveMonth = 0;
+                (leaveEntries || []).forEach(e => { (e.dates || []).forEach(d => { if (d === todayStr) onLeaveToday++; if (String(d).startsWith(ym)) onLeaveMonth++; }); });
+                let bmiUnhealthy = 0;
+                (bmiRecords || []).forEach(r => { const c = String(r.classification || '').toLowerCase(); if (c.indexOf('overweight') !== -1 || c.indexOf('obese') !== -1) bmiUnhealthy++; });
+                const cards = [
+                    ['On Leave Today', onLeaveToday],
+                    ['On Leave This Month', onLeaveMonth],
+                    ['Active Squads', (squads || []).length],
+                    ['Designated Areas', (areas || []).length],
+                    ['BMI Overweight/Obese', bmiUnhealthy],
+                    ['Archived Personnel', (archivedPersonnel || []).length]
+                ];
+                detailsEl.innerHTML = '<h3 class="exec-details-title">Operational Details</h3><div class="exec-details-grid">' +
+                    cards.map(c => `<div class="exec-detail-card"><div class="exec-detail-value">${c[1]}</div><div class="exec-detail-label">${c[0]}</div></div>`).join('') +
+                    '</div>';
+            })();
 
             renderExecActivityLogs();
 
@@ -2766,10 +2916,10 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                     <td><span style="font-weight: 500; color: var(--primary);">${memoStatus}</span></td>
                     <td style="white-space: nowrap;">
                         <button class="action-btn icon-action-btn" title="Edit Memo" aria-label="Edit Memo" onclick="initiateEdit('${row[2]}', '${safeSubject}', '${safeDestination}', '${memoStatus}')">
-                            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4l10.5-10.5a2.12 2.12 0 0 0 0-3L17.5 5a2.12 2.12 0 0 0-3 0L4 15.5V20zM13.5 6.5l4 4"/></svg>
+                            <img src="images/Edit.png" alt="Edit" style="width:16px;height:16px;filter:invert(1);display:block;">
                         </button>
                         <button class="action-btn delete-btn icon-action-btn" title="Delete Memo" aria-label="Delete Memo" onclick="triggerDelete('${row[2]}')">
-                            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M9 7V4h6v3M6 7l1 14h10l1-14"/></svg>
+                            <img src="images/Trash.png" alt="Delete" style="width:16px;height:16px;filter:invert(1);display:block;">
                         </button>
                     </td>
                 </tr>`;
@@ -3074,7 +3224,12 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         let leaveCalendarDate = new Date();
         let areas = [];
         let editingAreaId = null;
+        let areaPreselected = [];
+        let areaExcludeNames = null;
         let editingSquadId = null;
+        let squadPreselectedMembers = null;
+        let squadExcludeNames = null;
+        let squadEditingLeaderIdx = '';
         let selectedLeaveDates = [];
         let userAccessMap = {};
         let currentAccessUsername = null;
@@ -3456,9 +3611,24 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             const summary = document.getElementById('bmiClassificationSummary');
             if (!tbody) return;
             populateBmiPeriods();
+            // Populate autocomplete suggestions so the search automatically
+            // displays matching personnel names as you type.
+            (function(){
+                const dl = document.getElementById('bmiSearchSuggestions');
+                if (!dl) return;
+                const seen = {};
+                const opts = [];
+                allPersonnel.forEach(p => {
+                    const s = String(p.section || '').trim().toLowerCase();
+                    if (s === 'detached service') return;
+                    const n = personnelFullName(p);
+                    if (n && !seen[n]) { seen[n] = true; opts.push('<option value="' + escapeAttr(n) + '">'); }
+                });
+                dl.innerHTML = opts.join('');
+            })();
             const periodSel = document.getElementById('bmiPeriodSelect');
             const modeSel = document.getElementById('bmiViewMode');
-            const period = periodSel ? periodSel.value : '';
+            const period = (periodSel ? periodSel.value : '').trim();
             const mode = modeSel ? modeSel.value : 'monthly';
 
             const can = canManagePersonnel();
@@ -3468,8 +3638,8 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             // Filter BMI records by the selected period.
             let filteredRecords = bmiRecords.slice();
             if (period) {
-                if (mode === 'yearly') filteredRecords = filteredRecords.filter(r => String(r.period || '').startsWith(period));
-                else filteredRecords = filteredRecords.filter(r => String(r.period || '') === period);
+                if (mode === 'yearly') filteredRecords = filteredRecords.filter(r => String(r.period || '').trim().startsWith(period));
+                else filteredRecords = filteredRecords.filter(r => String(r.period || '').trim() === period);
             }
 
             const recordMap = new Map();
@@ -3480,16 +3650,27 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
 
             const classCounts = {};
             recordMap.forEach(r => { const c = r.bmiClassification || 'Unclassified'; classCounts[c] = (classCounts[c] || 0) + 1; });
+            const periodLabel = period ? (() => {
+                if (mode === 'yearly') return period;
+                const [yy, mm] = period.split('-');
+                const mN = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+                return `${mN[Number(mm)-1] || period} ${yy}`;
+            })() : (mode === 'yearly' ? 'All Years' : 'All Months');
             if (summary) {
-                summary.innerHTML = Object.keys(classCounts).sort().map(c =>
+                const chips = Object.keys(classCounts).sort().map(c =>
                     `<span class="bmi-class-chip" style="border-color:${bmiClassColor(c)};color:${bmiClassColor(c)};">${escapeHtml(c)}: <strong>${classCounts[c]}</strong></span>`
-                ).join('') || '<span style="font-size:12px;color:var(--text-muted);">No BMI records encoded yet for the selected period.</span>';
+                ).join('');
+                summary.innerHTML = `<span style="display:inline-block;margin-right:10px;font-size:12px;color:var(--text-muted);">Viewing: <strong style="color:var(--primary);">${escapeHtml(periodLabel)}</strong> — ${recordMap.size} record(s)</span>` +
+                    (chips || '<span style="font-size:12px;color:var(--text-muted);">No BMI records encoded yet for the selected period.</span>');
             }
 
             const rankOrder = { "PBGEN":1,"PCOL":2,"PLTCOL":3,"PMAJ":4,"PCPT":5,"PLT":6,"PEMS":7,"PCMS":8,"PSMS":9,"PMSG":10,"PSSG":11,"PCPL":12,"PAT":13,"NUP":14 };
-            const personnel = allPersonnel
+            let personnel = allPersonnel
                 .map((p, origIdx) => ({ p: p, origIdx: origIdx }))
-                .filter(x => String(x.p.section || '').trim().toLowerCase() !== 'detached service')
+                .filter(x => {
+                    const s = String(x.p.section || '').trim().toLowerCase();
+                    return s !== 'detached service';
+                })
                 .sort((a, b) => {
                     const va = rankOrder[String(a.p.rank || '').trim().toUpperCase()] || 99;
                     const vb = rankOrder[String(b.p.rank || '').trim().toUpperCase()] || 99;
@@ -3526,49 +3707,76 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 rankRecap.innerHTML = html;
             }
 
+            // Search filter
+            const searchQ = document.getElementById('bmiSearchInput') ? String(document.getElementById('bmiSearchInput').value).toLowerCase().trim() : '';
+            if (searchQ) {
+                personnel = personnel.filter(x => personnelFullName(x.p).toLowerCase().includes(searchQ) || String(x.p.section||'').toLowerCase().includes(searchQ));
+            }
+
             if (!personnel.length) {
-                tbody.innerHTML = `<tr><td colspan="11" style="text-align:center;color:var(--text-muted);padding:20px;">No personnel records available.</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="11" style="text-align:center;color:var(--text-muted);padding:20px;">No personnel records found.</td></tr>`;
                 return;
             }
 
-            tbody.innerHTML = personnel.map((x, i) => {
-                const p = x.p;
-                const key = [p.rank, p.lastName, p.firstName, p.middleName, p.qualifiers].map(s => String(s || '').trim()).join('|');
-                const rec = recordMap.get(key) || null;
-                const fullName = personnelFullName(p);
-                const nameCell = can
-                    ? `<td><span class="bmi-name-link" onclick="openBmiModalForPersonnel(${x.origIdx})" title="Click to encode / edit BMI record">${escapeHtml(fullName)}</span></td>`
-                    : `<td>${escapeHtml(fullName)}</td>`;
-                const actionCell = can
-                    ? (rec
-                        ? `<td><button class="action-btn delete-btn" style="margin:0;padding:4px 8px;font-size:11px;" onclick="event.stopPropagation();deleteBmiRecord('${escapeAttr(rec.id)}')">Del</button></td>`
-                        : `<td style="color:var(--text-muted);font-size:11px;">—</td>`)
-                    : '';
-                return `<tr>
-                    <td>${i + 1}</td>
-                    ${nameCell}
-                    <td>${rec ? escapeHtml(rec.age || '') : ''}</td>
-                    <td>${rec ? escapeHtml(rec.height || '') : ''}</td>
-                    <td>${rec ? escapeHtml(rec.weight || '') : ''}</td>
-                    <td>${rec ? escapeHtml(rec.waist || '') : ''}</td>
-                    <td>${rec ? escapeHtml(rec.hip || '') : ''}</td>
-                    <td>${rec ? escapeHtml(rec.wrist || '') : ''}</td>
-                    <td><strong>${rec ? escapeHtml(rec.bmiResult || '') : ''}</strong></td>
-                    <td style="color:${rec ? bmiClassColor(rec.bmiClassification) : 'var(--text-muted)'};font-weight:600;">${rec ? escapeHtml(rec.bmiClassification || '') : '<span style="font-size:11px;font-weight:400;">Not encoded</span>'}</td>
-                    ${actionCell}
-                </tr>`;
-            }).join('');
+            // Group by section with header rows
+            const sections = new Map();
+            personnel.forEach(x => {
+                const sec = String(x.p.section || '').trim() || 'Unspecified';
+                if (!sections.has(sec)) sections.set(sec, []);
+                sections.get(sec).push(x);
+            });
+            const sectionOrder = ['Admin Section','General Services Section','Special Services Band','Base Police'];
+            const orderedSecs = [];
+            sectionOrder.forEach(name => {
+                const actual = [...sections.keys()].find(k => k.toLowerCase() === name.toLowerCase());
+                if (actual) orderedSecs.push(actual);
+            });
+            [...sections.keys()].filter(k => !orderedSecs.includes(k)).sort().forEach(k => orderedSecs.push(k));
+
+            let rowNo = 1;
+            const htmlRows = [];
+            orderedSecs.forEach(sec => {
+                htmlRows.push(`<tr class="bmi-section-header"><td colspan="11">${escapeHtml(sec)} — ${sections.get(sec).length} personnel</td></tr>`);
+                sections.get(sec).forEach(x => {
+                    const p = x.p;
+                    const key = [p.rank, p.lastName, p.firstName, p.middleName, p.qualifiers].map(s => String(s || '').trim()).join('|');
+                    const rec = recordMap.get(key) || null;
+                    const fullName = personnelFullName(p);
+                    const nameCell = can
+                        ? `<td><span class="bmi-name-link" onclick="openBmiModalForPersonnel(${x.origIdx})" title="Click to encode / edit BMI record">${escapeHtml(fullName)}</span></td>`
+                        : `<td>${escapeHtml(fullName)}</td>`;
+                    const actionCell = can
+                        ? (rec
+                            ? `<td><button class="action-btn delete-btn" style="margin:0;padding:4px 8px;font-size:11px;" onclick="event.stopPropagation();deleteBmiRecord('${escapeAttr(rec.id)}')">Del</button></td>`
+                            : `<td style="color:var(--text-muted);font-size:11px;">—</td>`)
+                        : '';
+                    htmlRows.push(`<tr>
+                        <td>${rowNo++}</td>
+                        ${nameCell}
+                        <td>${rec ? escapeHtml(rec.age || '') : ''}</td>
+                        <td>${rec ? escapeHtml(rec.height || '') : ''}</td>
+                        <td>${rec ? escapeHtml(rec.weight || '') : ''}</td>
+                        <td>${rec ? escapeHtml(rec.waist || '') : ''}</td>
+                        <td>${rec ? escapeHtml(rec.hip || '') : ''}</td>
+                        <td>${rec ? escapeHtml(rec.wrist || '') : ''}</td>
+                        <td><strong>${rec ? escapeHtml(rec.bmiResult || '') : ''}</strong></td>
+                        <td style="color:${rec ? bmiClassColor(rec.bmiClassification) : 'var(--text-muted)'};font-weight:600;">${rec ? escapeHtml(rec.bmiClassification || '') : '<span style="font-size:11px;font-weight:400;">Not encoded</span>'}</td>
+                        ${actionCell}
+                    </tr>`);
+                });
+            });
+            tbody.innerHTML = htmlRows.join('');
         }
 
         function downloadBmiExcel() {
             const periodSel = document.getElementById('bmiPeriodSelect');
             const modeSel = document.getElementById('bmiViewMode');
-            const period = periodSel ? periodSel.value : '';
+            const period = (periodSel ? periodSel.value : '').trim();
             const mode = modeSel ? modeSel.value : 'monthly';
             let filteredRecords = bmiRecords.slice();
             if (period) {
-                if (mode === 'yearly') filteredRecords = filteredRecords.filter(r => String(r.period || '').startsWith(period));
-                else filteredRecords = filteredRecords.filter(r => String(r.period || '') === period);
+                if (mode === 'yearly') filteredRecords = filteredRecords.filter(r => String(r.period || '').trim().startsWith(period));
+                else filteredRecords = filteredRecords.filter(r => String(r.period || '').trim() === period);
             }
             const recordMap = new Map();
             filteredRecords.forEach(r => {
@@ -3577,14 +3785,39 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             });
             const rankOrder = { "PBGEN":1,"PCOL":2,"PLTCOL":3,"PMAJ":4,"PCPT":5,"PLT":6,"PEMS":7,"PCMS":8,"PSMS":9,"PMSG":10,"PSSG":11,"PCPL":12,"PAT":13,"NUP":14 };
             const personnel = allPersonnel
-                .filter(p => String(p.section || '').trim().toLowerCase() !== 'detached service')
+                .filter(p => {
+                    const s = String(p.section || '').trim().toLowerCase();
+                    return s !== 'detached service';
+                })
                 .sort((a, b) => (rankOrder[String(a.rank||'').toUpperCase()]||99) - (rankOrder[String(b.rank||'').toUpperCase()]||99) || String(a.lastName||'').localeCompare(String(b.lastName||'')));
             const escCsv = v => `"${String(v == null ? '' : v).replace(/"/g, '""')}"`;
-            let csv = '\uFEFFNo.,Rank/Full Name,Age,Height (cm),Weight (kg),Waist (cm),Hip (cm),Wrist (cm),BMI Result,BMI Classification\n';
-            personnel.forEach((p, i) => {
-                const key = [p.rank, p.lastName, p.firstName, p.middleName, p.qualifiers].map(s => String(s || '').trim()).join('|');
-                const rec = recordMap.get(key) || null;
-                csv += `${i+1},${escCsv(personnelFullName(p))},${rec?rec.age:''},${rec?rec.height:''},${rec?rec.weight:''},${rec?rec.waist:''},${rec?rec.hip:''},${rec?rec.wrist:''},${rec?rec.bmiResult:''},${escCsv(rec?rec.bmiClassification:'')}\n`;
+            // Group personnel by section with the same ordering used on-screen so the
+            // downloaded Excel/CSV carries the same section separation tables.
+            const sections = new Map();
+            personnel.forEach(p => {
+                const sec = String(p.section || '').trim() || 'Unspecified';
+                if (!sections.has(sec)) sections.set(sec, []);
+                sections.get(sec).push(p);
+            });
+            const sectionOrder = ['Admin Section','General Services Section','Special Services Band','Base Police'];
+            const orderedSecs = [];
+            sectionOrder.forEach(name => {
+                const actual = [...sections.keys()].find(k => k.toLowerCase() === name.toLowerCase());
+                if (actual) orderedSecs.push(actual);
+            });
+            [...sections.keys()].filter(k => !orderedSecs.includes(k)).sort().forEach(k => orderedSecs.push(k));
+
+            let csv = '\uFEFFNo.,Section,Rank/Full Name,Age,Height (cm),Weight (kg),Waist (cm),Hip (cm),Wrist (cm),BMI Result,BMI Classification\n';
+            let rowNo = 1;
+            orderedSecs.forEach(sec => {
+                const group = sections.get(sec);
+                csv += `${escCsv(sec + ' — ' + group.length + ' personnel')},,,,,,,,,,\n`;
+                group.forEach(p => {
+                    const key = [p.rank, p.lastName, p.firstName, p.middleName, p.qualifiers].map(s => String(s || '').trim()).join('|');
+                    const rec = recordMap.get(key) || null;
+                    csv += `${rowNo},${escCsv(p.section||'')},${escCsv(personnelFullName(p))},${rec?rec.age:''},${rec?rec.height:''},${rec?rec.weight:''},${rec?rec.waist:''},${rec?rec.hip:''},${rec?rec.wrist:''},${rec?rec.bmiResult:''},${escCsv(rec?rec.bmiClassification:'')}\n`;
+                    rowNo++;
+                });
             });
             const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
             const url = URL.createObjectURL(blob);
@@ -3604,15 +3837,15 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
 
             const periodSel = document.getElementById('bmiPeriodSelect');
             const modeSel = document.getElementById('bmiViewMode');
-            const period = periodSel ? periodSel.value : '';
+            const period = (periodSel ? periodSel.value : '').trim();
             const mode = modeSel ? modeSel.value : 'monthly';
 
             // Find the latest record for this person within the selected period.
             const pKey = personnelFullName(p);
             let candidates = bmiRecords.filter(r => personnelFullName(r) === pKey);
             if (period) {
-                if (mode === 'yearly') candidates = candidates.filter(r => String(r.period || '').startsWith(period));
-                else candidates = candidates.filter(r => String(r.period || '') === period);
+                if (mode === 'yearly') candidates = candidates.filter(r => String(r.period || '').trim().startsWith(period));
+                else candidates = candidates.filter(r => String(r.period || '').trim() === period);
             }
             candidates.sort((a, b) => String(b.period || '').localeCompare(String(a.period || '')));
             const rec = candidates[0] || null;
@@ -3623,6 +3856,11 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             sel.innerHTML = '<option value="">Select personnel...</option>' + allPersonnel.map((pp, i) =>
                 `<option value="${i}">${escapeHtml(personnelFullName(pp))}</option>`).join('');
             sel.value = String(origIdx);
+            const bmiLbl = document.getElementById('bmiPersonnelSelectedLabel');
+            if (bmiLbl && allPersonnel[Number(origIdx)]) { bmiLbl.style.display = 'block'; bmiLbl.innerText = 'Selected: ' + personnelFullName(allPersonnel[Number(origIdx)]); }
+            const bmiSrch = document.getElementById('bmiPersonnelSearch'); if (bmiSrch) bmiSrch.value = '';
+            const bmiFlt = document.getElementById('bmiPersonnelSectionFilter'); if (bmiFlt) bmiFlt.value = '';
+            renderBmiPersonnelList();
 
             ['bmiAge','bmiHeight','bmiWeight','bmiWaist','bmiHip','bmiWrist'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
             const periodInput = document.getElementById('bmiPeriodInput');
@@ -3663,6 +3901,12 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 `<option value="${i}">${escapeHtml(personnelFullName(p))}</option>`).join('');
             // Reset fields
             ['bmiAge','bmiHeight','bmiWeight','bmiWaist','bmiHip','bmiWrist'].forEach(id => { const el=document.getElementById(id); if(el) el.value=''; });
+            const bmiAddLbl = document.getElementById('bmiPersonnelSelectedLabel');
+            if (bmiAddLbl) { bmiAddLbl.style.display = 'none'; bmiAddLbl.innerText = ''; }
+            const bmiAddSrch = document.getElementById('bmiPersonnelSearch'); if (bmiAddSrch) bmiAddSrch.value = '';
+            const bmiAddFlt = document.getElementById('bmiPersonnelSectionFilter'); if (bmiAddFlt) bmiAddFlt.value = '';
+            if (sel) sel.value = '';
+            renderBmiPersonnelList();
             const now = new Date();
             const periodInput = document.getElementById('bmiPeriodInput');
             if (periodInput) periodInput.value = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
@@ -3685,7 +3929,48 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         }
         function editBmiRecord(id) { openBmiModal(id); }
         function closeBmiModal() { document.getElementById('bmiRecordModal').classList.add('hidden'); bmiEditingId = null; }
-        function fillBmiPersonnelDetails() { /* personnel selected from dropdown; fields remain manual entry */ }
+        function renderBmiPersonnelList() {
+            const list = document.getElementById('bmiPersonnelList');
+            if (!list) return;
+            const q = (document.getElementById('bmiPersonnelSearch') ? document.getElementById('bmiPersonnelSearch').value : '').toLowerCase().trim();
+            const secFilter = (document.getElementById('bmiPersonnelSectionFilter') ? document.getElementById('bmiPersonnelSectionFilter').value : '').toLowerCase();
+            const secSel = document.getElementById('bmiPersonnelSectionFilter');
+            if (secSel && secSel.options.length <= 1) {
+                const sections = [...new Set(allPersonnel.map(p => String(p.section || '').trim()).filter(Boolean))].sort();
+                secSel.innerHTML = '<option value="">All Sections</option>' + sections.map(s => `<option value="${escapeAttr(s)}">${escapeHtml(s)}</option>`).join('');
+            }
+            const sel = document.getElementById('bmiPersonnelSelect');
+            const selectedIdx = sel ? sel.value : '';
+            let count = 0;
+            let html = '';
+            allPersonnel.forEach((p, i) => {
+                const sec = String(p.section || '').trim() || 'Unspecified';
+                if (secFilter && sec.toLowerCase() !== secFilter) return;
+                const name = personnelFullName(p);
+                if (q && !name.toLowerCase().includes(q)) return;
+                count++;
+                const active = String(i) === selectedIdx;
+                html += `<div class="bmi-personnel-item${active ? ' selected' : ''}" data-idx="${i}" onclick="selectBmiPersonnel(${i})">
+                    <span class="bmi-personnel-name">${escapeHtml(name)}</span>
+                    <span class="bmi-personnel-sec">${escapeHtml(sec)}</span>
+                </div>`;
+            });
+            list.innerHTML = html || '<div style="text-align:center;color:var(--text-muted);font-size:12px;padding:14px;">No personnel found.</div>';
+            if (selectedIdx !== '') {
+                const el = list.querySelector('[data-idx="' + selectedIdx + '"]');
+                if (el) el.scrollIntoView({ block: 'nearest' });
+            }
+        }
+        function selectBmiPersonnel(idx) {
+            const sel = document.getElementById('bmiPersonnelSelect');
+            if (sel) sel.value = String(idx);
+            const p = allPersonnel[Number(idx)];
+            const label = document.getElementById('bmiPersonnelSelectedLabel');
+            if (label && p) { label.style.display = 'block'; label.innerText = 'Selected: ' + personnelFullName(p); }
+            renderBmiPersonnelList();
+            fillBmiPersonnelDetails();
+        }
+        function fillBmiPersonnelDetails() { /* personnel selected from list; fields remain manual entry */ }
         async function saveBmiRecord() {
             const selIdx = document.getElementById('bmiPersonnelSelect').value;
             const period = document.getElementById('bmiPeriodInput').value;
@@ -3746,6 +4031,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             }
             const can = canManagePersonnel();
             container.innerHTML = squads.map(s => {
+                const totalCount = (s.members ? s.members.length : 0) + (s.squadLeader ? 1 : 0);
                 const membersHtml = s.members.length
                     ? s.members.map(m => `<div class="squad-member-chip">${escapeHtml([m.rank,m.lastName].filter(Boolean).join(' '))}</div>`).join('')
                     : '<span style="font-size:12px;color:var(--text-muted);">No members assigned.</span>';
@@ -3756,7 +4042,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 return `<div class="squad-card glass-panel" onclick="openSquadDetails('${escapeAttr(s.squadId)}')" role="button" tabindex="0" aria-label="View ${escapeAttr(s.squadName)} details" style="cursor:pointer;">
                     <div class="squad-card-head">
                         <h4 style="margin:0;color:var(--primary);">${escapeHtml(s.squadName)}</h4>
-                        <span class="squad-member-count">${s.members.length} member${s.members.length===1?'':'s'}</span>
+                        <span class="squad-member-count">${totalCount} member${totalCount===1?'':'s'}</span>
                     </div>
                     <div style="font-size:12px;color:var(--text-muted);margin:6px 0 10px;">Leader: <strong style="color:var(--text-main);">${escapeHtml(s.squadLeader||'Not assigned')}</strong></div>
                     <div style="margin-top:10px;font-size:12px;color:var(--text-muted);">Click card to view full member list</div>
@@ -3770,10 +4056,15 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         }
         function squaddedPersonnelNames(excludeSquadId) {
             // Full names of personnel already assigned to any squad (optionally excluding one squad being edited).
+            // Includes both squad members and the designated squad leader.
             const names = new Set();
             squads.forEach(s => {
                 if (excludeSquadId && String(s.squadId) === String(excludeSquadId)) return;
                 (s.members || []).forEach(m => names.add(personnelFullName(m)));
+                if (s.squadLeader) {
+                    const leaderP = allPersonnel.find(p => personnelShortName(p) === String(s.squadLeader || '').trim());
+                    if (leaderP) names.add(personnelFullName(leaderP));
+                }
             });
             return names;
         }
@@ -3784,45 +4075,102 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             editingSquadId = editId || null;
             document.getElementById('squadModalTitle').innerText = editId ? 'Edit Squad' : 'Create Squad';
             document.getElementById('squadNameInput').value = '';
+
+            // Populate section filter dropdown
+            const secFilter = document.getElementById('squadSectionFilter');
+            if (secFilter) {
+                const secs = [...new Set(allPersonnel.map(p => String(p.section || '').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
+                secFilter.innerHTML = '<option value="">All Sections</option>' + secs.map(s => `<option value="${escapeAttr(s)}">${escapeHtml(s)}</option>`).join('');
+            }
+            const searchInput = document.getElementById('squadMemberSearch');
+            if (searchInput) searchInput.value = '';
+
             const leaderSel = document.getElementById('squadLeaderSelect');
             leaderSel.innerHTML = '<option value="">Select squad leader...</option>' + allPersonnel.map((p,i) => `<option value="${i}">${escapeHtml(personnelFullName(p))}</option>`).join('');
+            leaderSel.onchange = function(){ syncSquadSelectionFromCheckboxes(); renderSquadMemberChecklist(); updateSquadMemberCount(); };
+
             // When creating a new squad, personnel already in another squad are removed from the available list.
-            const excludeNames = editId ? null : squaddedPersonnelNames(null);
-            renderSquadMemberChecklist(editId ? [] : null, excludeNames);
+            squadExcludeNames = editId ? null : squaddedPersonnelNames(null);
+            squadPreselectedMembers = editId ? [] : null;
+            squadEditingLeaderIdx = '';
+
             if (editId) {
                 const s = squads.find(x => String(x.squadId) === String(editId));
                 if (s) {
                     document.getElementById('squadNameInput').value = s.squadName || '';
-                    const leaderIdx = allPersonnel.findIndex(p => personnelFullName(p) === personnelFullName(s.squadLeader ? {rank:(s.squadLeader.split(' ')[0]||''), lastName:(s.squadLeader.split(' ').slice(1).join(' ')||''), firstName:'', middleName:'', qualifiers:''} : {}));
-                    if (leaderIdx >= 0) leaderSel.value = leaderIdx;
-                    renderSquadMemberChecklist(s.members || [], null);
+                    // Robustly retain the currently designated squad leader: match by short name (Rank LastName).
+                    const leaderShort = String(s.squadLeader || '').trim();
+                    let leaderIdx = -1;
+                    if (leaderShort) {
+                        leaderIdx = allPersonnel.findIndex(p => personnelShortName(p) === leaderShort);
+                        if (leaderIdx < 0) {
+                            // Fallback: case-insensitive match
+                            leaderIdx = allPersonnel.findIndex(p => personnelShortName(p).toLowerCase() === leaderShort.toLowerCase());
+                        }
+                    }
+                    if (leaderIdx >= 0) {
+                        leaderSel.value = String(leaderIdx);
+                        squadEditingLeaderIdx = String(leaderIdx);
+                    }
+                    squadPreselectedMembers = s.members || [];
                 }
             }
+            renderSquadMemberChecklist();
             updateSquadMemberCount();
             document.getElementById('squadModal').classList.remove('hidden');
         }
-        function closeSquadModal() { document.getElementById('squadModal').classList.add('hidden'); editingSquadId = null; }
-        function renderSquadMemberChecklist(preselected, excludeNames) {
+        function closeSquadModal() { document.getElementById('squadModal').classList.add('hidden'); editingSquadId = null; squadPreselectedMembers = null; squadExcludeNames = null; squadEditingLeaderIdx = ''; }
+        function renderSquadMemberChecklist() {
             const wrap = document.getElementById('squadMemberList');
             if (!wrap) return;
-            const preNames = preselected ? preselected.map(m => personnelFullName(m)) : null;
-            const exclude = excludeNames || new Set();
+            const preNames = squadPreselectedMembers ? squadPreselectedMembers.map(m => personnelFullName(m)) : null;
+            const exclude = squadExcludeNames || new Set();
+
+            // Read live filter values
+            const searchQ = document.getElementById('squadMemberSearch') ? String(document.getElementById('squadMemberSearch').value).toLowerCase().trim() : '';
+            const secFilter = document.getElementById('squadSectionFilter') ? document.getElementById('squadSectionFilter').value : '';
+            // Currently selected leader is excluded from the member checklist to avoid double-counting.
+            const leaderSel = document.getElementById('squadLeaderSelect');
+            const leaderIdxVal = leaderSel ? leaderSel.value : '';
+            const leaderFull = leaderIdxVal !== '' ? personnelFullName(allPersonnel[Number(leaderIdxVal)]) : '';
+
             let excludedCount = 0;
             const items = [];
             allPersonnel.forEach((p, i) => {
                 const full = personnelFullName(p);
                 if (exclude.has(full)) { excludedCount++; return; }
+                if (leaderFull && full === leaderFull) return;
+                if (secFilter && String(p.section || '').trim() !== secFilter) return;
+                if (searchQ && !full.toLowerCase().includes(searchQ) && !String(p.section||'').toLowerCase().includes(searchQ)) return;
                 const checked = preNames ? preNames.includes(full) : false;
-                items.push(`<label class="checklist-item"><input type="checkbox" class="squad-member-cb" value="${i}" ${checked?'checked':''} onchange="updateSquadMemberCount()"> <span>${escapeHtml(full)}</span></label>`);
+                items.push(`<label class="checklist-item"><input type="checkbox" class="squad-member-cb" value="${i}" ${checked?'checked':''} onchange="updateSquadMemberCount()"> <span>${escapeHtml(full)}</span> <span style="font-size:11px;color:var(--text-muted);">(${escapeHtml(p.section||'—')})</span></label>`);
             });
             const note = excludedCount ? `<div style="font-size:11px;color:var(--text-muted);padding:6px;border-top:1px solid var(--border-color);margin-top:6px;">${excludedCount} personnel already assigned to another squad and excluded from this list.</div>` : '';
-            wrap.innerHTML = items.join('') + note;
+            wrap.innerHTML = items.length ? items.join('') + note : '<div style="font-size:12px;color:var(--text-muted);text-align:center;padding:10px;">No personnel match the current filters.</div>' + note;
+        }
+        function renderSquadMemberChecklistFromFilters() { syncSquadSelectionFromCheckboxes(); renderSquadMemberChecklist(); }
+        function syncSquadSelectionFromCheckboxes() {
+            // Preserve user checkbox selections across filter/search re-renders.
+            const visibleCbs = document.querySelectorAll('.squad-member-cb');
+            if (!visibleCbs.length) return;
+            const visibleIdxs = new Set([...visibleCbs].map(cb => Number(cb.value)));
+            const checkedIdxs = new Set([...document.querySelectorAll('.squad-member-cb:checked')].map(cb => Number(cb.value)));
+            const kept = (squadPreselectedMembers || []).filter(m => {
+                const idx = allPersonnel.findIndex(p => personnelFullName(p) === personnelFullName(m));
+                return idx < 0 || !visibleIdxs.has(idx);
+            });
+            const checked = [...checkedIdxs].map(i => {
+                const p = allPersonnel[i];
+                return {rank:p.rank, lastName:p.lastName, firstName:p.firstName, middleName:p.middleName, qualifiers:p.qualifiers};
+            });
+            squadPreselectedMembers = kept.concat(checked);
         }
         function openSquadDetails(squadId) {
             const s = squads.find(x => String(x.areaId || x.squadId) === String(squadId) || String(x.squadId) === String(squadId));
             if (!s) return;
             document.getElementById('squadDetailsTitle').innerText = s.squadName || 'Squad';
-            document.getElementById('squadDetailsLeader').innerHTML = `Squad Leader: <strong style="color:var(--text-main);">${escapeHtml(s.squadLeader || 'Not assigned')}</strong> &bull; ${s.members.length} member${s.members.length===1?'':'s'}`;
+            const totalCount = (s.members ? s.members.length : 0) + (s.squadLeader ? 1 : 0);
+            document.getElementById('squadDetailsLeader').innerHTML = `Squad Leader: <strong style="color:var(--text-main);">${escapeHtml(s.squadLeader || 'Not assigned')}</strong> &bull; ${totalCount} member${totalCount===1?'':'s'} (incl. leader)`;
             const membersWrap = document.getElementById('squadDetailsMembers');
             if (!s.members || !s.members.length) {
                 membersWrap.innerHTML = '<div style="color:var(--text-muted);font-size:13px;">No members assigned to this squad.</div>';
@@ -3863,18 +4211,21 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
 
         function updateSquadMemberCount() {
             const cbs = document.querySelectorAll('.squad-member-cb:checked');
+            const leaderSel = document.getElementById('squadLeaderSelect');
+            const leaderCount = (leaderSel && leaderSel.value !== '') ? 1 : 0;
             const el = document.getElementById('squadMemberCount');
-            if (el) el.innerText = cbs.length;
+            if (el) el.innerText = cbs.length + leaderCount;
         }
         async function saveSquad() {
             const name = document.getElementById('squadNameInput').value.trim();
             if (!name) { customAlert("Squad name is required.", "Validation"); return; }
+            syncSquadSelectionFromCheckboxes();
             const leaderIdx = document.getElementById('squadLeaderSelect').value;
             const leader = leaderIdx !== '' ? personnelShortName(allPersonnel[Number(leaderIdx)]) : '';
-            const selected = [...document.querySelectorAll('.squad-member-cb:checked')].map(cb => {
-                const p = allPersonnel[Number(cb.value)];
-                return {rank:p.rank, lastName:p.lastName, firstName:p.firstName, middleName:p.middleName, qualifiers:p.qualifiers};
-            });
+            // Use synced state so members hidden by search/section filters are preserved.
+            const selected = (squadPreselectedMembers || []).map(m => ({
+                rank:m.rank, lastName:m.lastName, firstName:m.firstName, middleName:m.middleName, qualifiers:m.qualifiers
+            }));
             try {
                 await fetch(API_URL, {method:'POST', mode:'no-cors', body: JSON.stringify({
                     action: editingSquadId ? 'update_squad' : 'create_squad',
@@ -3914,6 +4265,12 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             renderLeaveTable();
         }
         const MAX_LEAVE_PER_DATE = 5;
+        function leaveDateCount(dateStr) {
+            let c = 0;
+            (leaveEntries || []).forEach(e => { if ((e.dates || []).includes(dateStr)) c++; });
+            return c;
+        }
+        function isLeaveDateMaxed(dateStr) { return leaveDateCount(dateStr) >= MAX_LEAVE_PER_DATE; }
         let leavePickerDate = new Date();
 
         function shortLeaveName(fullName) {
@@ -3980,6 +4337,26 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                     `<span class="bmi-class-chip" style="border-color:var(--primary);color:var(--primary);">${escapeHtml(k)}: <strong>${counts[k]}</strong></span>`).join('')
                 : '<span style="font-size:12px;color:var(--text-muted);">No leave entries recorded.</span>';
         }
+        function formatLeaveDates(datesArr) {
+            // Group dates by month+year and render as (Month, D1, D2, ..., YYYY).
+            // Dates are stored as YYYY-MM-DD strings.
+            const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+            const groups = new Map();
+            (datesArr || []).forEach(d => {
+                const m = String(d || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+                if (!m) return;
+                const key = `${m[1]}-${m[2]}`;
+                if (!groups.has(key)) groups.set(key, { year: m[1], month: Number(m[2]), days: [] });
+                groups.get(key).days.push(Number(m[3]));
+            });
+            if (!groups.size) return '';
+            const parts = [...groups.keys()].sort().map(key => {
+                const g = groups.get(key);
+                const days = g.days.slice().sort((a,b)=>a-b).join(', ');
+                return `(${monthNames[g.month-1]}, ${days}, ${g.year})`;
+            });
+            return parts.join(', ');
+        }
         function renderLeaveTable() {
             const tbody = document.getElementById('leaveTableBody');
             if (!tbody) return;
@@ -3991,7 +4368,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             }
             tbody.innerHTML = leaveEntries.slice().reverse().map(e => {
                 const typeLabel = e.leaveType === 'Others' && e.otherType ? `Others (${e.otherType})` : e.leaveType;
-                const datesStr = (e.dates || []).join(', ');
+                const datesStr = formatLeaveDates(e.dates) || (e.dates || []).join(', ');
                 const actionCell = can ? `<td><button class="action-btn delete-btn" style="margin:0;padding:4px 8px;font-size:11px;" onclick="deleteLeaveEntry('${escapeAttr(e.id)}')">Delete</button></td>` : '';
                 return `<tr>
                     <td>${escapeHtml(e.personnelName)}</td>
@@ -4015,12 +4392,19 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             const firstDay = new Date(year, month, 1).getDay();
             const daysInMonth = new Date(year, month + 1, 0).getDate();
             const dayNames = ['S','M','T','W','T','F','S'];
+            const leaveMap = {};
+            (leaveEntries || []).forEach(e => { (e.dates || []).forEach(d => { leaveMap[d] = (leaveMap[d] || 0) + 1; }); });
             let html = dayNames.map(d => `<div class="leave-picker-head">${d}</div>`).join('');
             for (let i = 0; i < firstDay; i++) html += '<div class="leave-picker-day empty"></div>';
             for (let d = 1; d <= daysInMonth; d++) {
                 const dateStr = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
                 const selected = selectedLeaveDates.includes(dateStr);
-                html += `<div class="leave-picker-day ${selected?'selected':''}" onclick="toggleLeaveDate('${dateStr}')" role="button" title="${dateStr}">${d}</div>`;
+                const maxed = (leaveMap[dateStr] || 0) >= MAX_LEAVE_PER_DATE;
+                if (maxed) {
+                    html += `<div class="leave-picker-day locked" title="${dateStr} — Maximum allowable personnel (${MAX_LEAVE_PER_DATE}) on leave reached. Date locked."><span class="leave-picker-day-num">${d}</span><span class="leave-picker-lock">LOCK</span></div>`;
+                } else {
+                    html += `<div class="leave-picker-day ${selected?'selected':''}" onclick="toggleLeaveDate('${dateStr}')" role="button" title="${dateStr}">${d}</div>`;
+                }
             }
             grid.innerHTML = html;
         }
@@ -4029,6 +4413,10 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             renderLeavePickerCalendar();
         }
         function toggleLeaveDate(dateStr) {
+            if (!selectedLeaveDates.includes(dateStr) && isLeaveDateMaxed(dateStr)) {
+                customAlert(`Date ${dateStr} has reached the maximum allowable personnel (${MAX_LEAVE_PER_DATE}) on leave. This date is locked.`, 'Date Locked');
+                return;
+            }
             if (selectedLeaveDates.includes(dateStr)) {
                 selectedLeaveDates = selectedLeaveDates.filter(d => d !== dateStr);
             } else {
@@ -4051,8 +4439,12 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             document.getElementById('leaveDatePicker').value = '';
             selectedLeaveDates = [];
             leavePickerDate = new Date();
+            selectedLeavePersonnelIdx = '';
+            document.getElementById('leavePersonnelSelect').value = '';
+            const selEl = document.getElementById('leavePersonnelSelected'); if (selEl) { selEl.style.display='none'; selEl.innerText=''; }
             renderLeaveSelectedDates();
             renderLeavePickerCalendar();
+            renderLeavePersonnelTable('');
             document.getElementById('leaveEntryModal').classList.remove('hidden');
         }
         function closeLeaveModal() { document.getElementById('leaveEntryModal').classList.add('hidden'); }
@@ -4064,6 +4456,10 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         function addLeaveDate() {
             const val = document.getElementById('leaveDatePicker').value;
             if (!val) { customAlert("Please pick a date first.", "Validation"); return; }
+            if (isLeaveDateMaxed(val)) {
+                customAlert(`Date ${val} has reached the maximum allowable personnel (${MAX_LEAVE_PER_DATE}) on leave. This date is locked.`, 'Date Locked');
+                return;
+            }
             if (!selectedLeaveDates.includes(val)) {
                 selectedLeaveDates.push(val);
                 selectedLeaveDates.sort();
@@ -4082,7 +4478,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             wrap.innerHTML = selectedLeaveDates.map(d => `<span class="leave-date-chip">${escapeHtml(d)} <button type="button" onclick="removeLeaveDate('${escapeAttr(d)}')" style="background:none;border:none;color:inherit;cursor:pointer;padding:0;margin:0 0 0 4px;font-size:12px;width:auto;">×</button></span>`).join('');
         }
         async function saveLeaveEntry() {
-            const selIdx = document.getElementById('leavePersonnelSelect').value;
+            const selIdx = document.getElementById('leavePersonnelSelect').value || selectedLeavePersonnelIdx;
             const leaveType = document.getElementById('leaveTypeSelect').value;
             if (selIdx === '' || !leaveType) { customAlert("Please select personnel and leave type.", "Validation"); return; }
             if (leaveType === 'Others' && !document.getElementById('leaveOtherTypeInput').value.trim()) {
@@ -4191,29 +4587,76 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             document.getElementById('areaNameInput').value = '';
             document.getElementById('areaNameInput').disabled = !!editId;
             document.getElementById('areaCampSelect').value = 'PRO 1 Camp';
-            let preselected = [];
+
+            // Populate section filter dropdown
+            const secFilter = document.getElementById('areaSectionFilter');
+            if (secFilter) {
+                const secs = [...new Set(allPersonnel.map(p => String(p.section || '').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
+                secFilter.innerHTML = '<option value="">All Sections</option>' + secs.map(s => `<option value="${escapeAttr(s)}">${escapeHtml(s)}</option>`).join('');
+            }
+            const searchInput = document.getElementById('areaPersonnelSearch');
+            if (searchInput) searchInput.value = '';
+
+            // Exclude personnel already assigned to another area (when creating, or when editing exclude other areas only).
+            const assignedNames = new Set();
+            (areas || []).forEach(a => {
+                if (editId && String(a.areaId) === String(editId)) return;
+                (a.personnel || []).forEach(p => assignedNames.add(personnelFullName(p)));
+            });
+            areaExcludeNames = assignedNames;
+
+            areaPreselected = [];
             if (editId) {
                 const a = areas.find(x => String(x.areaId) === String(editId));
                 if (a) {
                     document.getElementById('areaNameInput').value = a.areaName || '';
                     document.getElementById('areaCampSelect').value = a.camp || 'PRO 1 Camp';
-                    preselected = a.personnel || [];
+                    areaPreselected = a.personnel || [];
                 }
             }
-            renderAreaPersonnelChecklist(preselected);
+            renderAreaPersonnelChecklist();
             updateAreaPersonnelCount();
             document.getElementById('areaModal').classList.remove('hidden');
         }
-        function closeAreaModal() { document.getElementById('areaModal').classList.add('hidden'); editingAreaId = null; }
-        function renderAreaPersonnelChecklist(preselected) {
+        function closeAreaModal() { document.getElementById('areaModal').classList.add('hidden'); editingAreaId = null; areaPreselected = []; areaExcludeNames = null; }
+        function renderAreaPersonnelChecklist() {
             const wrap = document.getElementById('areaPersonnelList');
             if (!wrap) return;
-            const preNames = (preselected || []).map(m => personnelFullName(m));
-            wrap.innerHTML = allPersonnel.map((p, i) => {
+            const preNames = (areaPreselected || []).map(m => personnelFullName(m));
+            const exclude = areaExcludeNames || new Set();
+            const searchQ = document.getElementById('areaPersonnelSearch') ? String(document.getElementById('areaPersonnelSearch').value).toLowerCase().trim() : '';
+            const secFilter = document.getElementById('areaSectionFilter') ? document.getElementById('areaSectionFilter').value : '';
+
+            let excludedCount = 0;
+            const items = [];
+            allPersonnel.forEach((p, i) => {
                 const full = personnelFullName(p);
-                const checked = preNames.includes(full);
-                return `<label class="checklist-item"><input type="checkbox" class="area-personnel-cb" value="${i}" ${checked?'checked':''} onchange="updateAreaPersonnelCount()"> <span>${escapeHtml(full)}</span></label>`;
-            }).join('');
+                const isPreselected = preNames.includes(full);
+                // Exclude personnel assigned to another area, but keep preselected ones.
+                if (!isPreselected && exclude.has(full)) { excludedCount++; return; }
+                if (secFilter && String(p.section || '').trim() !== secFilter) return;
+                if (searchQ && !full.toLowerCase().includes(searchQ) && !String(p.section||'').toLowerCase().includes(searchQ)) return;
+                const checked = isPreselected;
+                items.push(`<label class="checklist-item"><input type="checkbox" class="area-personnel-cb" value="${i}" ${checked?'checked':''} onchange="updateAreaPersonnelCount()"> <span>${escapeHtml(full)}</span> <span style="font-size:11px;color:var(--text-muted);">(${escapeHtml(p.section||'—')})</span></label>`);
+            });
+            const note = excludedCount ? `<div style="font-size:11px;color:var(--text-muted);padding:6px;border-top:1px solid var(--border-color);margin-top:6px;">${excludedCount} personnel already assigned to another area and excluded from this list.</div>` : '';
+            wrap.innerHTML = items.length ? items.join('') + note : '<div style="font-size:12px;color:var(--text-muted);text-align:center;padding:10px;">No personnel match the current filters.</div>' + note;
+        }
+        function renderAreaPersonnelChecklistFromFilters() { syncAreaSelectionFromCheckboxes(); renderAreaPersonnelChecklist(); }
+        function syncAreaSelectionFromCheckboxes() {
+            const visibleCbs = document.querySelectorAll('.area-personnel-cb');
+            if (!visibleCbs.length) return;
+            const visibleIdxs = new Set([...visibleCbs].map(cb => Number(cb.value)));
+            const checkedIdxs = new Set([...document.querySelectorAll('.area-personnel-cb:checked')].map(cb => Number(cb.value)));
+            const kept = (areaPreselected || []).filter(m => {
+                const idx = allPersonnel.findIndex(p => personnelFullName(p) === personnelFullName(m));
+                return idx < 0 || !visibleIdxs.has(idx);
+            });
+            const checked = [...checkedIdxs].map(i => {
+                const p = allPersonnel[i];
+                return {rank:p.rank, lastName:p.lastName, firstName:p.firstName, middleName:p.middleName, qualifiers:p.qualifiers};
+            });
+            areaPreselected = kept.concat(checked);
         }
         function updateAreaPersonnelCount() {
             const cbs = document.querySelectorAll('.area-personnel-cb:checked');
@@ -4224,10 +4667,11 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             const name = document.getElementById('areaNameInput').value.trim();
             const camp = document.getElementById('areaCampSelect').value;
             if (!name) { customAlert("Area name is required.", "Validation"); return; }
-            const selected = [...document.querySelectorAll('.area-personnel-cb:checked')].map(cb => {
-                const p = allPersonnel[Number(cb.value)];
-                return {rank:p.rank, lastName:p.lastName, firstName:p.firstName, middleName:p.middleName, qualifiers:p.qualifiers};
-            });
+            syncAreaSelectionFromCheckboxes();
+            // Use synced state so personnel hidden by search/section filters are preserved.
+            const selected = (areaPreselected || []).map(p => ({
+                rank:p.rank, lastName:p.lastName, firstName:p.firstName, middleName:p.middleName, qualifiers:p.qualifiers
+            }));
             try {
                 if (editingAreaId) {
                     await fetch(API_URL, {method:'POST', mode:'no-cors', body: JSON.stringify({
@@ -4257,7 +4701,9 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             if (!a.personnel || !a.personnel.length) {
                 persWrap.innerHTML = '<div style="color:var(--text-muted);font-size:13px;">No personnel assigned to this area yet.</div>';
             } else {
-                persWrap.innerHTML = a.personnel.map((p, i) => `<div class="area-personnel-row">
+                const archivedNames = (archivedPersonnel || []).map(ap => personnelFullName(ap));
+                const activePers = a.personnel.filter(p => !archivedNames.includes(personnelFullName(p)));
+                persWrap.innerHTML = activePers.map((p, i) => `<div class="area-personnel-row">
                     <span class="area-personnel-num">${i+1}</span>
                     <span>${escapeHtml(personnelFullName(p))}</span>
                 </div>`).join('');
@@ -4406,16 +4852,28 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         }
 
         /* Leave modal: filter personnel dropdown by search query */
+        let selectedLeavePersonnelIdx = '';
         function filterLeavePersonnel(query) {
-            const sel = document.getElementById('leavePersonnelSelect');
-            if (!sel) return;
+            renderLeavePersonnelTable(query);
+        }
+        function renderLeavePersonnelTable(query) {
+            const wrap = document.getElementById('leavePersonnelTable');
+            if (!wrap) return;
             const q = String(query || '').toLowerCase().trim();
-            const prev = sel.value;
-            const opts = allPersonnel.map((p, i) => ({ idx: i, name: personnelFullName(p) }))
-                .filter(o => !q || o.name.toLowerCase().includes(q));
-            sel.innerHTML = '<option value="">Select personnel...</option>' + opts.map(o =>
-                `<option value="${o.idx}">${escapeHtml(o.name)}</option>`).join('');
-            if (prev !== '' && opts.some(o => String(o.idx) === String(prev))) sel.value = prev;
+            const list = allPersonnel.map((p, i) => ({ idx: i, name: personnelFullName(p), section: p.section || '' }))
+                .filter(o => !q || o.name.toLowerCase().includes(q) || String(o.section||'').toLowerCase().includes(q));
+            if (!list.length) { wrap.innerHTML = '<div style="padding:12px;text-align:center;color:var(--text-muted);font-size:12px;">No personnel found.</div>'; return; }
+            wrap.innerHTML = list.map(o => `<div class="leave-personnel-row ${String(selectedLeavePersonnelIdx)===String(o.idx)?'selected':''}" onclick="selectLeavePersonnel(${o.idx})">
+                <span>${escapeHtml(o.name)}</span><span style="margin-left:auto;font-size:11px;color:var(--text-muted);">${escapeHtml(o.section||'')}</span>
+            </div>`).join('');
+        }
+        function selectLeavePersonnel(idx) {
+            selectedLeavePersonnelIdx = String(idx);
+            document.getElementById('leavePersonnelSelect').value = idx;
+            const p = allPersonnel[Number(idx)];
+            const selEl = document.getElementById('leavePersonnelSelected');
+            if (selEl) { selEl.style.display = 'block'; selEl.innerText = '✓ Selected: ' + personnelFullName(p); }
+            renderLeavePersonnelTable(document.getElementById('leavePersonnelSearch') ? document.getElementById('leavePersonnelSearch').value : '');
         }
 
         /* ---------- User Restriction (read-only mode) ---------- */
@@ -4439,5 +4897,40 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                     setTimeout(loadAdminUsers, 1200);
                 } catch(e) { customAlert("Failed to update restriction.", "Error"); }
             });
+        }
+
+        /* ---------- Personnel Profile Card Modal ---------- */
+        let profileCardPersonnelNo = null;
+        function openPersonnelProfile(no) {
+            const p = allPersonnel.find(x => String(x.no) === String(no));
+            if (!p) return;
+            profileCardPersonnelNo = no;
+            const fullName = personnelFullName(p);
+            document.getElementById('profileCardAvatar').innerText = (p.rank || 'U').charAt(0);
+            document.getElementById('profileCardName').innerText = fullName;
+            document.getElementById('profileCardDesignation').innerText = (p.designation || '—') + ' • ' + (p.section || '—');
+            const body = document.getElementById('profileCardBody');
+            const rows = [
+                ['Rank', p.rank || '—'],
+                ['Last Name', p.lastName || '—'],
+                ['First Name', p.firstName || '—'],
+                ['Middle Name', p.middleName || '—'],
+                ['Qualifier', p.qualifiers || '—'],
+                ['Designation', p.designation || '—'],
+                ['Section', p.section || '—'],
+                ['Status', p.status || 'Active'],
+                ['Contact No.', p.contactNo || '—'],
+                ['Remarks', p.remarks || '—']
+            ];
+            body.innerHTML = rows.map(r => `<div class="profile-card-row"><span>${r[0]}</span><span>${escapeHtml(String(r[1]))}</span></div>`).join('');
+            const can = canManagePersonnel();
+            document.getElementById('profileCardEditBtn').style.display = can ? '' : 'none';
+            document.getElementById('personnelProfileModal').classList.remove('hidden');
+        }
+        function closePersonnelProfile() { document.getElementById('personnelProfileModal').classList.add('hidden'); profileCardPersonnelNo = null; }
+        function editDetailsFromProfile() {
+            const no = profileCardPersonnelNo;
+            closePersonnelProfile();
+            if (no != null) editPersonnel(no);
         }
 

@@ -158,7 +158,7 @@
             
             <div style="flex-grow: 1;"></div>
             <div class="sidebar-version" aria-label="Application version and developer">
-                <div class="sidebar-version-number">v1.0.4</div>
+                <div class="sidebar-version-number">v1.0.3</div>
                 <div class="sidebar-developer">@ MC GANDIA</div>
                 <div class="sidebar-rights">All rights reserved to RHSU PRO 1</div>
             </div>
@@ -195,6 +195,8 @@
                     <div class="exec-kpi"><div class="label">Archived Activities</div><div class="value" id="execArchivedActivities">0</div><div class="sub">Archived activity records</div></div>
                     <div class="exec-kpi"><div class="label">Encoders</div><div class="value" id="execEncoderCount">0</div><div class="sub">Users with memo records</div></div>
                 </section>
+
+                <section class="exec-details" id="execDetailsStrip"></section>
 
                 <section class="exec-grid">
                     <div class="exec-card">
@@ -348,61 +350,115 @@
                     </div>
                     <button class="action-btn" onclick="populateProfileData()">Refresh Profile</button>
                 </div>
-                <div class="profile-options-grid settings-grid">
-                    <div class="settings-section glass-panel profile-identity-card">
-                        <div class="profile-avatar" id="profileAvatar">U</div>
-                        <h3 style="border-bottom:none;margin-bottom:4px;">Account Overview</h3>
-                        <div id="profileDisplayName" class="profile-display-name">User</div>
-                        <div id="profileRoleBadge" class="profile-role-badge">Regular User</div>
-                        <div class="profile-meta-list">
-                            <div><span>Username</span><strong id="profUsername"></strong></div>
-                            <div><span>Account Status</span><strong style="color:var(--success);">Active</strong></div>
+
+                <input type="file" id="avatarPhotoInput" accept="image/*" style="display:none;" onchange="uploadProfilePhoto('profile', this)">
+                <span id="profileAvatar" style="display:none;"></span>
+
+                <!-- PROFILE HERO: cover photo + avatar + name + stats -->
+                <div class="pf-hero glass-panel">
+                    <div class="pf-cover" id="profileCoverBanner" aria-label="SPADES static cover banner"></div>
+                    <div class="pf-hero-body">
+                        <div class="pf-avatar-wrap">
+                            <img id="profileAvatarImg" class="pf-avatar-img" src="" alt="Profile" onerror="this.style.display='none'; const fb=document.getElementById('profileAvatarFallback'); if(fb) fb.style.display='flex';">
+                            <span class="pf-avatar-fallback" id="profileAvatarFallback">U</span>
+                            <button type="button" class="pf-avatar-upload" onclick="document.getElementById('avatarPhotoInput').click()" title="Change profile photo">&#128247;</button>
+                        </div>
+                        <div class="pf-hero-info">
+                            <h2 id="profileDisplayName" style="margin:0 0 4px 0;color:var(--text-main);">User</h2>
+                            <div class="pf-username">@<span id="profUsername">user</span></div>
+                            <span id="profileRoleBadge" class="profile-role-badge">Regular User</span>
+                        </div>
+                        <div class="pf-hero-stats">
+                            <div class="pf-stat">
+                                <span class="pf-stat-icon">&#128196;</span>
+                                <div><strong id="profTotalMemos">0</strong><small>Total Memos Created</small></div>
+                            </div>
+                            <div class="pf-stat">
+                                <span class="pf-stat-icon">&#128197;</span>
+                                <div><strong id="profAccountCreated">—</strong><small>Account Created</small></div>
+                            </div>
                         </div>
                     </div>
-                    <div class="settings-section glass-panel">
-                        <h3>Personal Information</h3>
+                </div>
+
+                <div class="pf-body-grid">
+                    <!-- LEFT: Personal Information -->
+                    <div class="pf-left glass-panel">
+                        <h3 style="margin-top:0;">Personal Information</h3>
                         <div class="setting-row"><span>Rank</span> <span id="profRank" class="profile-value">Not Available</span></div>
                         <div class="setting-row"><span>First Name</span> <span id="profFirstName" class="profile-value">Not Available</span></div>
                         <div class="setting-row"><span>Middle Name</span> <span id="profMiddleName" class="profile-value">Not Available</span></div>
                         <div class="setting-row"><span>Last Name</span> <span id="profLastName" class="profile-value">Not Available</span></div>
                         <div class="setting-row"><span>Qualifier</span> <span id="profQlf" class="profile-value">Not Available</span></div>
                         <div class="setting-row"><span>Email Address</span> <span id="profEmail" class="profile-value">Not Available</span></div>
-                    </div>
-                    <div class="settings-section glass-panel">
-                        <h3>Account & Role</h3>
                         <div class="setting-row"><span>Assigned Role</span> <span id="profAccType" style="font-weight:600;color:var(--primary);"></span></div>
                         <div class="setting-row"><span>Access Level</span> <span id="profAccessLevel" class="profile-value">Standard</span></div>
-                        <div class="setting-row"><span>Profile Source</span> <span class="profile-value">RHSU User Database</span></div>
-                        <div class="setting-row"><span>Total Memos Created</span> <span id="profTotalMemos" style="font-weight:bold;color:var(--primary);">0</span></div>
+                        <div class="setting-row"><span>Account Status</span> <strong style="color:var(--success);">Active</strong></div>
                         <div class="setting-row"><span>Last Activity</span> <span id="profLastActivity" class="profile-value">Not Available</span></div>
                     </div>
-                    <div class="settings-section glass-panel">
-                        <h3>Security & Authentication</h3>
-                        <div style="margin-bottom:15px;">
-                            <label style="font-size:13px;color:var(--text-muted);display:block;margin-bottom:5px;">Change Username</label>
-                            <input type="text" id="newUsernameInput" placeholder="Enter new Username" style="margin:0;">
+
+                    <!-- RIGHT: recent memos + account/security/preferences -->
+                    <div class="pf-right">
+                        <div class="glass-panel pf-panel">
+                            <h3 style="margin-top:0;">Recent Memos Created</h3>
+                            <div id="profileRecentMemos" style="font-size:13px;"></div>
                         </div>
-                        <div style="margin-bottom:15px;">
-                            <label style="font-size:13px;color:var(--text-muted);display:block;margin-bottom:5px;">Change PIN / Password</label>
-                            <input type="password" id="newCredential" placeholder="Enter new PIN or Password" style="margin:0;">
+
+                        <div class="glass-panel pf-panel">
+                            <h3 style="margin-top:0;">Security &amp; Authentication</h3>
+                            <div style="margin-bottom:15px;">
+                                <label style="font-size:13px;color:var(--text-muted);display:block;margin-bottom:5px;">Change Username</label>
+                                <input type="text" id="newUsernameInput" placeholder="Enter new Username" style="margin:0;">
+                            </div>
+                            <div style="margin-bottom:15px;">
+                                <label style="font-size:13px;color:var(--text-muted);display:block;margin-bottom:5px;">Change PIN / Password</label>
+                                <input type="password" id="newCredential" placeholder="Enter new PIN or Password" style="margin:0;">
+                            </div>
+                            <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:15px;">
+                                <button style="flex:1;margin:0;min-width:150px;" onclick="updateProfile()">Save Account Changes</button>
+                                <button class="action-btn" style="flex:1;margin:0;min-width:150px;" onclick="clearProfileFields()">Clear Fields</button>
+                                <button class="delete-btn" style="flex:1;margin:0;min-width:150px;" onclick="attemptLogout()">Logout</button>
+                            </div>
                         </div>
-                        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:15px;">
-                            <button style="flex:1;margin:0;min-width:150px;" onclick="updateProfile()">Save Account Changes</button>
-                            <button class="action-btn" style="flex:1;margin:0;min-width:150px;" onclick="clearProfileFields()">Clear Fields</button>
-                            <button class="delete-btn" style="flex:1;margin:0;min-width:150px;" onclick="attemptLogout()">Logout</button>
+
+                        <div class="glass-panel pf-panel">
+                            <h3 style="margin-top:0;">Profile Preferences</h3>
+                            <div class="setting-row"><span>Profile Display</span><select id="profileDisplayDensity" onchange="saveProfilePreferences()" style="width:150px;margin:0;"><option value="Comfortable">Comfortable</option><option value="Compact">Compact</option></select></div>
+                            <div class="setting-row"><span>Show Activity Summary</span><label class="switch"><input type="checkbox" id="profileShowActivity" onchange="saveProfilePreferences()" checked><span class="slider"></span></label></div>
+                            <div class="setting-row"><span>Show Contact Details</span><label class="switch"><input type="checkbox" id="profileShowContact" onchange="saveProfilePreferences()" checked><span class="slider"></span></label></div>
+                        </div>
+
+                        <div class="glass-panel pf-panel">
+                            <h3 style="margin-top:0;">Session &amp; Account Actions</h3>
+                            <button class="action-btn" style="width:100%;margin:0 0 8px;" onclick="refreshSessionProfile()">Refresh Session Information</button>
+                            <button class="action-btn delete-btn" style="width:100%;margin:0;color:white;" onclick="attemptLogout()">Sign Out of Current Session</button>
                         </div>
                     </div>
-                    <div class="settings-section glass-panel">
-                        <h3>Profile Preferences</h3>
-                        <div class="setting-row"><span>Profile Display</span><select id="profileDisplayDensity" onchange="saveProfilePreferences()" style="width:150px;margin:0;"><option value="Comfortable">Comfortable</option><option value="Compact">Compact</option></select></div>
-                        <div class="setting-row"><span>Show Activity Summary</span><label class="switch"><input type="checkbox" id="profileShowActivity" onchange="saveProfilePreferences()" checked><span class="slider"></span></label></div>
-                        <div class="setting-row"><span>Show Contact Details</span><label class="switch"><input type="checkbox" id="profileShowContact" onchange="saveProfilePreferences()" checked><span class="slider"></span></label></div>
+                </div>
+            </div>
+
+            <!-- VIEW OTHER USER PROFILE MODAL -->
+            <div id="userProfileViewModal" class="modal-overlay hidden" style="z-index:2300;" role="dialog" aria-modal="true" onclick="if(event.target===this)closeUserProfileView()">
+                <div class="modal-content glass-panel pf-view-modal" style="max-width:720px;padding:0;overflow:hidden;">
+                    <div class="pf-cover pf-cover-view" id="viewCoverBanner">
+                        <button type="button" class="action-btn" onclick="closeUserProfileView()" style="position:absolute;top:12px;right:12px;margin:0;padding:6px 12px;background:rgba(0,0,0,.5);color:#fff;border:none;">× Close</button>
                     </div>
-                    <div class="settings-section glass-panel">
-                        <h3>Session & Account Actions</h3>
-                        <div class="setting-row"><span>Current Session</span><strong style="color:var(--success);">Active</strong></div>
-                        <button class="action-btn" style="width:100%;margin:0 0 8px;" onclick="refreshSessionProfile()">Refresh Session Information</button>
-                        <button class="action-btn delete-btn" style="width:100%;margin:0;color:white;" onclick="attemptLogout()">Sign Out of Current Session</button>
+                    <div style="padding:0 24px 24px 24px;">
+                        <div style="display:flex;align-items:flex-end;gap:16px;margin-top:-44px;flex-wrap:wrap;">
+                            <div class="pf-avatar-wrap" style="position:relative;margin:0;">
+                                <img id="viewAvatarImg" class="pf-avatar-img" style="width:88px;height:88px;border-width:4px;" src="" alt="Profile" onerror="this.style.display='none'; const fb=document.getElementById('profileAvatarFallback'); if(fb) fb.style.display='flex';">
+                                <span class="pf-avatar-fallback" id="viewAvatarFallback" style="width:88px;height:88px;font-size:34px;">U</span>
+                            </div>
+                            <div style="flex:1;min-width:180px;padding-bottom:6px;">
+                                <h2 id="viewProfileName" style="margin:0 0 4px 0;color:var(--text-main);">User</h2>
+                                <div class="pf-username">@<span id="viewProfileUsername">user</span></div>
+                                <span id="viewProfileRole" class="profile-role-badge">Regular User</span>
+                            </div>
+                            <div class="pf-hero-stats" style="padding-bottom:6px;">
+                                <div class="pf-stat"><span class="pf-stat-icon">&#128196;</span><div><strong id="viewTotalMemos">0</strong><small>Total Memos Created</small></div></div>
+                            </div>
+                        </div>
+                        <div id="viewProfileInfo" style="margin-top:18px;display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px 18px;"></div>
                     </div>
                 </div>
             </div>
@@ -472,6 +528,11 @@
                         </div>
 
                         <div class="settings-section glass-panel">
+                            <h3 style="margin-bottom:10px;">DS to Other Office/Unit Recapitulation</h3>
+                            <div id="dsOtherOfficeRecap" class="rank-recap"></div>
+                        </div>
+
+                        <div class="settings-section glass-panel">
                             <h3 style="margin-bottom:10px;">Recapitulation By Rank</h3>
                             <div id="personnelRankRecap" class="rank-recap"></div>
                         </div>
@@ -514,16 +575,18 @@
                             <h3 style="margin:0;color:var(--primary);">BMI Monitoring</h3>
                             <div style="font-size:12px;color:var(--text-muted);margin-top:4px;">Monthly and yearly BMI records of all personnel</div>
                         </div>
-                        <div class="personnel-actions">
-                            <select id="bmiPeriodSelect" onchange="renderBmiTable()" style="margin:0;padding:8px 12px;font-size:13px;border-radius:var(--radius-sm);border:1px solid var(--border-color);">
+                        <div class="personnel-actions" style="align-items:center;gap:8px;">
+                            <select id="bmiPeriodSelect" onchange="renderBmiTable()" style="margin:0;padding:8px 10px;font-size:13px;border-radius:var(--radius-sm);border:1px solid var(--border-color);height:36px;max-width:140px;">
                                 <option value="">Select Period...</option>
                             </select>
-                            <select id="bmiViewMode" onchange="renderBmiTable()" style="margin:0;padding:8px 12px;font-size:13px;border-radius:var(--radius-sm);border:1px solid var(--border-color);">
+                            <select id="bmiViewMode" onchange="renderBmiTable()" style="margin:0;padding:8px 10px;font-size:13px;border-radius:var(--radius-sm);border:1px solid var(--border-color);height:36px;max-width:110px;">
                                 <option value="monthly">Monthly</option>
                                 <option value="yearly">Yearly</option>
                             </select>
-                            <button class="action-btn approve-btn" id="bmiAddBtn" onclick="openBmiModal()" style="color:white;font-weight:bold;display:none;">＋ Add BMI Record</button>
-                            <button class="action-btn" id="bmiDownloadBtn" onclick="downloadBmiExcel()" style="margin:0;display:none;">⬇ Download Excel</button>
+                            <input type="text" id="bmiSearchInput" list="bmiSearchSuggestions" placeholder="Search personnel..." oninput="renderBmiTable()" style="margin:0;padding:8px 12px;font-size:13px;border-radius:var(--radius-sm);border:1px solid var(--border-color);width:200px;height:36px;box-sizing:border-box;">
+                            <datalist id="bmiSearchSuggestions"></datalist>
+                            <button class="action-btn approve-btn" id="bmiAddBtn" onclick="openBmiModal()" style="color:white;font-weight:bold;display:none;margin:0;height:36px;padding:0 14px;font-size:13px;box-sizing:border-box;">＋ Add BMI Record</button>
+                            <button class="action-btn" id="bmiDownloadBtn" onclick="downloadBmiExcel()" style="margin:0;display:none;height:36px;padding:0 14px;font-size:13px;box-sizing:border-box;">⬇ Download Excel</button>
                         </div>
                     </div>
                     <div id="bmiClassificationSummary" class="bmi-classification-summary"></div>
@@ -1027,6 +1090,7 @@
                     <option value="Special Services Band">Special Services Band</option>
                     <option value="Base Police">Base Police</option>
                     <option value="Detached Service">Detached Service</option>
+                    <option value="DS to Other Office/Unit">DS to Other Office/Unit</option>
                 </select>
                 <select id="pStatus" onchange="togglePersonnelRemarksFields()">
                     <option value="Active">Active</option>
@@ -1199,9 +1263,17 @@
             <div class="auth-grid" style="grid-template-columns:1fr 1fr;gap:12px;">
                 <div class="full-width">
                     <label style="font-size:13px;font-weight:600;">Personnel</label>
-                    <select id="bmiPersonnelSelect" onchange="fillBmiPersonnelDetails()" style="width:100%;">
+                    <select id="bmiPersonnelSelect" onchange="fillBmiPersonnelDetails()" style="display:none;">
                         <option value="">Select personnel...</option>
                     </select>
+                    <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
+                        <input type="text" id="bmiPersonnelSearch" placeholder="Search personnel..." oninput="renderBmiPersonnelList()" style="flex:1;min-width:160px;margin:0;padding:8px 12px;font-size:13px;border-radius:var(--radius-sm);border:1px solid var(--border-color);">
+                        <select id="bmiPersonnelSectionFilter" onchange="renderBmiPersonnelList()" style="margin:0;padding:8px 12px;font-size:13px;border-radius:var(--radius-sm);border:1px solid var(--border-color);min-width:160px;">
+                            <option value="">All Sections</option>
+                        </select>
+                    </div>
+                    <div id="bmiPersonnelSelectedLabel" style="font-size:12px;color:var(--success);font-weight:600;margin-bottom:6px;display:none;"></div>
+                    <div id="bmiPersonnelList" class="bmi-personnel-list"></div>
                 </div>
                 <div>
                     <label style="font-size:13px;font-weight:600;">Period (Month)</label>
@@ -1263,8 +1335,14 @@
                 </div>
                 <div>
                     <label style="font-size:13px;font-weight:600;">Select Squad Members</label>
+                    <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
+                        <input type="text" id="squadMemberSearch" placeholder="Search members..." oninput="renderSquadMemberChecklistFromFilters()" style="flex:1;min-width:160px;margin:0;padding:8px 12px;font-size:13px;border-radius:var(--radius-sm);border:1px solid var(--border-color);">
+                        <select id="squadSectionFilter" onchange="renderSquadMemberChecklistFromFilters()" style="margin:0;padding:8px 12px;font-size:13px;border-radius:var(--radius-sm);border:1px solid var(--border-color);min-width:160px;">
+                            <option value="">All Sections</option>
+                        </select>
+                    </div>
                     <div style="border:1px solid var(--border-color);border-radius:var(--radius-md);max-height:240px;overflow-y:auto;padding:10px;background:rgba(0,0,0,0.02);" id="squadMemberList"></div>
-                    <div style="font-size:12px;color:var(--text-muted);margin-top:6px;"><span id="squadMemberCount">0</span> member(s) selected</div>
+                    <div style="font-size:12px;color:var(--text-muted);margin-top:6px;"><span id="squadMemberCount">0</span> member(s) selected (incl. squad leader)</div>
                 </div>
             </div>
             <div style="display:flex;gap:10px;margin-top:18px;">
@@ -1285,9 +1363,9 @@
                 <div>
                     <label style="font-size:13px;font-weight:600;">Name of Personnel</label>
                     <input type="text" id="leavePersonnelSearch" class="leave-personnel-search" placeholder="🔍 Search personnel by name or rank..." oninput="filterLeavePersonnel(this.value)">
-                        <select id="leavePersonnelSelect" style="width:100%;">
-                        <option value="">Select personnel...</option>
-                    </select>
+                        <input type="hidden" id="leavePersonnelSelect" value="">
+                    <div id="leavePersonnelTable" class="leave-personnel-table"></div>
+                    <div id="leavePersonnelSelected" style="font-size:12px;color:var(--success);font-weight:600;margin-top:6px;display:none;"></div>
                 </div>
                 <div>
                     <label style="font-size:13px;font-weight:600;">Type of Leave</label>
@@ -1352,6 +1430,12 @@
                 </div>
                 <div>
                     <label style="font-size:13px;font-weight:600;">Deploy Personnel to this Area</label>
+                    <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
+                        <input type="text" id="areaPersonnelSearch" placeholder="Search personnel..." oninput="renderAreaPersonnelChecklistFromFilters()" style="flex:1;min-width:160px;margin:0;padding:8px 12px;font-size:13px;border-radius:var(--radius-sm);border:1px solid var(--border-color);">
+                        <select id="areaSectionFilter" onchange="renderAreaPersonnelChecklistFromFilters()" style="margin:0;padding:8px 12px;font-size:13px;border-radius:var(--radius-sm);border:1px solid var(--border-color);min-width:160px;">
+                            <option value="">All Sections</option>
+                        </select>
+                    </div>
                     <div style="border:1px solid var(--border-color);border-radius:var(--radius-md);max-height:240px;overflow-y:auto;padding:10px;background:rgba(0,0,0,0.02);" id="areaPersonnelList"></div>
                     <div style="font-size:12px;color:var(--text-muted);margin-top:6px;"><span id="areaPersonnelCount">0</span> personnel selected</div>
                 </div>
@@ -1411,6 +1495,21 @@
             <div style="display:flex;gap:10px;margin-top:18px;" id="squadDetailsActions">
                 <button class="action-btn approve-btn" id="squadDetailsEditBtn" style="flex:1;margin:0;color:white;display:none;" onclick="editSquadFromDetails()">Edit Squad</button>
                 <button class="action-btn delete-btn" id="squadDetailsDeleteBtn" style="flex:1;margin:0;display:none;" onclick="deleteSquadFromDetails()">Delete Squad</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- PERSONNEL PROFILE CARD MODAL -->
+    <div id="personnelProfileModal" class="modal-overlay hidden" style="z-index:2200;" role="dialog" aria-modal="true" onclick="if(event.target===this)closePersonnelProfile()">
+        <div class="modal-content glass-panel profile-card-modal">
+            <div class="profile-card-banner"></div>
+            <div class="profile-card-avatar" id="profileCardAvatar">U</div>
+            <h3 id="profileCardName" style="margin:0 0 4px 0;color:var(--text-main);">Name</h3>
+            <div id="profileCardDesignation" style="font-size:13px;color:var(--text-muted);margin-bottom:14px;"></div>
+            <div class="profile-card-body" id="profileCardBody"></div>
+            <div style="padding:0 24px 20px 24px;display:flex;gap:10px;">
+                <button class="action-btn approve-btn" id="profileCardEditBtn" style="flex:1;margin:0;color:white;display:none;" onclick="editDetailsFromProfile()">Edit Details</button>
+                <button class="action-btn" style="flex:1;margin:0;" onclick="closePersonnelProfile()">Close</button>
             </div>
         </div>
     </div>
