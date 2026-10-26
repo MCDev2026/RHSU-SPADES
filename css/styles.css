@@ -2370,8 +2370,8 @@ body.dark-mode .bmi-personnel-list { background: rgba(255,255,255,.03); }
     position: relative;
     height: 180px;
     background-color: #0b1f3a;
-    background-image: url("../images/Spades%20Banner.png");
-    background-size: contain;
+    background-image: url("../images/RHSU%20Spades.png");
+    background-size: auto 92%;
     background-position: center;
     background-repeat: no-repeat;
     display: flex;
@@ -2457,8 +2457,8 @@ body.dark-mode .pf-avatar-img { border-color: #0f172a; background: #1e293b; }
     height: clamp(190px, 24vw, 280px);
     box-sizing: border-box;
     background-color: #0b1f3a;
-    background-image: url("../images/Spades%20Banner.png");
-    background-size: contain;
+    background-image: url("../images/RHSU%20Spades.png");
+    background-size: auto 92%;
     background-position: center;
     background-repeat: no-repeat;
 }
@@ -2540,4 +2540,141 @@ body.dark-mode .pf-avatar-img { border-color: #0f172a; background: #1e293b; }
     #tabProfile .pf-left,
     #tabProfile .pf-panel { padding: 14px; }
     #tabProfile .pf-left .setting-row { grid-template-columns: minmax(88px, .8fr) minmax(0, 1.2fr); gap: 6px 10px; font-size: 13px; }
+}
+
+/* ===== SPADES AUTH POLISH: centered registration + animated neon edge ===== */
+#loginPage.rhsu-login-shell,
+#registerPage.auth-container {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    margin: 0;
+    isolation: isolate;
+    border: 1px solid transparent;
+    background-clip: padding-box;
+    box-shadow: 0 0 0 1px rgba(66, 211, 255, .24),
+                0 18px 55px rgba(2, 12, 35, .32);
+}
+#loginPage.rhsu-login-shell::after,
+#registerPage.auth-container:not(.hidden)::after {
+    content: "";
+    position: absolute;
+    inset: -2px;
+    border-radius: inherit;
+    padding: 2px;
+    background: conic-gradient(from var(--spades-neon-angle, 0deg),
+        #22d3ee, #6366f1, #ec4899, #a3e635, #22d3ee);
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+    z-index: 5;
+    animation: spadesNeonRotate 5s linear infinite, spadesNeonGlow 2.4s ease-in-out infinite;
+}
+@property --spades-neon-angle {
+    syntax: "<angle>";
+    initial-value: 0deg;
+    inherits: false;
+}
+@keyframes spadesNeonRotate { to { --spades-neon-angle: 360deg; } }
+@keyframes spadesNeonGlow {
+    0%,100% { filter: drop-shadow(0 0 2px rgba(34,211,238,.45)); }
+    50% { filter: drop-shadow(0 0 8px rgba(99,102,241,.8)); }
+}
+#registerPage.auth-container {
+    width: min(500px, calc(100vw - 28px));
+    max-width: 500px;
+    max-height: calc(100dvh - 32px);
+    overflow-y: auto;
+    padding: clamp(20px, 4vw, 40px);
+    border-radius: var(--radius-lg);
+    z-index: 100;
+}
+#loginPage.rhsu-login-shell { z-index: 90; }
+#loginPage.rhsu-login-shell::after { border-radius: inherit; }
+#registerPage.auth-container:not(.hidden)::after { border-radius: inherit; }
+@media (max-width: 700px) {
+    #loginPage.rhsu-login-shell {
+        width: calc(100vw - 24px);
+        min-height: 0;
+        max-height: calc(100dvh - 24px);
+        overflow-y: auto;
+        grid-template-columns: 1fr;
+    }
+    #loginPage .rhsu-login-brand { display: none; }
+    #loginPage .rhsu-login-form { padding: 26px 22px; }
+    #registerPage .auth-grid { grid-template-columns: 1fr; }
+}
+@media (prefers-reduced-motion: reduce) {
+    #loginPage.rhsu-login-shell::after,
+    #registerPage.auth-container:not(.hidden)::after { animation: none; }
+}
+/* ===== Profile cover banner: fill the available cover area responsively ===== */
+.pf-cover {
+    width: 100%;
+    min-height: clamp(150px, 19vw, 280px);
+    height: clamp(150px, 19vw, 280px);
+    background-image: url("../images/SPADES%20Banner.jpg");
+    background-size: cover;
+    background-position: center center;
+    background-repeat: no-repeat;
+}
+.pf-cover-view {
+    width: 100%;
+    min-height: clamp(130px, 16vw, 230px);
+    height: clamp(130px, 16vw, 230px);
+    background-size: cover;
+    background-position: center center;
+}
+@media (max-width: 600px) {
+    .pf-cover { height: 150px; min-height: 150px; }
+    .pf-cover-view { height: 130px; min-height: 130px; }
+}
+/* ===== User Management readability ===== */
+#tabAdminMgmt .table-wrapper {
+    min-width: 0;
+    border-radius: 14px;
+    overflow-x: auto;
+    border: 1px solid var(--border-color);
+    box-shadow: 0 8px 24px rgba(15,23,42,.06);
+}
+#adminUsersTable {
+    width: 100%;
+    min-width: 760px;
+    border-collapse: separate;
+    border-spacing: 0;
+}
+#adminUsersTable th {
+    padding: 14px 16px;
+    white-space: nowrap;
+    font-size: 12px;
+    letter-spacing: .035em;
+    text-transform: uppercase;
+    background: linear-gradient(135deg, rgba(79,70,229,.10), rgba(34,211,238,.09));
+}
+#adminUsersTable td {
+    padding: 14px 16px;
+    vertical-align: middle;
+    line-height: 1.45;
+    font-size: 13px;
+    overflow-wrap: anywhere;
+}
+#adminUsersTable tbody tr:nth-child(even) { background: rgba(100,116,139,.035); }
+#adminUsersTable tbody tr:hover { background: rgba(79,70,229,.06); }
+#adminUsersTable td:first-child span,
+#adminUsersTable td:nth-child(2) span { display: inline-block; line-height: 1.5; }
+#adminUsersTable td:nth-child(3) { min-width: 190px; }
+#adminUsersTable td:nth-child(4) { white-space: nowrap; font-weight: 650; }
+#adminUsersTable td:last-child { min-width: 180px; }
+#adminUsersTable td:last-child button { margin-bottom: 5px !important; }
+#tabAdminMgmt > div[style*="align-items:flex-start"] > .glass-panel {
+    min-width: 280px !important;
+    border: 1px solid var(--border-color);
+    border-radius: 14px;
+    box-shadow: 0 8px 24px rgba(15,23,42,.06);
+}
+@media (max-width: 760px) {
+    #tabAdminMgmt > div[style*="align-items:flex-start"] { gap: 14px !important; }
+    #tabAdminMgmt > div[style*="align-items:flex-start"] > .glass-panel { width: 100%; }
 }

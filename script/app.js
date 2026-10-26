@@ -1184,7 +1184,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             if (!box) return;
             const mine = (allMemos || []).filter(m => String(m[3]||'').trim() === username).slice(-5).reverse();
             if (!mine.length) { box.innerHTML = '<span style="color:var(--text-muted);font-size:12px;">No memos created yet.</span>'; return; }
-            box.innerHTML = mine.map(m => `<div style="padding:7px 0;border-bottom:1px solid var(--border-color);display:flex;justify-content:space-between;gap:10px;"><span style="color:var(--text-main);">${escapeHtml(String(m[2]||'(no subject)'))}</span><span style="color:var(--text-muted);font-size:11px;white-space:nowrap;">${escapeHtml(String(m[0]||'').slice(0,10))}</span></div>`).join('');
+            box.innerHTML = mine.map(m => `<div style="padding:10px 0;border-bottom:1px solid var(--border-color);display:grid;grid-template-columns:minmax(0,1fr);gap:4px;"><strong style="color:var(--text-main);overflow-wrap:anywhere;">${escapeHtml(String(m[1]||'(no subject)'))}</strong><span style="color:var(--text-muted);font-size:11px;">Date: ${escapeHtml(String(m[0]||'—'))}</span><span style="color:var(--primary);font-size:11px;font-weight:600;overflow-wrap:anywhere;">Control No.: ${escapeHtml(String(m[2]||'—'))}</span></div>`).join('');
         }
         async function viewUserProfile(username) {
             try {
@@ -1683,6 +1683,9 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 if (isDsOther(p)) {
                     const r = p.rank || 'Unspecified';
                     dsOtherRankCounts[r] = (dsOtherRankCounts[r] || 0) + 1;
+                    // DS to Other Office/Unit remains separately recapitulated, but its
+                    // personnel are included in the appropriate rank-group cards above.
+                    counts[rankGroup(p.rank)]++;
                     return;
                 }
 
@@ -1695,9 +1698,9 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 sectionCounts[section]=(sectionCounts[section]||0)+1;
             });
 
+            // Counts already include DS to Other Office/Unit in its rank group.
             const mainTotal = Object.values(counts).reduce((a,b)=>a+b,0);
-            const dsOtherTotal = Object.values(dsOtherRankCounts).reduce((a,b)=>a+b,0);
-            document.getElementById('personnelTotal').innerText = mainTotal + dsOtherTotal;
+            document.getElementById('personnelTotal').innerText = mainTotal;
             document.getElementById('personnelPNCO').innerText = counts.PNCO;
             document.getElementById('personnelPCO').innerText = counts.PCO;
             document.getElementById('personnelNUP').innerText = counts.NUP;
@@ -4933,4 +4936,3 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             closePersonnelProfile();
             if (no != null) editPersonnel(no);
         }
-
