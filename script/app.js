@@ -1,9 +1,30 @@
 const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUAf04mJqqHLcVfSsEC9Ku8bcYWd5KZ2S1H_zzGWs8zE-kS/exec";
-        const ALPHA_ADMIN_NAME = "PCpl Gandia"; 
-        let sessionAdminPass = ""; 
-        let pendingAction = null;
+        let ALPHA_ADMIN_NAME = ''; // Loaded from backend Script Properties; no Alpha Admin credential is stored in frontend source.
+
+        let sessionAdminPass = "";
+        let adminUsersCache = [];
+        let alphaAdminConfigLoaded = false;
         let pendingAdminAction = null;
         let actionTargetControl = null;
+
+        async function loadAlphaAdminIdentity() {
+            try {
+                const response = await fetch(`${API_URL}?action=get_alpha_admin_name&_ts=${Date.now()}`, { cache: 'no-store' });
+                const data = await response.json();
+                if (data && data.configured && data.username) {
+                    ALPHA_ADMIN_NAME = String(data.username).trim();
+                    alphaAdminConfigLoaded = true;
+                } else {
+                    ALPHA_ADMIN_NAME = '';
+                    alphaAdminConfigLoaded = false;
+                    console.warn('Alpha Admin Script Properties are not configured. Set ALPHA_ADMIN_USERNAME and ALPHA_ADMIN_CREDENTIAL in Apps Script Project Settings.');
+                }
+            } catch (error) {
+                ALPHA_ADMIN_NAME = '';
+                alphaAdminConfigLoaded = false;
+                console.error('Unable to load Alpha Admin identity from backend.', error);
+            }
+        }
         
         let allMemos = [];
         let filteredMemos = [];
@@ -170,29 +191,40 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         }
 
         function updateSettingsUI() {
-            document.getElementById('setTheme').value = userSettings.theme || 'Light';
-            document.getElementById('setSidebar').value = userSettings.sidebar || 'Collapsed';
-            document.getElementById('setTableDisplay').value = userSettings.tableDisplay || 'Comfortable';
-            document.getElementById('setLiveNotif').checked = userSettings.liveNotif;
-            document.getElementById('setNotifSound').checked = userSettings.notifSound !== false;
+            const values = {
+                setTheme: userSettings.theme || 'Light',
+                setSidebar: userSettings.sidebar || 'Collapsed',
+                setTableDisplay: userSettings.tableDisplay || 'Comfortable',
+                setNotificationSound: getValidNotificationSound(userSettings.notificationSound),
+                setRecordsPage: userSettings.recordsPerPage || '10',
+                setAutoLogout: userSettings.autoLogout || 'Never',
+                setFontSize: userSettings.fontSize || 'Default',
+                setRefreshInterval: userSettings.refreshInterval || '60',
+                setLanguage: userSettings.language || 'English',
+                setDateFormat: userSettings.dateFormat || 'US'
+            };
+            const checks = {
+                setLiveNotif: userSettings.liveNotif !== false,
+                setNotifSound: userSettings.notifSound !== false,
+                setRemSearch: !!userSettings.rememberSearch,
+                setShowChat: userSettings.showChatbot !== false,
+                setAutoChat: !!userSettings.autoOpenChatbot,
+                setConfirmLogout: userSettings.confirmLogout !== false,
+                setReducedMotion: !!userSettings.reducedMotion,
+                setHighContrast: !!userSettings.highContrast,
+                setAutoRefresh: userSettings.autoRefresh !== false,
+                setConfirmActions: userSettings.confirmActions !== false,
+                set24Hour: !!userSettings.time24
+            };
+            Object.entries(values).forEach(([id, value]) => {
+                const el = document.getElementById(id);
+                if (el) el.value = value;
+            });
+            Object.entries(checks).forEach(([id, value]) => {
+                const el = document.getElementById(id);
+                if (el) el.checked = value;
+            });
             populateNotificationSoundOptions();
-            const soundSelect = document.getElementById('setNotificationSound');
-            if (soundSelect) soundSelect.value = getValidNotificationSound(userSettings.notificationSound);
-            document.getElementById('setRecordsPage').value = userSettings.recordsPerPage;
-            document.getElementById('setRemSearch').checked = userSettings.rememberSearch;
-            document.getElementById('setShowChat').checked = userSettings.showChatbot;
-            document.getElementById('setAutoChat').checked = userSettings.autoOpenChatbot;
-            document.getElementById('setAutoLogout').value = userSettings.autoLogout;
-            document.getElementById('setConfirmLogout').checked = userSettings.confirmLogout;
-            document.getElementById('setFontSize').value = userSettings.fontSize || 'Default';
-            document.getElementById('setReducedMotion').checked = !!userSettings.reducedMotion;
-            document.getElementById('setHighContrast').checked = !!userSettings.highContrast;
-            document.getElementById('setAutoRefresh').checked = userSettings.autoRefresh !== false;
-            document.getElementById('setRefreshInterval').value = userSettings.refreshInterval || '60';
-            document.getElementById('setConfirmActions').checked = userSettings.confirmActions !== false;
-            document.getElementById('setLanguage').value = userSettings.language || 'English';
-            document.getElementById('setDateFormat').value = userSettings.dateFormat || 'US';
-            document.getElementById('set24Hour').checked = !!userSettings.time24;
         }
 
         function saveSettings() {
@@ -220,6 +252,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
 
             persistUserSettings();
             applySettingsEffects();
+            if (typeof restartActivityLogRefresh === 'function') restartActivityLogRefresh();
             showNotification("Settings Saved", "Your preferences have been updated successfully.");
         }
 
@@ -235,32 +268,36 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
 
         function applySettingsEffects() {
             const body = document.body;
-            if (userSettings.theme === 'Dark' || (userSettings.theme === 'System' && window.matchMedia('(prefers-color-scheme: dark)').matches)) body.classList.add('dark-mode'); else body.classList.remove('dark-mode');
-            if (userSettings.tableDisplay === 'Compact') body.classList.add('compact-mode'); else body.classList.remove('compact-mode');
+            if (!body) return;
+            const prefersDark = !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+            body.classList.toggle('dark-mode', userSettings.theme === 'Dark' || (userSettings.theme === 'System' && prefersDark));
+            body.classList.toggle('compact-mode', userSettings.tableDisplay === 'Compact');
             body.classList.toggle('rhsu-font-large', userSettings.fontSize === 'Large');
             body.classList.toggle('rhsu-font-xlarge', userSettings.fontSize === 'ExtraLarge');
             body.classList.toggle('rhsu-reduced-motion', !!userSettings.reducedMotion);
             body.classList.toggle('rhsu-high-contrast', !!userSettings.highContrast);
 
-            const sb = document.getElementById('navSidebar');
-            const appLayout = document.getElementById('appLayout');
+            const sidebar = document.getElementById('navSidebar');
+            const layout = document.getElementById('appLayout');
             if (window.innerWidth > 992) {
-                // v8: sidebar rests collapsed (icon-only); labels slide-fade in on hover.
-                userSettings.sidebar = 'Collapsed';
-                sb.classList.add('collapsed');
-                if (appLayout) appLayout.classList.add('nav-collapsed');
-                const setSidebarSel = document.getElementById('setSidebar');
-                if (setSidebarSel) setSidebarSel.value = 'Collapsed';
-            } else if (appLayout) {
-                appLayout.classList.remove('nav-collapsed');
+                const collapsed = userSettings.sidebar !== 'Expanded';
+                if (sidebar) sidebar.classList.toggle('collapsed', collapsed);
+                if (layout) layout.classList.toggle('nav-collapsed', collapsed);
+            } else {
+                if (sidebar) sidebar.classList.remove('collapsed');
+                if (layout) layout.classList.remove('nav-collapsed');
             }
 
-            MEMOS_PER_PAGE = parseInt(userSettings.recordsPerPage, 10) || 10;
-            if (filteredMemos && filteredMemos.length > 0) renderMemoTable();
+            const pageSize = Number.parseInt(userSettings.recordsPerPage, 10);
+            MEMOS_PER_PAGE = Number.isFinite(pageSize) && pageSize > 0 ? Math.min(pageSize, 100) : 10;
+            if (Array.isArray(filteredMemos) && filteredMemos.length > 0) renderMemoTable();
 
-            const bot = document.getElementById('chatbot-container');
-            if(userSettings.showChatbot) bot.classList.remove('hidden'); else bot.classList.add('hidden');
+            const chatbot = document.getElementById('chatbot-container');
+            if (chatbot) chatbot.classList.toggle('hidden', userSettings.showChatbot === false);
+            const refreshInterval = document.getElementById('setRefreshInterval');
+            if (refreshInterval) refreshInterval.disabled = userSettings.autoRefresh === false;
             resetIdleTimer();
+            updateDateTime();
         }
 
         window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', e => { if (userSettings.theme === 'System') applySettingsEffects(); });
@@ -286,33 +323,108 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
 
         function toggleNav() {
             const sidebar = document.getElementById('navSidebar');
-            if (window.innerWidth <= 992) sidebar.classList.toggle('open');
-            else {
-                sidebar.classList.toggle('collapsed');
-                const collapsed = sidebar.classList.contains('collapsed');
-                const appLayout = document.getElementById('appLayout');
-                if (appLayout) appLayout.classList.toggle('nav-collapsed', collapsed);
-                userSettings.sidebar = collapsed ? 'Collapsed' : 'Expanded';
-                const user = localStorage.getItem('loggedInUser');
-                if(user) { document.getElementById('setSidebar').value = userSettings.sidebar; persistUserSettings(user); }
+            if (!sidebar) return;
+            if (window.innerWidth <= 992) {
+                sidebar.classList.toggle('open');
+                return;
             }
+            sidebar.classList.toggle('collapsed');
+            const collapsed = sidebar.classList.contains('collapsed');
+            const appLayout = document.getElementById('appLayout');
+            if (appLayout) appLayout.classList.toggle('nav-collapsed', collapsed);
+            userSettings.sidebar = collapsed ? 'Collapsed' : 'Expanded';
+            const user = localStorage.getItem('loggedInUser');
+            const sidebarSelect = document.getElementById('setSidebar');
+            if (sidebarSelect) sidebarSelect.value = userSettings.sidebar;
+            if (user) persistUserSettings(user);
         }
 
-        function updateDateTime() { const now = new Date(); const options = { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }; document.getElementById('datetime-display').innerText = now.toLocaleString('en-US', options); }
-        setInterval(updateDateTime, 1000); updateDateTime();
+        function updateDateTime() {
+            const display = document.getElementById('datetime-display');
+            if (!display) return;
+            const now = new Date();
+            const dateFormat = userSettings.dateFormat || 'US';
+            const dateOptions = dateFormat === 'ISO'
+                ? { year: 'numeric', month: '2-digit', day: '2-digit' }
+                : dateFormat === 'Long'
+                    ? { year: 'numeric', month: 'long', day: 'numeric' }
+                    : { year: 'numeric', month: '2-digit', day: '2-digit' };
+            const timeOptions = { hour: '2-digit', minute: '2-digit', hour12: !userSettings.time24 };
+            const dateText = dateFormat === 'ISO'
+                ? `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`
+                : now.toLocaleDateString('en-US', dateOptions);
+            display.textContent = `${dateText} · ${now.toLocaleTimeString('en-US', timeOptions)}`;
+        }
+        setInterval(updateDateTime, 15000); updateDateTime();
 
         function showNotification(title, message, onClickAction) {
-            playNotificationSound();
+            try { if (typeof playNotificationSound === 'function') playNotificationSound(); } catch (_) {}
             const container = document.getElementById('notificationContainer');
-            const toast = document.createElement('div'); toast.className = 'notification-toast';
-            toast.innerHTML = `<span class="notification-title">${title}</span><span class="notification-msg">${message}</span>`;
-            const timeout = setTimeout(() => { toast.classList.add('fade-out'); setTimeout(() => toast.remove(), 300); }, 5000);
-            toast.addEventListener('click', () => { clearTimeout(timeout); toast.classList.add('fade-out'); setTimeout(() => toast.remove(), 300); if (onClickAction) onClickAction(); });
+            if (!container) {
+                console.info(String(title || 'Notification') + ': ' + String(message || ''));
+                return;
+            }
+            // Limit the number of live toasts to avoid stacking memory/DOM during busy sessions.
+            while (container.children.length >= 5) container.firstElementChild?.remove();
+            const toast = document.createElement('button');
+            toast.type = 'button';
+            toast.className = 'notification-toast';
+            toast.setAttribute('aria-label', `${String(title || 'Notification')}. ${String(message || '')}. Dismiss notification.`);
+            const titleNode = document.createElement('span');
+            titleNode.className = 'notification-title';
+            titleNode.textContent = String(title == null ? 'System Notification' : title);
+            const messageNode = document.createElement('span');
+            messageNode.className = 'notification-msg';
+            messageNode.textContent = String(message == null ? '' : message);
+            toast.append(titleNode, messageNode);
+            const removeToast = () => {
+                if (!toast.isConnected) return;
+                toast.classList.add('fade-out');
+                window.setTimeout(() => toast.remove(), 320);
+            };
+            const timeout = window.setTimeout(removeToast, 6000);
+            toast.addEventListener('click', () => {
+                window.clearTimeout(timeout);
+                removeToast();
+                if (typeof onClickAction === 'function') {
+                    try { onClickAction(); } catch (error) { console.error('Notification action failed:', error); }
+                }
+            }, { once: true });
             container.appendChild(toast);
         }
 
         function customAlert(message, title = "System Notification") { showNotification(title, message); }
-        function customConfirm(message, callback) { document.getElementById('customConfirmMessage').innerText = message; document.getElementById('customConfirmModal').classList.remove('hidden'); document.getElementById('customConfirmYesBtn').onclick = () => { document.getElementById('customConfirmModal').classList.add('hidden'); callback(true); }; document.getElementById('customConfirmNoBtn').onclick = () => { document.getElementById('customConfirmModal').classList.add('hidden'); callback(false); }; }
+        function customConfirm(message, callback) {
+            const modal = document.getElementById('customConfirmModal');
+            // Keep confirmation dialogs at the document root so parent stacking contexts
+            // cannot trap them behind an already-open modal.
+            if (modal && modal.parentElement !== document.body) document.body.appendChild(modal);
+            if (modal) {
+                modal.style.setProperty('z-index', '50000', 'important');
+                modal.style.setProperty('position', 'fixed', 'important');
+            }
+            const messageNode = document.getElementById('customConfirmMessage');
+            const yes = document.getElementById('customConfirmYesBtn');
+            const no = document.getElementById('customConfirmNoBtn');
+            if (!modal || !messageNode || !yes || !no) {
+                const result = window.confirm(String(message || 'Are you sure?'));
+                if (typeof callback === 'function') callback(result);
+                return;
+            }
+            messageNode.textContent = String(message == null ? '' : message);
+            modal.classList.remove('hidden');
+            let settled = false;
+            const finish = (answer) => {
+                if (settled) return;
+                settled = true;
+                modal.classList.add('hidden');
+                yes.onclick = null;
+                no.onclick = null;
+                if (typeof callback === 'function') callback(answer);
+            };
+            yes.onclick = () => finish(true);
+            no.onclick = () => finish(false);
+        }
 
         function getActivityLogTimestamp(log) {
             if (!log) return 0;
@@ -1232,6 +1344,9 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 if (data.success && data.profile) {
                     const updateField = (id, val) => { const el = document.getElementById(id); el.innerText = val || 'Not Available'; if(val) el.style.color = 'var(--text-main)'; };
                     updateField('profRank', data.profile.rank); updateField('profFirstName', data.profile.firstName); updateField('profMiddleName', data.profile.middleName); updateField('profLastName', data.profile.lastName); updateField('profQlf', data.profile.qlf); updateField('profEmail', data.profile.email);
+                    const editValues = {editProfileRank:data.profile.rank, editProfileFirstName:data.profile.firstName, editProfileMiddleName:data.profile.middleName, editProfileLastName:data.profile.lastName, editProfileQlf:data.profile.qlf, editProfileEmail:data.profile.email, editProfileContact:data.profile.contactNo};
+                    Object.entries(editValues).forEach(([id,val]) => { const el=document.getElementById(id); if(el) el.value=val || ''; });
+                    let contactRow = document.getElementById('profContactNo'); if (contactRow) contactRow.innerText = data.profile.contactNo || 'Not Available';
                     applyProfilePhotos(data.profile.profilePhotoUrl);
                     const pfFull = [data.profile.rank, data.profile.firstName, data.profile.middleName, data.profile.lastName, data.profile.qlf].filter(Boolean).join(' ');
                     if (pfFull) { const dn2 = document.getElementById('profileDisplayName'); if (dn2) dn2.innerText = pfFull; const fb2 = document.getElementById('profileAvatarFallback'); if (fb2) fb2.innerText = String(pfFull.charAt(0)||'U').toUpperCase(); }
@@ -1246,6 +1361,14 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         }
 
         function switchTab(tabName) {
+            const activeUsername = localStorage.getItem('loggedInUser') || '';
+            const accessControlledTab = ['dashboard', 'home', 'personnel', 'activityManagement', 'settings'].includes(tabName);
+            if (activeUsername && accessControlledTab &&
+                typeof userAccessMapLoadedFor !== 'undefined' && userAccessMapLoadedFor === activeUsername &&
+                typeof userHasAccess === 'function' && !userHasAccess(tabName)) {
+                customAlert('Your account does not have access to this page.', 'Permission Denied');
+                return;
+            }
             ['tabDashboard','tabHome','tabProfile','tabAdminMgmt','tabSettings','tabPersonnel','tabActivityManagement'].forEach(id => {
                 const el=document.getElementById(id); if(el) el.classList.add('hidden');
             });
@@ -1272,8 +1395,8 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 document.getElementById('tabSettings').classList.remove('hidden');
                 document.getElementById('btnSettings').classList.add('active');
             } else if (tabName === 'adminMgmt') {
-                if (localStorage.getItem('loggedInUser') !== ALPHA_ADMIN_NAME) {
-                    customAlert("Only the Alpha Admin can access User Management.", "Permission Denied"); return;
+                if (!ALPHA_ADMIN_NAME || localStorage.getItem('loggedInUser') !== ALPHA_ADMIN_NAME) {
+                    customAlert("Only the configured Alpha Admin can access User Management.", "Permission Denied"); return;
                 }
                 document.getElementById('tabSettings').classList.remove('hidden');
                 document.getElementById('btnSettings').classList.add('active');
@@ -1331,11 +1454,72 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         function closeAnnouncementModal() { document.getElementById('systemAnnouncementModal').classList.add('hidden'); }
 
         async function saveAdminAnnouncement() {
-            const msg = document.getElementById('adminAnnouncementText').value.trim(); if (!msg) return customAlert("Announcement message cannot be empty.", "Error");
-            try { await fetch(API_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify({ action: 'save_announcement', message: msg, password: sessionAdminPass }) }); customAlert("System announcement updated!", "Success"); logActivity("updated the global system announcement."); } catch (err) {}
+            const message = document.getElementById('adminAnnouncementText').value.trim();
+            if (!message) return customAlert('Announcement message cannot be empty.', 'Error');
+            try {
+                const response = await fetch(API_URL, {method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'save_announcement',message,password:sessionAdminPass,userName:localStorage.getItem('loggedInUser') || ''})});
+                const result = await response.json();
+                if (!result.success) return customAlert(result.error || 'Could not publish the announcement.', 'Error');
+                customAlert('System announcement published.', 'Success'); logActivity('updated the global system announcement.');
+            } catch (error) { customAlert('Could not publish the announcement. Please retry.', 'Error'); }
+        }
+        function deleteAdminAnnouncement() {
+            customConfirm('Remove the global system announcement?', async confirmed => {
+                if (!confirmed) return;
+                try {
+                    const response = await fetch(API_URL, {method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'delete_announcement',password:sessionAdminPass,userName:localStorage.getItem('loggedInUser') || ''})});
+                    const result = await response.json();
+                    if (!result.success) return customAlert(result.error || 'Could not remove the announcement.', 'Error');
+                    document.getElementById('adminAnnouncementText').value = '';
+                    customAlert('Announcement removed.', 'Success'); logActivity('removed the global system announcement.');
+                } catch (error) { customAlert('Could not remove the announcement. Please retry.', 'Error'); }
+            });
         }
 
-        function deleteAdminAnnouncement() { customConfirm("Remove global system announcement?", async (confirmed) => { if(!confirmed) return; try { await fetch(API_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify({ action: 'delete_announcement', password: sessionAdminPass }) }); document.getElementById('adminAnnouncementText').value = ""; customAlert("Announcement removed.", "Success"); logActivity("removed the global system announcement."); } catch (err) {} }); }
+        let visibleRefreshInProgress = false;
+        async function refreshVisibleTabData() {
+            if (!localStorage.getItem('loggedInUser') || document.hidden || visibleRefreshInProgress) return;
+            visibleRefreshInProgress = true;
+            const tabName = sessionStorage.getItem('activeTab') || 'dashboard';
+            try {
+                if (tabName === 'dashboard') {
+                    await loadExecutiveDashboard(); // refreshes memo, personnel, activity, and live-log summaries together
+                    return;
+                }
+                if (tabName === 'home') await loadData();
+                else if (tabName === 'personnel') await loadPersonnel();
+                else if (tabName === 'activityManagement') await loadActivities();
+                else if (tabName === 'profile') await populateProfileData();
+                else if (tabName === 'adminMgmt' && isAlphaAdmin() && sessionAdminPass) await loadAdminUsers();
+                await fetchActivityLogs();
+            } catch (error) {
+                console.warn('Automatic data refresh failed; the current view remains available.', error);
+            } finally {
+                visibleRefreshInProgress = false;
+            }
+        }
+
+        function restartActivityLogRefresh() {
+            if (activityLogRefreshTimer) {
+                clearInterval(activityLogRefreshTimer);
+                activityLogRefreshTimer = null;
+            }
+            if (!localStorage.getItem('loggedInUser') || userSettings.autoRefresh === false || document.hidden) return;
+            const configuredSeconds = Number.parseInt(userSettings.refreshInterval, 10);
+            const allowedIntervals = [30, 60, 300];
+            const seconds = allowedIntervals.includes(configuredSeconds) ? configuredSeconds : 60;
+            activityLogRefreshTimer = window.setInterval(refreshVisibleTabData, seconds * 1000);
+        }
+
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                if (activityLogRefreshTimer) clearInterval(activityLogRefreshTimer);
+                activityLogRefreshTimer = null;
+            } else {
+                restartActivityLogRefresh();
+                if (localStorage.getItem('loggedInUser') && userSettings.autoRefresh !== false) refreshVisibleTabData();
+            }
+        });
 
         function checkAuth() {
             const user = localStorage.getItem('loggedInUser');
@@ -1365,9 +1549,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                     }
                 }).catch(() => {});
                 
-                fetchActivityLogs();
-                if (activityLogRefreshTimer) clearInterval(activityLogRefreshTimer);
-                activityLogRefreshTimer = setInterval(fetchActivityLogs, 2000);
+                restartActivityLogRefresh();
                 fetchSystemAnnouncement();
                 startActivityReminderMonitor();
                 startChatNotificationMonitor();
@@ -1381,64 +1563,102 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         async function loginUser() {
             const user = document.getElementById('loginUsername').value.trim();
             const cred = document.getElementById('loginCredential').value.trim();
-            if(!user || !cred) return customAlert("Enter Username and PIN/Password.", "Authentication Error");
-            
-            document.getElementById('loginCredential').value = "Logging in...";
-            
-            // Alpha Admin Authentication Bypass Route
-            if (user === ALPHA_ADMIN_NAME) {
+            if (!user || !cred) return customAlert('Enter Username and PIN/Password.', 'Authentication Error');
+            const credentialInput = document.getElementById('loginCredential');
+            credentialInput.value = 'Logging in…';
+
+            // Alpha Admin credentials are verified only by the backend Script Properties.
+            const isAlphaLogin = !!ALPHA_ADMIN_NAME && user.toLowerCase() === ALPHA_ADMIN_NAME.toLowerCase();
+            if (isAlphaLogin) {
                 try {
-                    const adminRes = await fetch(`${API_URL}?action=verify_admin&password=${encodeURIComponent(cred)}`);
-                    const adminData = await adminRes.json();
-                    if (adminData.success) {
-                        localStorage.setItem('loggedInUser', ALPHA_ADMIN_NAME);
-                        localStorage.setItem('loggedCred', cred);
-                        localStorage.setItem('userRole', 'Admin');
-                        localStorage.setItem('canEdit', 'Yes');
-                        sessionAdminPass = cred;
-                        sessionStorage.removeItem('systemAnnouncementSeen');
-                        document.getElementById('loginCredential').value = "";
-                        logActivity("logged into the system as Alpha Admin.");
-                        checkAuth();
+                    const response = await fetch(API_URL, {method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'verify_admin',username:user,password:cred})});
+                    const result = await response.json();
+                    if (!result.success) {
+                        customAlert(result.error || 'Invalid Alpha Admin credential.', 'Authentication Error');
+                        credentialInput.value = '';
                         return;
                     }
-                } catch (err) {
-                    console.error("Admin verification bypass failed:", err);
+                    localStorage.setItem('loggedInUser', ALPHA_ADMIN_NAME);
+                    localStorage.setItem('loggedCred', cred);
+                    localStorage.setItem('userRole', 'Admin');
+                    localStorage.setItem('canEdit', 'Yes');
+                    sessionAdminPass = cred;
+                    sessionStorage.removeItem('systemAnnouncementSeen');
+                    credentialInput.value = '';
+                    logActivity('logged into the system as Alpha Admin.');
+                    checkAuth();
+                    return;
+                } catch (error) {
+                    console.error('Alpha Admin verification failed.', error);
+                    customAlert('Could not verify Alpha Admin credentials. Check the connection.', 'Authentication Error');
+                    credentialInput.value = '';
+                    return;
                 }
             }
-            
+
             try {
-                const res = await fetch(`${API_URL}?action=login&username=${encodeURIComponent(user)}&pin=${encodeURIComponent(cred)}`);
-                const data = await res.json();
-                
-                if (data.success) {
-                    const assignedRole = data.role || (data.canEdit ? 'Admin' : 'Regular User');
-                    const storedUser = (user === ALPHA_ADMIN_NAME) ? ALPHA_ADMIN_NAME : (data.username || data.name || user);
-                    
-                    localStorage.setItem('loggedInUser', storedUser); 
-                    localStorage.setItem('loggedCred', cred); 
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                    body: JSON.stringify({ action: 'login', username: user, pin: cred })
+                });
+                if (!response.ok) throw new Error(`Login request failed (${response.status})`);
+                const result = await response.json();
+                if (result.success) {
+                    const assignedRole = result.role || (result.canEdit ? 'Admin' : 'Regular User');
+                    const storedUser = result.username || result.name || user;
+                    localStorage.setItem('loggedInUser', storedUser);
+                    localStorage.setItem('loggedCred', cred);
                     localStorage.setItem('userRole', assignedRole);
-                    localStorage.setItem('canEdit', assignedRole === 'Admin' ? 'Yes' : 'No'); 
-                    sessionStorage.removeItem('systemAnnouncementSeen'); 
-                    document.getElementById('loginCredential').value = ""; 
-                    logActivity("logged into the system."); 
+                    localStorage.setItem('canEdit', assignedRole === 'Admin' ? 'Yes' : 'No');
+                    sessionStorage.removeItem('systemAnnouncementSeen');
+                    credentialInput.value = '';
+                    logActivity('logged into the system.');
                     checkAuth();
                 } else {
-                    customAlert(data.error || "Invalid credentials", "Error");
-                    document.getElementById('loginCredential').value = "";
+                    customAlert(result.error || 'Invalid credentials', 'Error');
+                    credentialInput.value = '';
                 }
-            } catch (err) {
-                customAlert("Network error during login.", "Error");
-                document.getElementById('loginCredential').value = "";
+            } catch (error) {
+                customAlert('Network error during login.', 'Error');
+                credentialInput.value = '';
             }
         }
 
         async function registerUser() {
-            const rank = document.getElementById('regRank').value; const firstName = document.getElementById('regFirst').value.trim(); const middleName = document.getElementById('regMiddle').value.trim(); const lastName = document.getElementById('regLast').value.trim(); const qlf = document.getElementById('regQlf').value.trim(); const email = document.getElementById('regEmail').value.trim(); const username = document.getElementById('regUsername').value.trim(); const cred = document.getElementById('regCredential').value.trim();
-            if(!rank || !firstName || !lastName || !email || !username || cred.length < 4) return customAlert("Please complete all required fields.", "Registration");
-            
-            const payload = { action: 'register', rank, firstName, middleName, lastName, qlf, email, username, pin: cred };
-            try { const res = await fetch(`${API_URL}?action=register&` + new URLSearchParams(payload)); const data = await res.json(); if (data.success) { customAlert("Account created! Pending approval by Admin.", "Success"); toggleAuthViews('loginPage'); } else { customAlert(data.error, "Error"); } } catch(e) { customAlert("Network Error", "Error"); }
+            const field = id => document.getElementById(id);
+            const rank = field('regRank')?.value?.trim() || '';
+            const firstName = field('regFirst')?.value?.trim() || '';
+            const middleName = field('regMiddle')?.value?.trim() || '';
+            const lastName = field('regLast')?.value?.trim() || '';
+            const qlf = field('regQlf')?.value?.trim() || '';
+            const email = field('regEmail')?.value?.trim() || '';
+            const username = field('regUsername')?.value?.trim() || '';
+            const cred = field('regCredential')?.value || '';
+            if (!rank || !firstName || !lastName || !email || !username || cred.trim().length < 4) return customAlert('Please complete all required fields and enter a credential with at least 4 characters.', 'Registration');
+            if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return customAlert('Please enter a valid email address.', 'Registration');
+            if (username.length < 3 || /[\u0000-\u001f]/.test(username)) return customAlert('Username must contain at least 3 characters and no control characters.', 'Registration');
+            const payload = { action: 'register', rank, firstName, middleName, lastName, qlf, email, username, pin: cred.trim() };
+            const submitButton = document.querySelector('#registerPage button[onclick="registerUser()"]');
+            const previousText = submitButton?.textContent;
+            if (submitButton) { submitButton.disabled = true; submitButton.textContent = 'Creating account…'; }
+            try {
+                const res = await fetch(API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(payload) });
+                if (!res.ok) throw new Error(`Registration request failed (${res.status})`);
+                const data = await res.json();
+                if (data && data.success) {
+                    if (field('regCredential')) field('regCredential').value = '';
+                    customAlert('Account created! It is pending approval by an Admin.', 'Success');
+                    toggleAuthViews('loginPage');
+                } else {
+                    customAlert(data?.error || 'Unable to create the account.', 'Registration Error');
+                }
+            } catch (error) {
+                console.error('Registration request failed:', error);
+                customAlert('Network error while creating the account. Please try again.', 'Registration Error');
+            } finally {
+                if (submitButton) { submitButton.disabled = false; submitButton.textContent = previousText || 'Register'; }
+            }
         }
 
         function attemptLogout() { if (userSettings.confirmLogout) { customConfirm("Are you sure you want to log out of the system?", (confirmed) => { if (confirmed) logoutUser(false); }); } else { logoutUser(false); } }
@@ -1467,6 +1687,134 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             userSettings = { ...DEFAULT_USER_SETTINGS };
             checkAuth();
         }
+        let profileModalPreviousFocus = null;
+        function syncProfileModalIdentity() {
+            const currentUser = localStorage.getItem('loggedInUser') || 'username';
+            const userEl = document.getElementById('securityCurrentUsername'); if (userEl) userEl.textContent = currentUser;
+            const summaryUser = document.getElementById('editProfileSummaryUsername'); if (summaryUser) summaryUser.textContent = currentUser;
+            const displayName = document.getElementById('profileDisplayName')?.textContent?.trim() || currentUser;
+            const summaryName = document.getElementById('editProfileSummaryName'); if (summaryName) summaryName.textContent = displayName;
+            const initial = document.getElementById('editProfileInitial'); if (initial) initial.textContent = String(displayName.charAt(0) || 'U').toUpperCase();
+        }
+        function openProfileModal(id) {
+            const target = document.getElementById(id);
+            if (!target) return;
+            profileModalPreviousFocus = document.activeElement;
+            document.querySelectorAll('.profile-settings-overlay:not(.hidden)').forEach(el => {
+                if (el.id !== id) el.classList.add('hidden');
+            });
+            target.classList.remove('hidden');
+            document.body.classList.add('profile-modal-open');
+            syncProfileModalIdentity();
+            if (id === 'profileSettingsModal') {
+                Promise.resolve(populateProfileData()).then(syncProfileModalIdentity).catch(() => {});
+            } else if (id === 'securitySettingsModal') {
+                const isAlpha = !!ALPHA_ADMIN_NAME && localStorage.getItem('loggedInUser') === ALPHA_ADMIN_NAME;
+                const usernameField = document.getElementById('usernameChangeField');
+                const alphaNotice = document.getElementById('alphaUsernameLockNotice');
+                if (usernameField) usernameField.classList.toggle('hidden', isAlpha);
+                if (alphaNotice) alphaNotice.classList.toggle('hidden', !isAlpha);
+                const usernameInput = document.getElementById('newUsernameInput');
+                if (usernameInput) { usernameInput.disabled = isAlpha; usernameInput.value = ''; }
+                updateCredentialStrength();
+            }
+            window.setTimeout(() => {
+                const firstField = target.querySelector('input:not([disabled]), select:not([disabled])');
+                (firstField || target.querySelector('.profile-settings-modal'))?.focus({ preventScroll: true });
+            }, 40);
+        }
+        function closeProfileModal(id) {
+            document.getElementById(id)?.classList.add('hidden');
+            if (!document.querySelector('.profile-settings-overlay:not(.hidden)')) {
+                document.body.classList.remove('profile-modal-open');
+                const previous = profileModalPreviousFocus;
+                if (previous && typeof previous.focus === 'function' && document.contains(previous)) {
+                    window.setTimeout(() => previous.focus({ preventScroll: true }), 0);
+                }
+                profileModalPreviousFocus = null;
+            }
+        }
+        function toggleProfileCredentialVisibility() {
+            const input = document.getElementById('newCredential');
+            const button = document.getElementById('toggleCredentialVisibility');
+            if (!input || !button) return;
+            const show = input.type === 'password';
+            input.type = show ? 'text' : 'password';
+            button.innerHTML = show ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3l18 18"/><path d="M10.6 5.7A10.8 10.8 0 0 1 12 5.5c6.1 0 9.5 6.5 9.5 6.5a16 16 0 0 1-3.1 3.8M6.2 6.3C3.8 8 2.5 12 2.5 12s3.4 6.5 9.5 6.5a9.9 9.9 0 0 0 3-.5"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>' : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.4-6.5 9.5-6.5 9.5 6.5 9.5 6.5-3.4 6.5-9.5 6.5S2.5 12 2.5 12Z"/><circle cx="12" cy="12" r="3"/></svg>';
+            button.setAttribute('aria-label', show ? 'Hide PIN or password' : 'Show PIN or password');
+            button.setAttribute('aria-pressed', show ? 'true' : 'false');
+            input.focus({ preventScroll: true });
+        }
+        function updateCredentialStrength() {
+            const input = document.getElementById('newCredential');
+            const bar = document.getElementById('credentialStrengthBar');
+            const meter = bar?.parentElement;
+            const hint = document.getElementById('credentialStrengthText');
+            if (!input || !meter || !hint) return;
+            const value = input.value || '';
+            meter.classList.remove('level-1', 'level-2', 'level-3', 'level-4');
+            if (!value) {
+                hint.textContent = 'Enter a new credential to see its strength guidance. This is an estimate only.';
+                return;
+            }
+            let score = 0;
+            if (value.length >= 4) score++;
+            if (value.length >= 8) score++;
+            if (value.length >= 12) score++;
+            if (/[a-z]/.test(value) && /[A-Z]/.test(value) || /\d/.test(value) && /[^A-Za-z0-9]/.test(value)) score++;
+            score = Math.max(1, Math.min(4, score));
+            meter.classList.add('level-' + score);
+            const labels = {
+                1: 'Short or predictable — consider a longer credential.',
+                2: 'Basic — a longer, less predictable credential is safer.',
+                3: 'Good — avoid reusing this credential on other services.',
+                4: 'Stronger — keep it private and store it securely.'
+            };
+            hint.textContent = labels[score] + ' This is guidance only; it does not enforce a password policy.';
+        }
+        document.addEventListener('keydown', function(event) {
+            const activeModal = document.querySelector('.profile-settings-overlay:not(.hidden)');
+            if (!activeModal) return;
+            if (event.key === 'Escape') {
+                event.preventDefault();
+                closeProfileModal(activeModal.id);
+                return;
+            }
+            if (event.key === 'Tab') {
+                const focusable = Array.from(activeModal.querySelectorAll('button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'))
+                    .filter(el => el.getClientRects().length && getComputedStyle(el).visibility !== 'hidden');
+                if (!focusable.length) { event.preventDefault(); activeModal.querySelector('.profile-settings-modal')?.focus(); return; }
+                const first = focusable[0], last = focusable[focusable.length - 1];
+                if (event.shiftKey && (document.activeElement === first || !activeModal.contains(document.activeElement))) { event.preventDefault(); last.focus(); }
+                else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+            }
+        });
+        document.getElementById('newCredential')?.addEventListener('input', updateCredentialStrength);
+        async function savePersonalProfile() {
+            const username = localStorage.getItem('loggedInUser');
+            const payload = {
+                action:'update_profile', username,
+                currentCredential:localStorage.getItem('loggedCred'),
+                rank:document.getElementById('editProfileRank').value.trim(),
+                firstName:document.getElementById('editProfileFirstName').value.trim(),
+                middleName:document.getElementById('editProfileMiddleName').value.trim(),
+                lastName:document.getElementById('editProfileLastName').value.trim(),
+                qlf:document.getElementById('editProfileQlf').value.trim(),
+                email:document.getElementById('editProfileEmail').value.trim(),
+                contactNo:document.getElementById('editProfileContact').value.trim()
+            };
+            if (payload.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(payload.email)) return customAlert('Please enter a valid email address.', 'Error');
+            try {
+                const res = await fetch(API_URL, {method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body:JSON.stringify(payload)});
+                const data = await res.json();
+                if (!data || !data.success) return customAlert(data?.error || 'Could not save profile changes.', 'Error');
+                localStorage.setItem('profileFirstName', payload.firstName); localStorage.setItem('profileLastName', payload.lastName);
+                customAlert('Profile settings saved successfully.', 'Success');
+                closeProfileModal('profileSettingsModal'); await populateProfileData();
+                if (typeof logActivity === 'function') logActivity('updated their profile details.');
+            } catch (err) { customAlert('Could not save profile changes. Please try again.', 'Error'); }
+        }
+
         function getProfilePreferencesKey(username = localStorage.getItem('loggedInUser')) { return 'rhsuProfilePrefs_' + String(username || '').trim(); }
         function loadProfilePreferences() {
             const stored = localStorage.getItem(getProfilePreferencesKey());
@@ -1485,45 +1833,63 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             const prefs = { density: document.getElementById('profileDisplayDensity')?.value || 'Comfortable', showActivity: document.getElementById('profileShowActivity')?.checked !== false, showContact: document.getElementById('profileShowContact')?.checked !== false };
             localStorage.setItem(getProfilePreferencesKey(), JSON.stringify(prefs)); loadProfilePreferences();
         }
-        function clearProfileFields() { document.getElementById('newCredential').value=''; document.getElementById('newUsernameInput').value=''; }
+        function clearProfileFields() {
+            const credential = document.getElementById('newCredential');
+            const username = document.getElementById('newUsernameInput');
+            if (credential) { credential.value = ''; credential.type = 'password'; }
+            if (username) username.value = '';
+            const toggle = document.getElementById('toggleCredentialVisibility');
+            if (toggle) { toggle.textContent = 'Show'; toggle.setAttribute('aria-label', 'Show PIN or password'); toggle.setAttribute('aria-pressed', 'false'); }
+            updateCredentialStrength();
+            if (!document.getElementById('securitySettingsModal')?.classList.contains('hidden')) { const currentUser = localStorage.getItem('loggedInUser'); (currentUser === ALPHA_ADMIN_NAME ? credential : username)?.focus({ preventScroll: true }); }
+        }
         function refreshSessionProfile() { populateProfileData(); showNotification('Profile Refreshed','Your profile and session information are up to date.'); }
 
         async function updateProfile() {
             const newCred = document.getElementById('newCredential').value.trim();
-            const newUsername = document.getElementById('newUsernameInput').value.trim();
-            if(!newCred && !newUsername) return customAlert("Enter new username or credential.", "Error");
-
-            const oldUsername = localStorage.getItem('loggedInUser');
-
+            const oldUsername = localStorage.getItem('loggedInUser') || '';
+            const isAlpha = !!ALPHA_ADMIN_NAME && oldUsername === ALPHA_ADMIN_NAME;
+            const newUsername = isAlpha ? '' : document.getElementById('newUsernameInput').value.trim();
+            if (!newCred && !newUsername) return customAlert('Enter a new username or credential.', 'Error');
+            if (newUsername && (newUsername.length < 3 || /[\u0000-\u001f]/.test(newUsername))) return customAlert('Choose a valid username with at least 3 characters.', 'Error');
+            const payload = {
+                action: 'update_profile', username: oldUsername,
+                currentCredential: localStorage.getItem('loggedCred') || '',
+                newUsername, newCredential: newCred
+            };
+            const saveButton = document.querySelector('#securitySettingsModal .profile-primary-action');
+            const originalText = saveButton?.innerHTML;
+            if (saveButton) { saveButton.disabled = true; saveButton.textContent = 'Saving…'; }
             try {
-                await fetch(API_URL, {
-                    method: 'POST',
-                    mode: 'no-cors',
-                    body: JSON.stringify({
-                        action: 'update_profile',
-                        username: oldUsername,
-                        currentCredential: localStorage.getItem('loggedCred'),
-                        newUsername: newUsername,
-                        newCredential: newCred
-                    })
+                const response = await fetch(API_URL, {
+                    method: 'POST', headers: {'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify(payload)
                 });
-
-                if (newCred) localStorage.setItem('loggedCred', newCred);
-
-                if (newUsername) {
-                    const oldSettings = localStorage.getItem(getUserSettingsKey(oldUsername));
-                    if (oldSettings) localStorage.setItem(getUserSettingsKey(newUsername), oldSettings);
-                    localStorage.setItem('loggedInUser', newUsername);
+                const data = await response.json();
+                if (!data || !data.success) return customAlert(data?.error || 'The backend rejected the account changes.', 'Error');
+                if (newCred) {
+                    localStorage.setItem('loggedCred', newCred);
+                    if (isAlpha) sessionAdminPass = newCred;
                 }
-
+                if (newUsername && data.username) {
+                    const confirmedUsername = String(data.username);
+                    const oldSettings = localStorage.getItem(getUserSettingsKey(oldUsername));
+                    const oldPrefs = localStorage.getItem(getProfilePreferencesKey(oldUsername));
+                    if (oldSettings) localStorage.setItem(getUserSettingsKey(confirmedUsername), oldSettings);
+                    if (oldPrefs) localStorage.setItem(getProfilePreferencesKey(confirmedUsername), oldPrefs);
+                    localStorage.setItem('loggedInUser', confirmedUsername);
+                }
                 persistUserSettings(localStorage.getItem('loggedInUser'));
-                customAlert("Profile updated successfully!", "Success");
-                document.getElementById('newCredential').value = "";
-                document.getElementById('newUsernameInput').value = "";
+                customAlert(isAlpha ? 'Alpha Admin credential updated successfully. The username remains centrally managed.' : 'Account credentials updated successfully.', 'Success');
+                closeProfileModal('securitySettingsModal'); clearProfileFields();
                 document.getElementById('appBrand').innerText = 'REGIONAL HEADQUARTERS SUPPORT UNIT';
-                populateProfileData();
-                logActivity("updated their profile information.");
-            } catch (err) {}
+                await populateProfileData(); syncProfileModalIdentity();
+                if (typeof logActivity === 'function') logActivity('updated their account credentials.');
+            } catch (error) {
+                console.error('Account credential update failed:', error);
+                customAlert('Could not save account changes. Check the connection and try again.', 'Error');
+            } finally {
+                if (saveButton) { saveButton.disabled = false; saveButton.innerHTML = originalText || '✓ Save account changes'; }
+            }
         }
         const OFFICE_DESTINATIONS = ["RD, PRO1", "DRDA", "DRDO", "CRS", "Msg Center", "RPRMD", "RID", "ROD", "RLRDD", "RCADD", "RCD", "RIDMD", "RETD", "RPSMD", "RICTMD", "RESPO", "RMFB1"];
         function toggleOfficeDestinationOther(selectId, otherInputId) { const select = document.getElementById(selectId); const otherInput = document.getElementById(otherInputId); if (!select || !otherInput) return; const showOther = select.value === "Others"; otherInput.classList.toggle('hidden', !showOther); otherInput.required = showOther; if (!showOther) otherInput.value = ""; }
@@ -1536,92 +1902,240 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             setTimeout(openMemoModalUser, 0);
         }
         function closeMemoModal() { document.getElementById('memoSubmissionModal').classList.add('hidden'); }
-        function closeAdminModal() { document.getElementById('adminModal').classList.add('hidden'); pendingAdminAction = null; }
+        function toggleAdminCredentialVisibility() {
+            const input = document.getElementById('adminPassInput');
+            const button = document.getElementById('toggleAdminCredentialVisibility');
+            if (!input || !button) return;
+            const show = input.type === 'password';
+            input.type = show ? 'text' : 'password';
+            button.innerHTML = show ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3l18 18"/><path d="M10.6 5.7A10.8 10.8 0 0 1 12 5.5c6.1 0 9.5 6.5 9.5 6.5a16 16 0 0 1-3.1 3.8M6.2 6.3C3.8 8 2.5 12 2.5 12s3.4 6.5 9.5 6.5a9.9 9.9 0 0 0 3-.5"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>' : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.4-6.5 9.5-6.5 9.5 6.5 9.5 6.5-3.4 6.5-9.5 6.5S2.5 12 2.5 12Z"/><circle cx="12" cy="12" r="3"/></svg>';
+            button.setAttribute('aria-label', show ? 'Hide credential' : 'Show credential');
+            button.setAttribute('aria-pressed', show ? 'true' : 'false');
+            input.focus({ preventScroll: true });
+        }
+        function closeAdminModal() {
+            const modal = document.getElementById('adminModal');
+            const input = document.getElementById('adminPassInput');
+            const toggle = document.getElementById('toggleAdminCredentialVisibility');
+            modal?.classList.add('hidden');
+            if (input) { input.value = ''; input.type = 'password'; input.disabled = false; }
+            if (toggle) { toggle.setAttribute('aria-label', 'Show credential'); toggle.setAttribute('aria-pressed', 'false'); toggle.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.4-6.5 9.5-6.5 9.5 6.5 9.5 6.5-3.4 6.5-9.5 6.5S2.5 12 2.5 12Z"/><circle cx="12" cy="12" r="3"/></svg>'; }
+            const verifyButton = document.getElementById('verifyAdminButton');
+            if (verifyButton) { verifyButton.disabled = false; verifyButton.innerHTML = '<span aria-hidden="true">&#128273;</span> Verify and Continue'; }
+            pendingAdminAction = null;
+        }
 
-        async function verifyAdmin() { const pass = document.getElementById('adminPassInput').value; if (!pass) return; document.getElementById('adminPassInput').value = "Verifying..."; const res = await fetch(`${API_URL}?action=verify_admin&password=${encodeURIComponent(pass)}`); const data = await res.json(); if (data.success) { sessionAdminPass = pass; document.getElementById('adminModal').classList.add('hidden'); if (pendingAdminAction === 'open_mgmt') { showAdminMgmtTab(); pendingAdminAction = null; } } else { customAlert("Incorrect Admin Password.", "Error"); document.getElementById('adminPassInput').value = ""; } }
+        async function verifyAdmin() {
+            const input = document.getElementById('adminPassInput');
+            const pass = input.value;
+            if (!pass.trim()) { input.focus(); return; }
+            const activeUser = localStorage.getItem('loggedInUser') || '';
+            if (!pass) return;
+            if (!ALPHA_ADMIN_NAME || activeUser !== ALPHA_ADMIN_NAME) return customAlert('Alpha Admin authentication is not available for this session.', 'Permission Denied');
+            const verifyButton = document.getElementById('verifyAdminButton');
+            input.disabled = true;
+            if (verifyButton) { verifyButton.disabled = true; verifyButton.textContent = 'Verifying…'; }
+            try {
+                const res = await fetch(API_URL, {method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'verify_admin',username:activeUser,password:pass})});
+                const data = await res.json();
+                if (data.success) {
+                    sessionAdminPass = pass;
+                    document.getElementById('adminModal').classList.add('hidden');
+                    input.value = ''; input.type = 'password';
+                    const toggle = document.getElementById('toggleAdminCredentialVisibility');
+                    if (toggle) { toggle.setAttribute('aria-label', 'Show credential'); toggle.setAttribute('aria-pressed', 'false'); toggle.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.4-6.5 9.5-6.5 9.5 6.5 9.5 6.5-3.4 6.5-9.5 6.5S2.5 12 2.5 12Z"/><circle cx="12" cy="12" r="3"/></svg>'; }
+                    if (pendingAdminAction === 'open_mgmt') { showAdminMgmtTab(); pendingAdminAction = null; }
+                } else { customAlert(data.error || 'Incorrect Alpha Admin credential.', 'Error'); input.value = ''; }
+            } catch (error) { customAlert('Could not verify Alpha Admin credentials. Check the connection.', 'Error'); input.value = ''; }
+            finally { input.disabled = false; const verifyButton = document.getElementById('verifyAdminButton'); if (verifyButton) { verifyButton.disabled = false; verifyButton.innerHTML = '<span aria-hidden="true">&#128273;</span> Verify and Continue'; } }
+        }
 
         async function loadAdminUsers() {
-            const res = await fetch(`${API_URL}?action=get_all_users&password=${encodeURIComponent(sessionAdminPass)}`); const data = await res.json(); const resAnnounce = await fetch(API_URL + "?action=get_announcement"); const dataAnnounce = await resAnnounce.json(); document.getElementById('adminAnnouncementText').value = (dataAnnounce.success && dataAnnounce.message) ? dataAnnounce.message : "";
-            try { await loadUserAccessMap(); } catch(e) {}
-            try { await loadUserRestrictions(); } catch(e) {}
-            const tbody = document.getElementById('adminUsersTableBody'); tbody.innerHTML = "";
-            if (data.success) {
-                if(data.users.length === 0) { tbody.innerHTML = "<tr><td colspan='5' style='text-align:center;'>No accounts.</td></tr>"; return; }
-                data.users.forEach(u => {
-                    const safePin = String(u.pin).replace(/'/g, "\\'").replace(/"/g, '&quot;'); 
-                    const safeUser = String(u.username).replace(/'/g, "\\'").replace(/"/g, '&quot;'); 
-                    const isPending = String(u.status || '').trim().toLowerCase() === 'pending';
-                    const userRole = u.role || (u.canEdit ? 'Admin' : 'Regular User');
-                    
-                    const roleSelect = `<select onchange="changeUserRole('${safeUser}', this.value)" style="margin:0; padding: 6px 10px; font-size: 13px; width: auto; border-radius: var(--radius-sm); background: white;">
-                        <option value="Regular User" ${userRole === 'Regular User' ? 'selected' : ''}>Regular User</option>
-                        <option value="Admin" ${userRole === 'Admin' ? 'selected' : ''}>Admin (Add/Edit/Update)</option>
-                    </select>
-                    <br><button type="button" class="action-btn" style="margin-top:5px;padding:3px 10px;font-size:11px;width:auto;" onclick="openUserAccessModal('${safeUser}')" title="Configure allowed page access">⚙ Allowed Access</button>`;
-
-                    const isRestricted = !!userRestrictedMap[safeUser];
-                    const restrictBtn = isPending ? '' :
-                        `<button class="action-btn" style="margin:0 6px 0 0;padding:3px 8px;font-size:11px;${isRestricted ? 'background:var(--danger);color:white;border:none;' : ''}" onclick="toggleUserRestriction('${safeUser}', ${!isRestricted})" title="${isRestricted ? 'Remove read-only restriction' : 'Restrict user to view-only (cannot add/edit/modify)'}">${isRestricted ? '🔒 Restricted' : '🔓 Restrict'}</button>`;
-                    const actionHtml = restrictBtn + (isPending ? 
-                        `<button class="action-btn approve-btn" onclick="processApproval('${safeUser}', 'approve_user')">Approve</button> <button class="action-btn delete-btn" onclick="processApproval('${safeUser}', 'reject_user')">Reject</button>` : 
-                        `<button class="action-btn delete-btn" onclick="adminDeleteUser('${safeUser}')">Delete</button>`);
-                    
-                    tbody.innerHTML += `<tr>
-                        <td><span style="cursor:pointer;color:var(--primary);text-decoration:underline;" onclick="viewUserProfile('${safeUser}')" title="View full profile">${u.rank || ''} ${u.name || ''}</span></td>
-                        <td><span style="cursor:pointer;color:var(--primary);text-decoration:underline;" onclick="viewUserProfile('${safeUser}')" title="View full profile">${u.username}</span></td>
-                        <td>${roleSelect}</td>
-                        <td style="color:${isPending ? '#f59e0b' : 'var(--success)'}">${u.status || 'Active'}</td>
-                        <td>${actionHtml}</td>
-                    </tr>`;
-                });
-            }
-        }
-
-        function changeUserRole(username, newRole) {
-            customConfirm(`Set role for ${username} to: ${newRole}?`, async (confirmed) => {
-                if (!confirmed) {
-                    loadAdminUsers();
+            const tbody = document.getElementById('adminUsersTableBody');
+            if (tbody) tbody.innerHTML = '<tr><td colspan="6" class="um-table-empty"><span class="um-loading-dot"></span> Loading user accounts…</td></tr>';
+            const userName = localStorage.getItem('loggedInUser') || '';
+            try {
+                const [usersResponse, announcementResponse] = await Promise.all([
+                    fetch(API_URL, {method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'get_all_users',userName,password:sessionAdminPass})}),
+                    fetch(`${API_URL}?action=get_announcement&_ts=${Date.now()}`, {cache:'no-store'})
+                ]);
+                const data = await usersResponse.json();
+                const dataAnnouncement = await announcementResponse.json();
+                const announcement = document.getElementById('adminAnnouncementText');
+                if (announcement) announcement.value = (dataAnnouncement.success && dataAnnouncement.message) ? dataAnnouncement.message : '';
+                if (!data || !data.success) {
+                    adminUsersCache = []; updateAdminUserSummary([]);
+                    if (tbody) tbody.innerHTML = '<tr><td colspan="6" class="um-table-empty um-error-empty">Could not load accounts. Your Alpha Admin session may have expired; return to Settings and authenticate again.</td></tr>';
+                    const count = document.getElementById('adminUsersResultCount'); if (count) count.textContent = 'Unable to load accounts';
                     return;
                 }
-                try {
-                    await fetch(API_URL, {
-                        method: 'POST',
-                        mode: 'no-cors',
-                        body: JSON.stringify({
-                            action: 'set_role',
-                            username: username,
-                            role: newRole,
-                            password: sessionAdminPass
-                        })
-                    });
-                    logActivity(`changed role of user "${username}" to ${newRole}`);
-                    customAlert(`Role updated to ${newRole} for ${username}`, "Success");
-                    setTimeout(loadAdminUsers, 1500);
-                } catch(err) {
-                    customAlert("Failed to update user role.", "Error");
-                }
+                adminUsersCache = Array.isArray(data.users) ? data.users.map(user => ({...user,username:String(user.username || ''),role:String(user.role || 'Regular User'),status:String(user.status || 'Active')})) : [];
+                try { await loadUserAccessMap(); } catch (error) {}
+                try { await loadUserRestrictions(); } catch (error) {}
+                updateAdminUserSummary(adminUsersCache); renderAdminUsers();
+            } catch (error) {
+                console.error('Unable to load User Management accounts.', error);
+                adminUsersCache = []; updateAdminUserSummary([]);
+                if (tbody) tbody.innerHTML = '<tr><td colspan="6" class="um-table-empty um-error-empty">A connection error prevented account data from loading. Please retry.</td></tr>';
+                const count = document.getElementById('adminUsersResultCount'); if (count) count.textContent = 'Connection error';
+            }
+        }
+        function updateAdminUserSummary(users) {
+            const statusOf = user => String(user.status || 'Active').trim().toLowerCase();
+            const setValue = (id, value) => { const el = document.getElementById(id); if (el) el.textContent = String(value); };
+            setValue('umTotalUsers', users.length);
+            setValue('umActiveUsers', users.filter(user => statusOf(user) !== 'pending').length);
+            setValue('umPendingUsers', users.filter(user => statusOf(user) === 'pending').length);
+            setValue('umAdminUsers', users.filter(user => String(user.role || '') === 'Admin').length);
+        }
+        function renderAdminUsers() {
+            const tbody = document.getElementById('adminUsersTableBody'); if (!tbody) return;
+            const query = String(document.getElementById('adminUserSearch')?.value || '').trim().toLowerCase();
+            const statusFilter = String(document.getElementById('adminStatusFilter')?.value || 'all').toLowerCase();
+            const roleFilter = String(document.getElementById('adminRoleFilter')?.value || 'all');
+            const filtered = adminUsersCache.filter(user => {
+                const status = String(user.status || 'Active').trim().toLowerCase();
+                const role = String(user.role || 'Regular User');
+                const searchText = `${user.rank || ''} ${user.name || ''} ${user.username || ''}`.toLowerCase();
+                return (!query || searchText.includes(query)) && (statusFilter === 'all' || status === statusFilter) && (roleFilter === 'all' || role === roleFilter);
+            });
+            const count = document.getElementById('adminUsersResultCount');
+            if (count) count.textContent = `${filtered.length} of ${adminUsersCache.length} account${adminUsersCache.length === 1 ? '' : 's'}`;
+            if (!filtered.length) {
+                tbody.innerHTML = '<tr><td colspan="6" class="um-table-empty"><span class="um-empty-icon">&#128269;</span><strong>No matching accounts</strong><small>Try changing the search terms or filters.</small></td></tr>';
+                return;
+            }
+            tbody.innerHTML = filtered.map(user => {
+                const username = String(user.username || ''), safeUser = escapeAttr(username);
+                const name = String(user.name || '').trim() || username;
+                const rank = String(user.rank || '').trim();
+                const role = String(user.role || 'Regular User');
+                const statusText = String(user.status || 'Active');
+                const isPending = statusText.trim().toLowerCase() === 'pending';
+                const restricted = !!userRestrictedMap[username];
+                const roleOptions = `<option value="Regular User" ${role === 'Regular User' ? 'selected' : ''}>Regular User</option><option value="Admin" ${role === 'Admin' ? 'selected' : ''}>Admin</option>`;
+                const accessButton = `<button type="button" class="um-action-link" data-um-action="access" data-username="${safeUser}" title="Configure allowed page access">Configure access</button>`;
+                const restrictButton = isPending ? '' : `<button type="button" class="um-mini-btn ${restricted ? 'um-mini-danger' : 'um-mini-neutral'}" data-um-action="restrict" data-restrict="${restricted ? 'false' : 'true'}" data-username="${safeUser}" title="${restricted ? 'Remove read-only restriction' : 'Restrict to read-only access'}">${restricted ? '&#128274; Restricted' : '&#128275; Restrict'}</button>`;
+                const primaryActions = isPending ? `<button type="button" class="um-mini-btn um-mini-success" data-um-action="approve" data-username="${safeUser}">Approve</button><button type="button" class="um-mini-btn um-mini-danger" data-um-action="reject" data-username="${safeUser}">Reject</button>` : `<button type="button" class="um-mini-btn um-mini-danger" data-um-action="delete" data-username="${safeUser}">Delete account</button>`;
+                return `<tr>
+                    <td><div class="um-account-cell"><span class="um-account-avatar">${escapeHtml(String((name || username).trim().charAt(0) || 'U').toUpperCase())}</span><div class="um-account-copy"><button type="button" class="um-account-name" data-um-action="view-profile" data-username="${safeUser}">${escapeHtml(name)}</button><span>${escapeHtml(rank || 'Personnel account')}</span></div></div></td>
+                    <td><span class="um-username">@${escapeHtml(username)}</span></td>
+                    <td><select class="um-role-select" aria-label="Assigned role for ${escapeAttr(username)}" data-um-action="role" data-username="${safeUser}">${roleOptions}</select></td>
+                    <td><span class="um-status-pill ${isPending ? 'um-status-pending' : 'um-status-active'}"><span></span>${escapeHtml(statusText)}</span></td>
+                    <td><div class="um-access-actions">${accessButton}${restrictButton}</div></td>
+                    <td><div class="um-row-actions">${primaryActions}</div></td>
+                </tr>`;
+            }).join('');
+        }
+        const adminUsersTbody = document.getElementById('adminUsersTableBody');
+        if (adminUsersTbody) {
+            adminUsersTbody.addEventListener('click', event => {
+                const control = event.target.closest('[data-um-action]'); if (!control) return;
+                const username = control.getAttribute('data-username') || '';
+                const action = control.getAttribute('data-um-action');
+                if (action === 'view-profile') viewUserProfile(username);
+                else if (action === 'access') openUserAccessModal(username);
+                else if (action === 'restrict') toggleUserRestriction(username, control.getAttribute('data-restrict') === 'true');
+                else if (action === 'approve') processApproval(username, 'approve_user');
+                else if (action === 'reject') processApproval(username, 'reject_user');
+                else if (action === 'delete') adminDeleteUser(username);
+            });
+            adminUsersTbody.addEventListener('change', event => {
+                const control = event.target.closest('[data-um-action="role"]');
+                if (control) changeUserRole(control.getAttribute('data-username') || '', control.value);
             });
         }
-
-        function adminDeleteUser(username) { customConfirm(`Delete user: ${username}?`, async (confirmed) => { if (!confirmed) return; await fetch(API_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify({ action: 'delete_user_admin', username: username, password: sessionAdminPass }) }); logActivity(`deleted user account: ${username}`); setTimeout(loadAdminUsers, 1500); }); }
-        function processApproval(userIdentifier, actionType) { customConfirm(`Confirm Action?`, async (confirmed) => { if (!confirmed) return; await fetch(API_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify({ action: actionType, username: userIdentifier, userPin: userIdentifier, password: sessionAdminPass }) }); logActivity(actionType === 'approve_user' ? "approved a new user account." : "rejected an account request."); setTimeout(loadAdminUsers, 1500); }); }
-
-
+        function changeUserRole(username, newRole) {
+            customConfirm(`Set role for ${username} to ${newRole === 'Admin' ? 'Admin' : 'Regular User'}?`, async confirmed => {
+                if (!confirmed) { loadAdminUsers(); return; }
+                try {
+                    const response = await fetch(API_URL, {method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'set_role',username,role:newRole,password:sessionAdminPass,userName:localStorage.getItem('loggedInUser') || ''})});
+                    const result = await response.json();
+                    if (!result.success) { customAlert(result.error || 'The role change was rejected.', 'Error'); loadAdminUsers(); return; }
+                    customAlert(`Role updated for ${username}.`, 'Success'); logActivity(`changed role of user "${username}" to ${newRole}`); await loadAdminUsers();
+                } catch (error) { customAlert('Failed to update user role. Please retry.', 'Error'); }
+            });
+        }
+        function adminDeleteUser(username) {
+            customConfirm(`Delete the account for ${username}? This action cannot be undone.`, async confirmed => {
+                if (!confirmed) return;
+                try {
+                    const response = await fetch(API_URL, {method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'delete_user_admin',username,password:sessionAdminPass,userName:localStorage.getItem('loggedInUser') || ''})});
+                    const result = await response.json();
+                    if (!result.success) { customAlert(result.error || 'Could not delete this account.', 'Error'); return; }
+                    customAlert(`Account ${username} deleted.`, 'Success'); logActivity(`deleted user account: ${username}`); await loadAdminUsers();
+                } catch (error) { customAlert('Failed to delete account. Please retry.', 'Error'); }
+            });
+        }
+        function processApproval(userIdentifier, actionType) {
+            const verb = actionType === 'approve_user' ? 'approve' : 'reject and remove';
+            customConfirm(`Are you sure you want to ${verb} the account ${userIdentifier}?`, async confirmed => {
+                if (!confirmed) return;
+                try {
+                    const response = await fetch(API_URL, {method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:actionType,username:userIdentifier,userPin:userIdentifier,password:sessionAdminPass,userName:localStorage.getItem('loggedInUser') || ''})});
+                    const result = await response.json();
+                    if (!result.success) { customAlert(result.error || 'The account action was rejected.', 'Error'); return; }
+                    customAlert(actionType === 'approve_user' ? `Account ${userIdentifier} approved.` : `Account ${userIdentifier} rejected and removed.`, 'Success');
+                    logActivity(actionType === 'approve_user' ? 'approved a new user account.' : 'rejected an account request.'); await loadAdminUsers();
+                } catch (error) { customAlert('Unable to complete the account action. Please retry.', 'Error'); }
+            });
+        }
         function isAlphaAdmin() {
             return localStorage.getItem('loggedInUser') === ALPHA_ADMIN_NAME;
         }
 
         function canManagePersonnel() {
             const role = localStorage.getItem('userRole') || '';
+            const username = localStorage.getItem('loggedInUser') || '';
+            if (typeof userRestrictedMap !== 'undefined' && userRestrictedMap[username]) return false;
             return isAlphaAdmin() || role === 'Admin' || localStorage.getItem('canEdit') === 'Yes';
         }
 
+        function canPersonnelAction(subpage, operation) {
+            const username = localStorage.getItem('loggedInUser') || '';
+            if (isAlphaAdmin()) return true;
+            if (typeof userRestrictedMap !== 'undefined' && userRestrictedMap[username]) return false;
+            const explicit = userPersonnelPermissionsMap && userPersonnelPermissionsMap[username];
+            if (explicit && Object.prototype.hasOwnProperty.call(explicit, subpage)) {
+                return !!(explicit[subpage] && explicit[subpage][operation] === true);
+            }
+            // Preserve legacy Admin behavior until an explicit permission matrix is saved.
+            return canManagePersonnel();
+        }
+
+        // Permission-sensitive Personnel Management writes use readable JSON responses,
+        // so the UI never displays a success message for a backend-rejected operation.
+        async function postPersonnelMutation(payload) {
+            const response = await fetch(API_URL, {
+                method: 'POST',
+                mode: 'cors',
+                headers: {'Content-Type': 'text/plain;charset=utf-8'},
+                body: JSON.stringify(payload)
+            });
+            if (!response.ok) throw new Error(`Request failed (${response.status}).`);
+            const result = await response.json();
+            if (!result || result.success !== true) {
+                throw new Error((result && result.error) || 'The requested change was rejected by the backend.');
+            }
+            return result;
+        }
+
         function updatePersonnelPermissions() {
-            const can = canManagePersonnel();
             const controls = document.getElementById('personnelAdminControls');
+            if (controls) controls.classList.toggle('hidden', currentPersonnelSubPage !== 'list' || !canPersonnelAction('list', 'add'));
             const header = document.getElementById('personnelActionHeader');
-            if (controls) controls.classList.toggle('hidden', !can);
-            if (header) header.style.display = can ? '' : 'none';
+            if (header) header.style.display = canPersonnelAction('list', 'edit') ? '' : 'none';
+            const setVisible = (id, allowed) => {
+                const element = document.getElementById(id);
+                if (element) element.style.display = allowed ? '' : 'none';
+            };
+            setVisible('dutyEditSeqBtn', canPersonnelAction('duty', 'edit'));
+            setVisible('bmiAddBtn', canPersonnelAction('bmi', 'add'));
+            setVisible('bmiActionHeader', canPersonnelAction('bmi', 'edit') || canPersonnelAction('bmi', 'delete'));
+            setVisible('squadAddBtn', canPersonnelAction('squad', 'add'));
+            setVisible('leaveAddBtn', canPersonnelAction('leave', 'add'));
+            setVisible('leaveActionHeader', canPersonnelAction('leave', 'delete'));
+            setVisible('areaAddBtn', canPersonnelAction('aor', 'add'));
         }
 
         async function loadPersonnel() {
@@ -1802,7 +2316,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         }
 
         function renderPersonnelTable(rows) {
-            const can = canManagePersonnel();
+            const can = canPersonnelAction('list', 'edit') || canPersonnelAction('list', 'delete') || canPersonnelAction('list', 'add');
             const container = document.getElementById('personnelTablesContainer');
             if (!container) return;
 
@@ -1855,7 +2369,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 if (!dataRows.length) return '';
                 // Restore controls are shown only to Alpha Admin and Admin users who
                 // pass the same personnel-management permission check used elsewhere.
-                const showRestoreAction = archived && (isAlphaAdmin() || localStorage.getItem('userRole') === 'Admin');
+                const showRestoreAction = archived && canPersonnelAction('list', 'add');
                 const bodyHtml = dataRows.map((p, index) => {
                     const clickAction = archived ? `onclick="openArchivedPersonnelDetails(${Number(p.archiveRow)})"` : `onclick="openPersonnelProfile(${Number(p.no)})"`;
                     const restoreActionCell = showRestoreAction
@@ -1878,7 +2392,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 }).join('');
 
                 const extraHeader = archived
-                    ? `<th>Archived Date</th>${showRestoreAction ? '<th>Action</th>' : ''}`
+                    ? `<th>Archived Date</th>${showRestoreAction ? '<th id="personnelActionHeader">Action</th>' : ''}`
                     : '<th>Remarks</th>';
                 return `<h3 style="margin-top:25px;margin-bottom:10px;color:${archived ? 'var(--danger)' : 'var(--primary)'};font-size:16px;">${escapeHtml(title)}</h3>
                 <div class="table-wrapper" style="margin-bottom:20px;margin-top:0;">
@@ -1983,7 +2497,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         }
 
         function openPersonnelModal() {
-            if(!canManagePersonnel()) return customAlert("Only the Alpha Admin and designated Admin users can modify personnel records.","Permission Denied");
+            if(!canPersonnelAction('list', 'add')) return customAlert("You do not have permission to add Personnel List entries.","Permission Denied");
             personnelEditNo=null;
             document.getElementById('personnelModalTitle').innerText='Add Personnel';
             ['pLastName','pFirstName','pMiddleName','pQualifiers','pDesignation','pContactNo'].forEach(id=>document.getElementById(id).value='');
@@ -1998,7 +2512,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         }
 
         function editPersonnel(no) {
-            if(!canManagePersonnel()) return customAlert("Permission denied.","Error");
+            if(!canPersonnelAction('list', 'edit')) return customAlert("You do not have permission to edit Personnel List entries.","Permission Denied");
             const p=allPersonnel.find(x=>Number(x.no)===Number(no)); if(!p) return;
             personnelEditNo=Number(no);
             document.getElementById('personnelModalTitle').innerText='Edit Personnel';
@@ -2038,7 +2552,8 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         });
 
         async function savePersonnel() {
-            if(!canManagePersonnel()) return customAlert("Permission denied.","Error");
+            const operation = personnelEditNo === null ? 'add' : 'edit';
+            if(!canPersonnelAction('list', operation)) return customAlert(`You do not have permission to ${operation} Personnel List entries.`,"Permission Denied");
             const payload={
                 action: personnelEditNo===null?'add_personnel':'update_personnel',
                 userName:localStorage.getItem('loggedInUser'),
@@ -2075,7 +2590,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         }
 
         function archivePersonnel(no) {
-            if(!canManagePersonnel()) return customAlert("Permission denied.","Error");
+            if(!canPersonnelAction('list', 'delete')) return customAlert("You do not have permission to archive Personnel List entries.","Permission Denied");
             const p=allPersonnel.find(x=>Number(x.no)===Number(no)); if(!p) return;
             customConfirm(`Archive ${p.rank} ${p.lastName}, ${p.firstName}? The record will be moved to the Archive sheet.`, async confirmed=>{
                 if(!confirmed) return;
@@ -2090,8 +2605,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         }
 
         async function restorePersonnel(archiveRow) {
-            const role = localStorage.getItem('userRole') || '';
-            if(!isAlphaAdmin() && role !== 'Admin') return customAlert("Only the Alpha Admin and Admin users can restore archived personnel.","Permission Denied");
+            if(!canPersonnelAction('list', 'add')) return customAlert("You do not have permission to restore Personnel List entries.","Permission Denied");
             const p = (archivedPersonnel || []).find(x => Number(x.archiveRow) === Number(archiveRow));
             const name = p ? `${p.rank} ${p.lastName}, ${p.firstName}` : 'this archived personnel record';
 
@@ -2447,6 +2961,26 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             renderActivityOverviewCalendar();
         }
 
+        function activityAnchorDates(activity) {
+            return String(activity && activity.date || '').split(',').map(v => v.trim().slice(0, 10)).filter(v => /^\d{4}-\d{2}-\d{2}$/.test(v));
+        }
+        function activityOccursOnDate(activity, dateObj) {
+            const key = localDateKey(dateObj);
+            const anchors = activityAnchorDates(activity);
+            if (!anchors.length) return false;
+            const frequency = String(activity.frequency || 'N/A').trim().toLowerCase();
+            return anchors.some(anchor => {
+                if (key < anchor) return false;
+                if (key === anchor) return true;
+                const start = new Date(anchor + 'T00:00:00');
+                if (Number.isNaN(start.getTime())) return false;
+                if (frequency === 'weekly') return dateObj.getDay() === start.getDay();
+                if (frequency === 'monthly') return dateObj.getDate() === start.getDate();
+                if (frequency === 'annually' || frequency === 'annual' || frequency === 'yearly') return dateObj.getMonth() === start.getMonth() && dateObj.getDate() === start.getDate();
+                return false;
+            });
+        }
+
         function renderActivityOverviewCalendar() {
             const host = document.getElementById('activityOverviewCalendar');
             const title = document.getElementById('activityOverviewMonthTitle');
@@ -2462,10 +2996,23 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 const raw = i - first + 1;
                 const date = raw < 1 ? new Date(year, month - 1, previousCount + raw) : raw > count ? new Date(year, month + 1, raw - count) : new Date(year, month, raw);
                 const key = localDateKey(date), other = date.getMonth() !== month;
-                const matches = (allActivities || []).filter(a => String(a.date || '').split(',').map(d => d.trim().slice(0,10)).includes(key));
-                html += `<div class="activity-overview-day${other ? ' is-other-month' : ''}${key === today ? ' is-today' : ''}"><span class="activity-overview-day-number">${date.getDate()}</span><div class="activity-overview-events">${matches.slice(0,3).map(a => `<button type="button" class="activity-overview-event" title="${escapeAttr(a.activityTitle || 'Activity')}" onclick="showActivityDetails('${escapeAttr(a.id)}')">${escapeHtml(a.activityTitle || 'Untitled activity')}</button>`).join('')}${matches.length > 3 ? `<span class="activity-overview-more">+${matches.length-3} more</span>` : ''}</div></div>`;
+                const matches = (allActivities || []).filter(a => activityOccursOnDate(a, date));
+                html += `<div class="activity-overview-day${other ? ' is-other-month' : ''}${key === today ? ' is-today' : ''}"><span class="activity-overview-day-number">${date.getDate()}</span><div class="activity-overview-events">${matches.slice(0,3).map(a => `<button type="button" class="activity-overview-event activity-event-${String(a.frequency || 'once').toLowerCase().replace(/[^a-z]/g,'')}" title="${escapeAttr((a.activityTitle || 'Activity') + (a.frequency && a.frequency !== 'N/A' ? ' · ' + a.frequency : ''))}" onclick="showActivityDetails('${escapeAttr(a.id)}')">${escapeHtml(a.activityTitle || 'Untitled activity')}</button>`).join('')}${matches.length > 3 ? `<span class="activity-overview-more">+${matches.length-3} more</span>` : ''}</div></div>`;
             }
             host.innerHTML = html;
+        }
+
+        function openActivityDataModal() {
+            const modal = document.getElementById('activityDataModal');
+            if (!modal) return;
+            modal.classList.remove('hidden');
+            const search = document.getElementById('activitySearch');
+            if (search) search.focus({preventScroll:true});
+            if (typeof filterActivities === 'function') filterActivities();
+        }
+        function closeActivityDataModal() {
+            const modal = document.getElementById('activityDataModal');
+            if (modal) modal.classList.add('hidden');
         }
 
         function showActivityDetails(id) {
@@ -2487,7 +3034,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             const p = (archivedPersonnel || []).find(x => Number(x.archiveRow) === Number(archiveRow));
             if (!p) return;
             selectedArchivedPersonnelRow = Number(archiveRow);
-            const canEditStatus = isAlphaAdmin() || localStorage.getItem('userRole') === 'Admin';
+            const canEditStatus = canPersonnelAction('list', 'edit');
             const name = `${p.rank || ''} ${p.firstName || ''} ${p.middleName || ''} ${p.lastName || ''}`.replace(/\s+/g, ' ').trim();
             document.getElementById('archivedPersonnelDetailsName').textContent = name || 'Archived Personnel';
             document.getElementById('archivedPersonnelDetailsContent').innerHTML = [
@@ -2509,8 +3056,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         }
 
         async function saveArchivedPersonnelStatus() {
-            const role = localStorage.getItem('userRole') || '';
-            if (!isAlphaAdmin() && role !== 'Admin') return customAlert('Only the Alpha Admin and Admin users can change archived personnel status.', 'Permission Denied');
+            if (!canPersonnelAction('list', 'edit')) return customAlert('You do not have permission to edit archived Personnel List entries.', 'Permission Denied');
             if (!selectedArchivedPersonnelRow) return;
             const status = document.getElementById('archivedPersonnelStatus').value;
             const p = (archivedPersonnel || []).find(x => Number(x.archiveRow) === selectedArchivedPersonnelRow);
@@ -3026,7 +3572,10 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         function triggerActionModal(action, controlNum, currentSubject = "", currentOfficeDestination = "", currentStatus = "For Dispatched") {
             pendingAction = action; 
             actionTargetControl = controlNum; 
-            document.getElementById('actionModal').classList.remove('hidden'); 
+            const confirmationModal = document.getElementById('actionModal');
+            if (confirmationModal && confirmationModal.parentElement !== document.body) document.body.appendChild(confirmationModal);
+            if (confirmationModal) confirmationModal.style.setProperty('z-index', '50000', 'important');
+            confirmationModal.classList.remove('hidden'); 
             
             const passInput = document.getElementById('actionAdminPass');
             const confirmBtn = document.getElementById('actionConfirmBtn');
@@ -3172,7 +3721,10 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             if (checked.length === 0) return customAlert("No memos selected for status update.", "Error");
             actionTargetControl = Array.from(checked).map(cb => cb.value);
             pendingAction = 'batch_status';
-            document.getElementById('actionModal').classList.remove('hidden');
+            const confirmationModal = document.getElementById('actionModal');
+            if (confirmationModal && confirmationModal.parentElement !== document.body) document.body.appendChild(confirmationModal);
+            if (confirmationModal) confirmationModal.style.setProperty('z-index', '50000', 'important');
+            confirmationModal.classList.remove('hidden');
             document.getElementById('actionModalTitle').innerText = `Bulk Edit Status (${actionTargetControl.length} items)`;
             document.getElementById('actionNewSubject').classList.add('hidden');
             document.getElementById('actionNewStatus').classList.remove('hidden');
@@ -3210,7 +3762,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
 
         // Restore the authenticated session whenever the page is loaded or refreshed.
         // Authentication state is stored in localStorage and is not cleared by a refresh.
-        window.addEventListener('load', checkAuth);
+        window.addEventListener('load', async () => { await loadAlphaAdminIdentity(); checkAuth(); });
 
         /* ============================================================
            SPADES ENHANCEMENTS: Duty Office / BMI / Squadding / Leave /
@@ -3235,6 +3787,8 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         let squadEditingLeaderIdx = '';
         let selectedLeaveDates = [];
         let userAccessMap = {};
+        let userPersonnelPermissionsMap = {};
+        let userAccessMapLoadedFor = '';
         let currentAccessUsername = null;
         let bmiEditingId = null;
         let dutySequenceWorking = [];
@@ -3247,6 +3801,14 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             {key:'settings', label:'Settings'},
             {key:'adminMgmt', label:'User Management'},
             {key:'usersChat', label:'Users Chat'}
+        ];
+        const PERSONNEL_PERMISSION_SUBPAGES = [
+            {key:'list', label:'Personnel List'}, {key:'duty', label:'Duty Office'},
+            {key:'bmi', label:'BMI Monitoring'}, {key:'squad', label:'Squadding'},
+            {key:'leave', label:'Leave Management'}, {key:'aor', label:'Area of Responsibilities'}
+        ];
+        const PERSONNEL_PERMISSION_ACTIONS = [
+            {key:'add', label:'Add'}, {key:'edit', label:'Edit'}, {key:'delete', label:'Delete'}
         ];
 
         function personnelFullName(p) {
@@ -3319,30 +3881,30 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             document.querySelectorAll('.personnel-subnav-btn').forEach(btn => {
                 btn.classList.toggle('active', btn.getAttribute('data-sub') === sub);
             });
-            const can = canManagePersonnel();
+            updatePersonnelPermissions();
             if (sub === 'duty') {
                 const btn = document.getElementById('dutyEditSeqBtn');
-                if (btn) btn.style.display = can ? '' : 'none';
+                if (btn) btn.style.display = canPersonnelAction('duty', 'edit') ? '' : 'none';
                 loadDutySequence();
             } else if (sub === 'bmi') {
                 const btn = document.getElementById('bmiAddBtn');
-                if (btn) btn.style.display = can ? '' : 'none';
+                if (btn) btn.style.display = canPersonnelAction('bmi', 'add') ? '' : 'none';
                 const hdr = document.getElementById('bmiActionHeader');
-                if (hdr) hdr.style.display = can ? '' : 'none';
+                if (hdr) hdr.style.display = (canPersonnelAction('bmi', 'edit') || canPersonnelAction('bmi', 'delete')) ? '' : 'none';
                 loadBmiRecords();
             } else if (sub === 'squad') {
                 const btn = document.getElementById('squadAddBtn');
-                if (btn) btn.style.display = can ? '' : 'none';
+                if (btn) btn.style.display = canPersonnelAction('squad', 'add') ? '' : 'none';
                 loadSquads();
             } else if (sub === 'leave') {
                 const btn = document.getElementById('leaveAddBtn');
-                if (btn) btn.style.display = can ? '' : 'none';
+                if (btn) btn.style.display = canPersonnelAction('leave', 'add') ? '' : 'none';
                 const hdr = document.getElementById('leaveActionHeader');
-                if (hdr) hdr.style.display = can ? '' : 'none';
+                if (hdr) hdr.style.display = canPersonnelAction('leave', 'delete') ? '' : 'none';
                 loadLeaveEntries();
             } else if (sub === 'aor') {
                 const btn = document.getElementById('areaAddBtn');
-                if (btn) btn.style.display = can ? '' : 'none';
+                if (btn) btn.style.display = canPersonnelAction('aor', 'add') ? '' : 'none';
                 loadAreas();
             }
         }
@@ -3476,11 +4038,40 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         }
 
         function openDutySequenceModal() {
-            if (!canManagePersonnel()) { customAlert("Only Alpha Admin and Admin can modify the duty sequence.", "Permission Denied"); return; }
+            if (!canPersonnelAction('duty', 'edit')) { customAlert("You do not have permission to edit Duty Office entries.", "Permission Denied"); return; }
             dutySequenceWorking = dutySequence.slice();
+            populateDutyPersonnelOptions();
             renderDutySequenceList();
             document.getElementById('dutySequenceModal').classList.remove('hidden');
         }
+        function populateDutyPersonnelOptions() {
+            const select = document.getElementById('dutyPersonnelToAdd');
+            if (!select) return;
+            const current = select.value;
+            const personnel = (allPersonnel || []).filter(p => !p.status || String(p.status).trim().toLowerCase() === 'active')
+                .map(p => ({label: personnelShortName(p) || personnelFullName(p), value: personnelShortName(p) || personnelFullName(p), full: personnelFullName(p)}))
+                .filter(p => p.value);
+            const existing = new Set((dutySequenceWorking || []).map(n => String(n).trim().toLowerCase()));
+            const available = personnel.filter(p => !existing.has(p.value.toLowerCase()));
+            select.innerHTML = '<option value="">Select active personnel…</option>' + available
+                .sort((a,b) => a.label.localeCompare(b.label))
+                .map(p => `<option value="${escapeAttr(p.value)}" title="${escapeAttr(p.full)}">${escapeHtml(p.label)}${p.full && p.full !== p.label ? ' — ' + escapeHtml(p.full) : ''}</option>`).join('');
+            if (available.some(p => p.value === current)) select.value = current;
+        }
+        function addDutyPersonnelToSequence() {
+            if (!canPersonnelAction('duty', 'edit')) return customAlert('You do not have permission to edit Duty Office entries.', 'Permission Denied');
+            const select = document.getElementById('dutyPersonnelToAdd');
+            const value = select ? String(select.value || '').trim() : '';
+            if (!value) return customAlert('Select an active personnel record to add.', 'Select Personnel');
+            if (dutySequenceWorking.some(n => String(n).trim().toLowerCase() === value.toLowerCase())) {
+                populateDutyPersonnelOptions();
+                return customAlert('This personnel is already in the duty sequence.', 'Already Added');
+            }
+            dutySequenceWorking.push(value);
+            renderDutySequenceList();
+            populateDutyPersonnelOptions();
+        }
+
         function closeDutySequenceModal() { document.getElementById('dutySequenceModal').classList.add('hidden'); }
         let dutyDragIndex = null;
         function renderDutySequenceList() {
@@ -3512,6 +4103,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             dutySequenceWorking.splice(Number(idx), 0, moved);
             dutyDragIndex = null;
             renderDutySequenceList();
+            populateDutyPersonnelOptions();
         }
         function dutySeqDragEnd(e) {
             dutyDragIndex = null;
@@ -3524,23 +4116,24 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             if (j < 0 || j >= dutySequenceWorking.length) return;
             [dutySequenceWorking[i], dutySequenceWorking[j]] = [dutySequenceWorking[j], dutySequenceWorking[i]];
             renderDutySequenceList();
+            populateDutyPersonnelOptions();
         }
         async function saveDutySequence() {
+            if (!canPersonnelAction('duty', 'edit')) return customAlert('You do not have permission to edit Duty Office entries.', 'Permission Denied');
+            const saveButton = document.getElementById('dutySequenceSaveBtn');
+            if (saveButton) { saveButton.disabled = true; saveButton.textContent = 'Saving…'; }
             try {
-                await fetch(API_URL, {
-                    method:'POST', mode:'no-cors',
-                    body: JSON.stringify({
-                        action:'save_duty_sequence', sequence: dutySequenceWorking,
-                        userName: localStorage.getItem('loggedInUser'),
-                        credential: localStorage.getItem('loggedCred') || ''
-                    })
+                const result = await postPersonnelMutation({
+                    action: 'save_duty_sequence', sequence: dutySequenceWorking,
+                    userName: localStorage.getItem('loggedInUser'),
+                    credential: localStorage.getItem('loggedCred') || ''
                 });
-                dutySequence = dutySequenceWorking.slice();
+                dutySequence = Array.isArray(result.sequence) ? result.sequence.slice() : dutySequenceWorking.slice();
                 closeDutySequenceModal();
-                customAlert("Duty sequence saved successfully.", "Success");
-                renderDutyCalendar();
-                renderDutyTable();
-            } catch (e) { customAlert("Failed to save duty sequence.", "Error"); }
+                customAlert('Duty sequence saved successfully.', 'Success');
+                renderDutyCalendar(); renderDutyTable();
+            } catch (e) { customAlert(e.message || 'Failed to save duty sequence.', 'Error'); }
+            finally { if (saveButton) { saveButton.disabled = false; saveButton.textContent = 'Save Sequence'; } }
         }
 
         /* ---------- BMI Monitoring ---------- */
@@ -3634,7 +4227,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             const period = (periodSel ? periodSel.value : '').trim();
             const mode = modeSel ? modeSel.value : 'monthly';
 
-            const can = canManagePersonnel();
+            const can = canPersonnelAction('bmi', 'add') || canPersonnelAction('bmi', 'edit') || canPersonnelAction('bmi', 'delete');
             const dlBtn = document.getElementById('bmiDownloadBtn');
             if (dlBtn) dlBtn.style.display = can ? '' : 'none';
 
@@ -3745,12 +4338,12 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                     const key = [p.rank, p.lastName, p.firstName, p.middleName, p.qualifiers].map(s => String(s || '').trim()).join('|');
                     const rec = recordMap.get(key) || null;
                     const fullName = personnelFullName(p);
-                    const nameCell = can
+                    const nameCell = (rec ? canPersonnelAction('bmi', 'edit') : canPersonnelAction('bmi', 'add'))
                         ? `<td><span class="bmi-name-link" onclick="openBmiModalForPersonnel(${x.origIdx})" title="Click to encode / edit BMI record">${escapeHtml(fullName)}</span></td>`
                         : `<td>${escapeHtml(fullName)}</td>`;
-                    const actionCell = can
+                    const actionCell = (canPersonnelAction('bmi', 'edit') || canPersonnelAction('bmi', 'delete'))
                         ? (rec
-                            ? `<td><button class="action-btn delete-btn" style="margin:0;padding:4px 8px;font-size:11px;" onclick="event.stopPropagation();deleteBmiRecord('${escapeAttr(rec.id)}')">Del</button></td>`
+                            ? `<td>${canPersonnelAction('bmi', 'delete') ? `<button class="action-btn delete-btn" style="margin:0;padding:4px 8px;font-size:11px;" onclick="event.stopPropagation();deleteBmiRecord('${escapeAttr(rec.id)}')">Del</button>` : '—'}</td>`
                             : `<td style="color:var(--text-muted);font-size:11px;">—</td>`)
                         : '';
                     htmlRows.push(`<tr>
@@ -3833,7 +4426,6 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         }
 
         function openBmiModalForPersonnel(origIdx) {
-            if (!canManagePersonnel()) { customAlert("Only Alpha Admin and Admin can encode BMI records.", "Permission Denied"); return; }
             if (!allPersonnel || !allPersonnel.length) { loadPersonnel(); customAlert("Personnel data is still loading. Please try again in a moment.", "Loading"); return; }
             const p = allPersonnel[Number(origIdx)];
             if (!p) return;
@@ -3852,6 +4444,11 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             }
             candidates.sort((a, b) => String(b.period || '').localeCompare(String(a.period || '')));
             const rec = candidates[0] || null;
+            const requiredOperation = rec ? 'edit' : 'add';
+            if (!canPersonnelAction('bmi', requiredOperation)) {
+                customAlert(`You do not have permission to ${requiredOperation} BMI records.`, 'Permission Denied');
+                return;
+            }
 
             bmiEditingId = rec ? rec.id : null;
             document.getElementById('bmiModalTitle').innerText = rec ? 'Edit BMI Record' : 'Add BMI Record';
@@ -3894,7 +4491,8 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             if (cEl) { cEl.innerText = res.classification || '—'; cEl.style.color = bmiClassColor(res.classification); }
         }
         function openBmiModal(editId) {
-            if (!canManagePersonnel()) { customAlert("Only Alpha Admin and Admin can encode BMI records.", "Permission Denied"); return; }
+            const operation = editId ? 'edit' : 'add';
+            if (!canPersonnelAction('bmi', operation)) { customAlert(`You do not have permission to ${operation} BMI records.`, "Permission Denied"); return; }
             if (!allPersonnel || !allPersonnel.length) { loadPersonnel(); customAlert("Personnel data is still loading. Please try again in a moment.", "Loading"); return; }
 
             bmiEditingId = editId || null;
@@ -3975,14 +4573,15 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         }
         function fillBmiPersonnelDetails() { /* personnel selected from list; fields remain manual entry */ }
         async function saveBmiRecord() {
+            const operation = bmiEditingId ? 'edit' : 'add';
+            if (!canPersonnelAction('bmi', operation)) return customAlert(`You do not have permission to ${operation} BMI records.`, 'Permission Denied');
             const selIdx = document.getElementById('bmiPersonnelSelect').value;
             const period = document.getElementById('bmiPeriodInput').value;
-            if (selIdx === '' || !period) { customAlert("Please select personnel and a period.", "Validation"); return; }
+            if (selIdx === '' || !period) { customAlert('Please select personnel and a period.', 'Validation'); return; }
             const p = allPersonnel[Number(selIdx)];
+            if (!p) { customAlert('Select a valid personnel record.', 'Validation'); return; }
             const payload = {
-                action:'save_bmi_record',
-                id: bmiEditingId || undefined,
-                period: period,
+                action: 'save_bmi_record', id: bmiEditingId || undefined, period,
                 rank: p.rank, lastName: p.lastName, firstName: p.firstName,
                 middleName: p.middleName, qualifiers: p.qualifiers,
                 age: document.getElementById('bmiAge').value,
@@ -3994,28 +4593,28 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 userName: localStorage.getItem('loggedInUser'),
                 credential: localStorage.getItem('loggedCred') || ''
             };
-            if (!payload.height || !payload.weight) { customAlert("Height and Weight are required for BMI calculation.", "Validation"); return; }
+            if (!payload.height || !payload.weight) { customAlert('Height and Weight are required for BMI calculation.', 'Validation'); return; }
+            const saveButton = document.querySelector('#bmiRecordModal .approve-btn');
+            if (saveButton) { saveButton.disabled = true; saveButton.textContent = 'Saving…'; }
             try {
-                await fetch(API_URL, {method:'POST', mode:'no-cors', body: JSON.stringify(payload)});
+                await postPersonnelMutation(payload);
                 closeBmiModal();
-                customAlert("BMI record saved. BMI result and classification were computed automatically.", "Success");
-                setTimeout(loadBmiRecords, 1200);
-            } catch (e) { customAlert("Failed to save BMI record.", "Error"); }
+                customAlert('BMI record saved. BMI result and classification were computed automatically.', 'Success');
+                await loadBmiRecords();
+            } catch (e) { customAlert(e.message || 'Failed to save BMI record.', 'Error'); }
+            finally { if (saveButton) { saveButton.disabled = false; saveButton.textContent = 'Save Record'; } }
         }
         function deleteBmiRecord(id) {
-            customConfirm("Delete this BMI record?", async (confirmed) => {
+            if (!canPersonnelAction('bmi', 'delete')) return customAlert('You do not have permission to delete BMI records.', 'Permission Denied');
+            customConfirm('Delete this BMI record?', async confirmed => {
                 if (!confirmed) return;
                 try {
-                    await fetch(API_URL, {method:'POST', mode:'no-cors', body: JSON.stringify({
-                        action:'delete_bmi_record', id:id,
-                        userName: localStorage.getItem('loggedInUser'),
-                        credential: localStorage.getItem('loggedCred') || ''
-                    })});
-                    setTimeout(loadBmiRecords, 1200);
-                } catch (e) {}
+                    await postPersonnelMutation({action:'delete_bmi_record', id, userName:localStorage.getItem('loggedInUser'), credential:localStorage.getItem('loggedCred') || ''});
+                    customAlert('BMI record deleted.', 'Success');
+                    await loadBmiRecords();
+                } catch (e) { customAlert(e.message || 'Failed to delete BMI record.', 'Error'); }
             });
         }
-
         /* ---------- Squadding ---------- */
         async function loadSquads() {
             try {
@@ -4029,18 +4628,19 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             const container = document.getElementById('squadCarousel');
             if (!container) return;
             if (!squads.length) {
-                container.innerHTML = `<div style="grid-column:1/-1;text-align:center;color:var(--text-muted);padding:40px;">No squads created yet.${canManagePersonnel()?' Click "Create Squad" to group personnel.':''}</div>`;
+                container.innerHTML = `<div style="grid-column:1/-1;text-align:center;color:var(--text-muted);padding:40px;">No squads created yet.${canPersonnelAction('squad','add')?' Click "Create Squad" to group personnel.':''}</div>`;
                 return;
             }
-            const can = canManagePersonnel();
+            const canEditSquad = canPersonnelAction('squad', 'edit');
+            const canDeleteSquad = canPersonnelAction('squad', 'delete');
             container.innerHTML = squads.map(s => {
                 const totalCount = (s.members ? s.members.length : 0) + (s.squadLeader ? 1 : 0);
                 const membersHtml = s.members.length
                     ? s.members.map(m => `<div class="squad-member-chip">${escapeHtml([m.rank,m.lastName].filter(Boolean).join(' '))}</div>`).join('')
                     : '<span style="font-size:12px;color:var(--text-muted);">No members assigned.</span>';
-                const actions = can ? `<div style="margin-top:10px;display:flex;gap:6px;">
-                    <button class="action-btn" style="margin:0;padding:4px 10px;font-size:11px;flex:1;" onclick="event.stopPropagation();editSquad('${escapeAttr(s.squadId)}')">Edit</button>
-                    <button class="action-btn delete-btn" style="margin:0;padding:4px 10px;font-size:11px;flex:1;" onclick="event.stopPropagation();deleteSquad('${escapeAttr(s.squadId)}')">Delete</button>
+                const actions = (canEditSquad || canDeleteSquad) ? `<div style="margin-top:10px;display:flex;gap:6px;">
+                    ${canEditSquad ? `<button class="action-btn" style="margin:0;padding:4px 10px;font-size:11px;flex:1;" onclick="event.stopPropagation();editSquad('${escapeAttr(s.squadId)}')">Edit</button>` : ''}
+                    ${canDeleteSquad ? `<button class="action-btn delete-btn" style="margin:0;padding:4px 10px;font-size:11px;flex:1;" onclick="event.stopPropagation();deleteSquad('${escapeAttr(s.squadId)}')">Delete</button>` : ''}
                 </div>` : '';
                 return `<div class="squad-card glass-panel" onclick="openSquadDetails('${escapeAttr(s.squadId)}')" role="button" tabindex="0" aria-label="View ${escapeAttr(s.squadName)} details" style="cursor:pointer;">
                     <div class="squad-card-head">
@@ -4072,7 +4672,8 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             return names;
         }
         function openSquadModal(editId) {
-            if (!canManagePersonnel()) { customAlert("Only Alpha Admin and Admin can manage squads.", "Permission Denied"); return; }
+            const operation = editId ? 'edit' : 'add';
+            if (!canPersonnelAction('squad', operation)) { customAlert(`You do not have permission to ${operation} Squadding entries.`, "Permission Denied"); return; }
             if (!allPersonnel || !allPersonnel.length) { loadPersonnel(); customAlert("Personnel data is still loading. Please try again in a moment.", "Loading"); return; }
 
             editingSquadId = editId || null;
@@ -4183,9 +4784,8 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                     <span>${escapeHtml(personnelFullName(m))}</span>
                 </div>`).join('');
             }
-            const can = canManagePersonnel();
-            document.getElementById('squadDetailsEditBtn').style.display = can ? '' : 'none';
-            document.getElementById('squadDetailsDeleteBtn').style.display = can ? '' : 'none';
+            document.getElementById('squadDetailsEditBtn').style.display = canPersonnelAction('squad', 'edit') ? '' : 'none';
+            document.getElementById('squadDetailsDeleteBtn').style.display = canPersonnelAction('squad', 'delete') ? '' : 'none';
             document.getElementById('squadDetailsEditBtn').setAttribute('data-squad-id', s.squadId);
             document.getElementById('squadDetailsDeleteBtn').setAttribute('data-squad-id', s.squadId);
             document.getElementById('squadDetailsModal').classList.remove('hidden');
@@ -4197,21 +4797,17 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             openSquadModal(id);
         }
         function deleteSquadFromDetails() {
+            if (!canPersonnelAction('squad', 'delete')) return customAlert('You do not have permission to delete Squadding entries.', 'Permission Denied');
             const id = document.getElementById('squadDetailsDeleteBtn').getAttribute('data-squad-id');
-            customConfirm("Delete this squad and remove all member assignments?", async (confirmed) => {
+            customConfirm('Delete this squad and remove all member assignments?', async confirmed => {
                 if (!confirmed) return;
                 try {
-                    await fetch(API_URL, {method:'POST', mode:'no-cors', body: JSON.stringify({
-                        action:'delete_squad', squadId:id,
-                        userName: localStorage.getItem('loggedInUser'),
-                        credential: localStorage.getItem('loggedCred') || ''
-                    })});
-                    closeSquadDetailsModal();
-                    setTimeout(loadSquads, 1200);
-                } catch (e) {}
+                    await postPersonnelMutation({action:'delete_squad', squadId:id, userName:localStorage.getItem('loggedInUser'), credential:localStorage.getItem('loggedCred') || ''});
+                    closeSquadDetailsModal(); await loadSquads();
+                    customAlert('Squad deleted.', 'Success');
+                } catch (e) { customAlert(e.message || 'Failed to delete squad.', 'Error'); }
             });
         }
-
         function updateSquadMemberCount() {
             const cbs = document.querySelectorAll('.squad-member-cb:checked');
             const leaderSel = document.getElementById('squadLeaderSelect');
@@ -4220,40 +4816,36 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             if (el) el.innerText = cbs.length + leaderCount;
         }
         async function saveSquad() {
+            const operation = editingSquadId ? 'edit' : 'add';
+            if (!canPersonnelAction('squad', operation)) return customAlert(`You do not have permission to ${operation} Squadding entries.`, 'Permission Denied');
             const name = document.getElementById('squadNameInput').value.trim();
-            if (!name) { customAlert("Squad name is required.", "Validation"); return; }
+            if (!name) { customAlert('Squad name is required.', 'Validation'); return; }
             syncSquadSelectionFromCheckboxes();
             const leaderIdx = document.getElementById('squadLeaderSelect').value;
             const leader = leaderIdx !== '' ? personnelShortName(allPersonnel[Number(leaderIdx)]) : '';
-            // Use synced state so members hidden by search/section filters are preserved.
-            const selected = (squadPreselectedMembers || []).map(m => ({
-                rank:m.rank, lastName:m.lastName, firstName:m.firstName, middleName:m.middleName, qualifiers:m.qualifiers
-            }));
+            const selected = (squadPreselectedMembers || []).map(m => ({rank:m.rank,lastName:m.lastName,firstName:m.firstName,middleName:m.middleName,qualifiers:m.qualifiers}));
+            const saveButton = document.querySelector('#squadModal .approve-btn');
+            if (saveButton) { saveButton.disabled = true; saveButton.textContent = 'Saving…'; }
             try {
-                await fetch(API_URL, {method:'POST', mode:'no-cors', body: JSON.stringify({
+                await postPersonnelMutation({
                     action: editingSquadId ? 'update_squad' : 'create_squad',
-                    squadId: editingSquadId || undefined,
-                    squadName: name, squadLeader: leader, members: selected,
-                    userName: localStorage.getItem('loggedInUser'),
-                    credential: localStorage.getItem('loggedCred') || ''
-                })});
-                closeSquadModal();
-                customAlert("Squad saved successfully.", "Success");
-                setTimeout(loadSquads, 1200);
-            } catch (e) { customAlert("Failed to save squad.", "Error"); }
+                    squadId: editingSquadId || undefined, squadName: name, squadLeader: leader, members: selected,
+                    userName: localStorage.getItem('loggedInUser'), credential: localStorage.getItem('loggedCred') || ''
+                });
+                closeSquadModal(); await loadSquads();
+                customAlert('Squad saved successfully.', 'Success');
+            } catch (e) { customAlert(e.message || 'Failed to save squad.', 'Error'); }
+            finally { if (saveButton) { saveButton.disabled = false; saveButton.textContent = 'Save Squad'; } }
         }
-        function editSquad(id) { openSquadModal(id); }
+        function editSquad(id) { if (!canPersonnelAction('squad', 'edit')) return customAlert('You do not have permission to edit Squadding entries.', 'Permission Denied'); openSquadModal(id); }
         function deleteSquad(id) {
-            customConfirm("Delete this squad and remove all member assignments?", async (confirmed) => {
+            if (!canPersonnelAction('squad', 'delete')) return customAlert('You do not have permission to delete Squadding entries.', 'Permission Denied');
+            customConfirm('Delete this squad and remove all member assignments?', async confirmed => {
                 if (!confirmed) return;
                 try {
-                    await fetch(API_URL, {method:'POST', mode:'no-cors', body: JSON.stringify({
-                        action:'delete_squad', squadId:id,
-                        userName: localStorage.getItem('loggedInUser'),
-                        credential: localStorage.getItem('loggedCred') || ''
-                    })});
-                    setTimeout(loadSquads, 1200);
-                } catch (e) {}
+                    await postPersonnelMutation({action:'delete_squad', squadId:id, userName:localStorage.getItem('loggedInUser'), credential:localStorage.getItem('loggedCred') || ''});
+                    await loadSquads(); customAlert('Squad deleted.', 'Success');
+                } catch (e) { customAlert(e.message || 'Failed to delete squad.', 'Error'); }
             });
         }
 
@@ -4364,7 +4956,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             const tbody = document.getElementById('leaveTableBody');
             if (!tbody) return;
             renderLeaveTypeRecap();
-            const can = canManagePersonnel();
+            const can = canPersonnelAction('leave', 'delete');
             if (!leaveEntries.length) {
                 tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:20px;">No leave entries recorded.</td></tr>`;
                 return;
@@ -4431,7 +5023,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         }
 
         function openLeaveModal() {
-            if (!canManagePersonnel()) { customAlert("Only Alpha Admin and Admin can encode leave entries.", "Permission Denied"); return; }
+            if (!canPersonnelAction('leave', 'add')) { customAlert("You do not have permission to add Leave Management entries.", "Permission Denied"); return; }
             if (!allPersonnel || !allPersonnel.length) { loadPersonnel(); customAlert("Personnel data is still loading. Please try again in a moment.", "Loading"); return; }
 
             const sel = document.getElementById('leavePersonnelSelect');
@@ -4481,40 +5073,35 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             wrap.innerHTML = selectedLeaveDates.map(d => `<span class="leave-date-chip">${escapeHtml(d)} <button type="button" onclick="removeLeaveDate('${escapeAttr(d)}')" style="background:none;border:none;color:inherit;cursor:pointer;padding:0;margin:0 0 0 4px;font-size:12px;width:auto;">×</button></span>`).join('');
         }
         async function saveLeaveEntry() {
+            if (!canPersonnelAction('leave', 'add')) return customAlert('You do not have permission to add Leave Management entries.', 'Permission Denied');
             const selIdx = document.getElementById('leavePersonnelSelect').value || selectedLeavePersonnelIdx;
             const leaveType = document.getElementById('leaveTypeSelect').value;
-            if (selIdx === '' || !leaveType) { customAlert("Please select personnel and leave type.", "Validation"); return; }
-            if (leaveType === 'Others' && !document.getElementById('leaveOtherTypeInput').value.trim()) {
-                customAlert("Please specify the leave type under Others.", "Validation"); return;
-            }
-            if (!selectedLeaveDates.length) { customAlert("Please add at least one leave date.", "Validation"); return; }
+            if (selIdx === '' || !leaveType) { customAlert('Please select personnel and leave type.', 'Validation'); return; }
+            if (leaveType === 'Others' && !document.getElementById('leaveOtherTypeInput').value.trim()) { customAlert('Please specify the leave type under Others.', 'Validation'); return; }
+            if (!selectedLeaveDates.length) { customAlert('Please add at least one leave date.', 'Validation'); return; }
             const p = allPersonnel[Number(selIdx)];
+            if (!p) { customAlert('Select a valid personnel record.', 'Validation'); return; }
+            const saveButton = document.querySelector('#leaveEntryModal .approve-btn');
+            if (saveButton) { saveButton.disabled = true; saveButton.textContent = 'Saving…'; }
             try {
-                await fetch(API_URL, {method:'POST', mode:'no-cors', body: JSON.stringify({
-                    action:'add_leave_entry',
-                    personnelName: personnelFullName(p),
-                    leaveType: leaveType,
-                    otherType: leaveType === 'Others' ? document.getElementById('leaveOtherTypeInput').value.trim() : '',
-                    dates: selectedLeaveDates,
-                    userName: localStorage.getItem('loggedInUser'),
-                    credential: localStorage.getItem('loggedCred') || ''
-                })});
-                closeLeaveModal();
-                customAlert("Leave entry saved successfully.", "Success");
-                setTimeout(loadLeaveEntries, 1200);
-            } catch (e) { customAlert("Failed to save leave entry.", "Error"); }
+                await postPersonnelMutation({
+                    action:'add_leave_entry', personnelName:personnelFullName(p), leaveType,
+                    otherType:leaveType === 'Others' ? document.getElementById('leaveOtherTypeInput').value.trim() : '',
+                    dates:selectedLeaveDates,
+                    userName:localStorage.getItem('loggedInUser'), credential:localStorage.getItem('loggedCred') || ''
+                });
+                closeLeaveModal(); customAlert('Leave entry saved successfully.', 'Success'); await loadLeaveEntries();
+            } catch (e) { customAlert(e.message || 'Failed to save leave entry.', 'Error'); }
+            finally { if (saveButton) { saveButton.disabled = false; saveButton.textContent = 'Save Leave Entry'; } }
         }
         function deleteLeaveEntry(id) {
-            customConfirm("Delete this leave entry?", async (confirmed) => {
+            if (!canPersonnelAction('leave', 'delete')) return customAlert('You do not have permission to delete Leave Management entries.', 'Permission Denied');
+            customConfirm('Delete this leave entry?', async confirmed => {
                 if (!confirmed) return;
                 try {
-                    await fetch(API_URL, {method:'POST', mode:'no-cors', body: JSON.stringify({
-                        action:'delete_leave_entry', id:id,
-                        userName: localStorage.getItem('loggedInUser'),
-                        credential: localStorage.getItem('loggedCred') || ''
-                    })});
-                    setTimeout(loadLeaveEntries, 1200);
-                } catch (e) {}
+                    await postPersonnelMutation({action:'delete_leave_entry', id, userName:localStorage.getItem('loggedInUser'), credential:localStorage.getItem('loggedCred') || ''});
+                    await loadLeaveEntries(); customAlert('Leave entry deleted.', 'Success');
+                } catch (e) { customAlert(e.message || 'Failed to delete leave entry.', 'Error'); }
             });
         }
 
@@ -4532,18 +5119,18 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             const container = document.getElementById('areaCardsContainer');
             if (!container) return;
             if (!areas.length) {
-                container.innerHTML = `<div style="grid-column:1/-1;text-align:center;color:var(--text-muted);padding:40px;">No areas created yet.${canManagePersonnel()?' Click "Add Area" to create one and deploy personnel.':''}</div>`;
+                container.innerHTML = `<div style="grid-column:1/-1;text-align:center;color:var(--text-muted);padding:40px;">No areas created yet.${canPersonnelAction('aor','add')?' Click "Add Area" to create one and deploy personnel.':''}</div>`;
                 return;
             }
-            const can = canManagePersonnel();
-            container.innerHTML = areas.map(a => `<div class="area-card glass-panel" draggable="${can?'true':'false'}" data-area-id="${escapeAttr(a.areaId)}"
+            const canEdit = canPersonnelAction('aor', 'edit');
+            container.innerHTML = areas.map(a => `<div class="area-card glass-panel" draggable="${canEdit?'true':'false'}" data-area-id="${escapeAttr(a.areaId)}"
                 onclick="openAreaDetails('${escapeAttr(a.areaId)}')" role="button" tabindex="0" aria-label="View details for ${escapeAttr(a.areaName)}"
-                ${can ? `ondragstart="areaCardDragStart(event, '${escapeAttr(a.areaId)}')" ondragover="areaCardDragOver(event)" ondragleave="areaCardDragLeave(event)" ondrop="areaCardDrop(event, '${escapeAttr(a.areaId)}')" ondragend="areaCardDragEnd(event)"` : ''}>
+                ${canEdit ? `ondragstart="areaCardDragStart(event, '${escapeAttr(a.areaId)}')" ondragover="areaCardDragOver(event)" ondragleave="areaCardDragLeave(event)" ondrop="areaCardDrop(event, '${escapeAttr(a.areaId)}')" ondragend="areaCardDragEnd(event)"` : ''}>
                 <div class="area-card-icon" aria-hidden="true">&#9635;</div>
                 <h4 style="margin:8px 0 4px;color:var(--primary);">${escapeHtml(a.areaName)}</h4>
                 <div style="font-size:12px;color:var(--text-muted);">${escapeHtml(a.camp||'PRO 1 Camp')}</div>
                 <div style="margin-top:10px;font-size:13px;"><strong>${a.personnel.length}</strong> personnel assigned</div>
-                <div style="margin-top:6px;font-size:11px;color:var(--text-muted);">${can ? 'Drag to reorder &bull; ' : ''}Click to view personnel in-charge</div>
+                <div style="margin-top:6px;font-size:11px;color:var(--text-muted);">${canEdit ? 'Drag to reorder &bull; ' : ''}Click to view personnel in-charge</div>
             </div>`).join('');
         }
         function areaCardDragStart(e, areaId) { areaDragId = String(areaId); e.currentTarget.classList.add('dragging'); try { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', areaId); } catch(err) {} }
@@ -4568,21 +5155,17 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             document.querySelectorAll('.area-card').forEach(el => { el.classList.remove('dragging'); el.classList.remove('drag-over'); });
         }
         async function persistAreaOrder() {
+            if (!canPersonnelAction('aor', 'edit')) return;
             try {
-                await fetch(API_URL, {
-                    method:'POST', mode:'no-cors',
-                    body: JSON.stringify({
-                        action:'reorder_areas',
-                        orderedIds: areas.map(a => String(a.areaId)),
-                        userName: localStorage.getItem('loggedInUser'),
-                        credential: localStorage.getItem('loggedCred') || ''
-                    })
+                await postPersonnelMutation({
+                    action:'reorder_areas', orderedIds:areas.map(a => String(a.areaId)),
+                    userName:localStorage.getItem('loggedInUser'), credential:localStorage.getItem('loggedCred') || ''
                 });
-            } catch (e) { /* order persists on next reload from backend */ }
+            } catch (e) { console.warn('Area order was not saved:', e.message || e); }
         }
-
         function openAreaModal(editId) {
-            if (!canManagePersonnel()) { customAlert("Only Alpha Admin and Admin can manage areas.", "Permission Denied"); return; }
+            const operation = editId ? 'edit' : 'add';
+            if (!canPersonnelAction('aor', operation)) { customAlert(`You do not have permission to ${operation} Area of Responsibilities entries.`, "Permission Denied"); return; }
             if (!allPersonnel || !allPersonnel.length) { loadPersonnel(); customAlert("Personnel data is still loading. Please try again in a moment.", "Loading"); return; }
 
             editingAreaId = editId || null;
@@ -4667,33 +5250,25 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             if (el) el.innerText = cbs.length;
         }
         async function saveArea() {
+            const operation = editingAreaId ? 'edit' : 'add';
+            if (!canPersonnelAction('aor', operation)) return customAlert(`You do not have permission to ${operation} Area of Responsibilities entries.`, 'Permission Denied');
             const name = document.getElementById('areaNameInput').value.trim();
             const camp = document.getElementById('areaCampSelect').value;
-            if (!name) { customAlert("Area name is required.", "Validation"); return; }
+            if (!name && !editingAreaId) { customAlert('Area name is required.', 'Validation'); return; }
             syncAreaSelectionFromCheckboxes();
-            // Use synced state so personnel hidden by search/section filters are preserved.
-            const selected = (areaPreselected || []).map(p => ({
-                rank:p.rank, lastName:p.lastName, firstName:p.firstName, middleName:p.middleName, qualifiers:p.qualifiers
-            }));
+            const selected = (areaPreselected || []).map(p => ({rank:p.rank,lastName:p.lastName,firstName:p.firstName,middleName:p.middleName,qualifiers:p.qualifiers}));
+            const saveButton = document.querySelector('#areaModal .approve-btn');
+            if (saveButton) { saveButton.disabled = true; saveButton.textContent = 'Saving…'; }
             try {
                 if (editingAreaId) {
-                    await fetch(API_URL, {method:'POST', mode:'no-cors', body: JSON.stringify({
-                        action:'update_area_personnel', areaId: editingAreaId, personnel: selected,
-                        userName: localStorage.getItem('loggedInUser'),
-                        credential: localStorage.getItem('loggedCred') || ''
-                    })});
+                    await postPersonnelMutation({action:'update_area_personnel', areaId:editingAreaId, personnel:selected, userName:localStorage.getItem('loggedInUser'), credential:localStorage.getItem('loggedCred') || ''});
                 } else {
-                    await fetch(API_URL, {method:'POST', mode:'no-cors', body: JSON.stringify({
-                        action:'add_area', areaName: name, camp: camp, personnel: selected,
-                        userName: localStorage.getItem('loggedInUser'),
-                        credential: localStorage.getItem('loggedCred') || ''
-                    })});
+                    await postPersonnelMutation({action:'add_area', areaName:name, camp, personnel:selected, userName:localStorage.getItem('loggedInUser'), credential:localStorage.getItem('loggedCred') || ''});
                 }
-                closeAreaModal();
-                closeAreaDetailsModal();
-                customAlert("Area saved successfully.", "Success");
-                setTimeout(loadAreas, 1200);
-            } catch (e) { customAlert("Failed to save area.", "Error"); }
+                closeAreaModal(); closeAreaDetailsModal(); await loadAreas();
+                customAlert('Area saved successfully.', 'Success');
+            } catch (e) { customAlert(e.message || 'Failed to save area.', 'Error'); }
+            finally { if (saveButton) { saveButton.disabled = false; saveButton.textContent = 'Save Area'; } }
         }
         function openAreaDetails(areaId) {
             const a = areas.find(x => String(x.areaId) === String(areaId));
@@ -4711,72 +5286,120 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                     <span>${escapeHtml(personnelFullName(p))}</span>
                 </div>`).join('');
             }
-            const can = canManagePersonnel();
-            document.getElementById('areaEditBtn').style.display = can ? '' : 'none';
-            document.getElementById('areaDeleteBtn').style.display = can ? '' : 'none';
+            document.getElementById('areaEditBtn').style.display = canPersonnelAction('aor', 'edit') ? '' : 'none';
+            document.getElementById('areaDeleteBtn').style.display = canPersonnelAction('aor', 'delete') ? '' : 'none';
             document.getElementById('areaEditBtn').setAttribute('data-area-id', areaId);
             document.getElementById('areaDeleteBtn').setAttribute('data-area-id', areaId);
             document.getElementById('areaDetailsModal').classList.remove('hidden');
         }
         function closeAreaDetailsModal() { document.getElementById('areaDetailsModal').classList.add('hidden'); }
         function editAreaFromDetails() {
+            if (!canPersonnelAction('aor', 'edit')) return customAlert('You do not have permission to edit Area of Responsibilities entries.', 'Permission Denied');
             const id = document.getElementById('areaEditBtn').getAttribute('data-area-id');
             closeAreaDetailsModal();
             openAreaModal(id);
         }
         function deleteAreaFromDetails() {
+            if (!canPersonnelAction('aor', 'delete')) return customAlert('You do not have permission to delete Area of Responsibilities entries.', 'Permission Denied');
             const id = document.getElementById('areaDeleteBtn').getAttribute('data-area-id');
-            customConfirm("Delete this area of responsibility and unassign all personnel?", async (confirmed) => {
+            customConfirm('Delete this area of responsibility and unassign all personnel?', async confirmed => {
                 if (!confirmed) return;
                 try {
-                    await fetch(API_URL, {method:'POST', mode:'no-cors', body: JSON.stringify({
-                        action:'delete_area', areaId:id,
-                        userName: localStorage.getItem('loggedInUser'),
-                        credential: localStorage.getItem('loggedCred') || ''
-                    })});
-                    closeAreaDetailsModal();
-                    setTimeout(loadAreas, 1200);
-                } catch (e) {}
+                    await postPersonnelMutation({action:'delete_area', areaId:id, userName:localStorage.getItem('loggedInUser'), credential:localStorage.getItem('loggedCred') || ''});
+                    closeAreaDetailsModal(); await loadAreas(); customAlert('Area deleted.', 'Success');
+                } catch (e) { customAlert(e.message || 'Failed to delete area.', 'Error'); }
             });
         }
 
         /* ---------- User Access Control ---------- */
         async function loadUserAccessMap() {
+            const requestedUser = localStorage.getItem('loggedInUser') || '';
+            userAccessMapLoadedFor = '';
             try {
-                const res = await fetch(`${API_URL}?action=get_user_access&password=${encodeURIComponent(sessionAdminPass)}`);
+                const res = await fetch(API_URL, {method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'get_user_access',userName:requestedUser,password:sessionAdminPass,credential:localStorage.getItem('loggedCred') || ''})});
+                if (!res.ok) throw new Error(`Access map request failed (${res.status})`);
                 const data = await res.json();
-                if (data.success && data.accessMap) userAccessMap = data.accessMap;
-            } catch (e) { userAccessMap = {}; }
+                if (data && data.success && data.accessMap && typeof data.accessMap === 'object') {
+                    userAccessMap = data.accessMap;
+                    userPersonnelPermissionsMap = data.personnelPermissionsMap && typeof data.personnelPermissionsMap === 'object' ? data.personnelPermissionsMap : {};
+                    userAccessMapLoadedFor = requestedUser;
+                } else {
+                    userAccessMap = {};
+                    userPersonnelPermissionsMap = {};
+                    userAccessMapLoadedFor = requestedUser;
+                }
+            } catch (e) {
+                userAccessMap = {};
+                userPersonnelPermissionsMap = {};
+                userAccessMapLoadedFor = '';
+                console.warn('Could not load account page-access preferences.', e);
+            }
+            updatePersonnelPermissions();
         }
         function openUserAccessModal(username) {
+            if (!isAlphaAdmin()) return customAlert('Only the Alpha Admin can configure account permissions.', 'Permission Denied');
             currentAccessUsername = username;
             document.getElementById('userAccessUsername').innerText = username;
-            const current = userAccessMap[username] || [];
+            const current = Array.isArray(userAccessMap[username]) ? userAccessMap[username] : [];
             const wrap = document.getElementById('userAccessCheckboxes');
-            wrap.innerHTML = ACCESS_PAGES.map(p => `<label class="checklist-item">
-                <input type="checkbox" class="user-access-cb" value="${escapeAttr(p.key)}" ${current.includes(p.key)?'checked':''}>
-                <span>${escapeHtml(p.label)}</span>
-            </label>`).join('') + `<div style="font-size:11px;color:var(--text-muted);margin-top:6px;">Note: If no boxes are checked, the user retains full default access. Checking specific boxes restricts access to only those pages.</div>`;
+            wrap.innerHTML = ACCESS_PAGES.map(p => `<label class="checklist-item um-page-access-item"><input type="checkbox" class="user-access-cb" value="${escapeAttr(p.key)}" ${current.includes(p.key)?'checked':''}><span>${escapeHtml(p.label)}</span></label>`).join('');
+
+            const matrix = document.getElementById('userPersonnelPermissionMatrixBody');
+            const saved = userPersonnelPermissionsMap[username];
+            const role = (adminUsersCache.find(user => String(user.username) === String(username)) || {}).role || 'Regular User';
+            const defaultAllowed = !saved && role === 'Admin';
+            matrix.innerHTML = PERSONNEL_PERMISSION_SUBPAGES.map(subpage => {
+                const currentSub = saved && saved[subpage.key] ? saved[subpage.key] : null;
+                return `<tr><th scope="row"><span class="um-subpage-name">${escapeHtml(subpage.label)}</span></th>${PERSONNEL_PERMISSION_ACTIONS.map(action => {
+                    const checked = currentSub ? currentSub[action.key] === true : defaultAllowed;
+                    return `<td><label class="um-permission-cell" aria-label="${escapeAttr(subpage.label)} ${escapeAttr(action.label)}"><input type="checkbox" class="user-personnel-perm-cb" data-subpage="${escapeAttr(subpage.key)}" data-action="${escapeAttr(action.key)}" ${checked ? 'checked' : ''}><span>${escapeHtml(action.label)}</span></label></td>`;
+                }).join('')}</tr>`;
+            }).join('');
             document.getElementById('userAccessModal').classList.remove('hidden');
+            document.body.classList.add('profile-modal-open');
         }
-        function closeUserAccessModal() { document.getElementById('userAccessModal').classList.add('hidden'); currentAccessUsername = null; }
+        function closeUserAccessModal() {
+            const modal = document.getElementById('userAccessModal');
+            if (modal) modal.classList.add('hidden');
+            document.body.classList.remove('profile-modal-open');
+            currentAccessUsername = null;
+        }
         async function saveUserAccess() {
+            if (!isAlphaAdmin()) return customAlert('Only the Alpha Admin can configure account permissions.', 'Permission Denied');
+            if (!currentAccessUsername) return customAlert('Select an account before saving access permissions.', 'Error');
+            const targetUsername = currentAccessUsername;
+            const saveButton = document.querySelector('#userAccessModal .um-btn-primary');
+            if (saveButton) { saveButton.disabled = true; saveButton.textContent = 'Saving…'; }
             const selected = [...document.querySelectorAll('.user-access-cb:checked')].map(cb => cb.value);
+            const personnelPermissions = {};
+            PERSONNEL_PERMISSION_SUBPAGES.forEach(subpage => {
+                personnelPermissions[subpage.key] = {};
+                PERSONNEL_PERMISSION_ACTIONS.forEach(action => {
+                    const checkbox = document.querySelector(`.user-personnel-perm-cb[data-subpage="${subpage.key}"][data-action="${action.key}"]`);
+                    personnelPermissions[subpage.key][action.key] = !!(checkbox && checkbox.checked);
+                });
+            });
             try {
-                await fetch(API_URL, {method:'POST', mode:'no-cors', body: JSON.stringify({
-                    action:'set_user_access', username: currentAccessUsername, access: selected,
-                    password: sessionAdminPass
-                })});
-                userAccessMap[currentAccessUsername] = selected;
+                const response = await fetch(API_URL, {method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'set_user_access',username:targetUsername,access:selected,personnelPermissions,password:sessionAdminPass,userName:localStorage.getItem('loggedInUser') || ''})});
+                if (!response.ok) throw new Error(`Permission update failed (${response.status})`);
+                const result = await response.json();
+                if (!result.success) throw new Error(result.error || 'Access permission changes were rejected.');
+                userAccessMap[targetUsername] = selected;
+                userPersonnelPermissionsMap[targetUsername] = result.personnelPermissions || personnelPermissions;
                 closeUserAccessModal();
-                customAlert("Access permissions updated.", "Success");
-            } catch (e) { customAlert("Failed to save access permissions.", "Error"); }
+                customAlert('Page and Personnel Management permissions updated.', 'Success');
+                if (targetUsername === (localStorage.getItem('loggedInUser') || '')) {
+                    await loadUserAccessMap();
+                    applyAccessRestrictions();
+                }
+            } catch (e) { customAlert(e.message || 'Failed to save access permissions. Please retry.', 'Error'); }
+            finally { if (saveButton) { saveButton.disabled = false; saveButton.textContent = 'Save Access'; } }
         }
         function userHasAccess(pageKey) {
             const user = localStorage.getItem('loggedInUser') || '';
             if (user === ALPHA_ADMIN_NAME) return true;
             const allowed = userAccessMap[user];
-            if (!allowed || !allowed.length) return true; // empty = full access
+            if (!Array.isArray(allowed) || !allowed.length) return true; // empty = full access
             return allowed.includes(pageKey);
         }
         function applyAccessRestrictions() {
@@ -4883,22 +5506,25 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         let userRestrictedMap = {};
         async function loadUserRestrictions() {
             try {
-                const res = await fetch(API_URL + "?action=get_user_restrictions&password=" + encodeURIComponent(sessionAdminPass) + "&_ts=" + Date.now(), {cache:'no-store'});
+                const res = await fetch(API_URL, {method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'get_user_restrictions',userName:localStorage.getItem('loggedInUser') || '',password:sessionAdminPass,credential:localStorage.getItem('loggedCred') || ''})});
                 const data = await res.json();
                 userRestrictedMap = (data.success && data.restricted) ? data.restricted : {};
             } catch(e) { userRestrictedMap = {}; }
+            updatePersonnelPermissions();
         }
         function toggleUserRestriction(username, restrict) {
-            customConfirm(`${restrict ? 'RESTRICT (make read-only — cannot add/edit/modify anything)' : 'REMOVE restriction from'} user "${username}"?`, async (confirmed) => {
+            customConfirm(`${restrict ? 'Restrict (make read-only)' : 'Remove the read-only restriction from'} user "${username}"?`, async confirmed => {
                 if (!confirmed) { loadAdminUsers(); return; }
                 try {
-                    await fetch(API_URL, {method:'POST', mode:'no-cors', body: JSON.stringify({
-                        action:'set_user_restriction', username: username, restricted: !!restrict,
-                        userName: localStorage.getItem('loggedInUser'), credential: localStorage.getItem('loggedCred') || ''
+                    const response = await fetch(API_URL, {method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({
+                        action:'set_user_restriction', username, restricted:!!restrict,
+                        userName:localStorage.getItem('loggedInUser') || '', credential:localStorage.getItem('loggedCred') || ''
                     })});
-                    customAlert(`User "${username}" ${restrict ? 'is now RESTRICTED (read-only).' : 'restriction removed.'}`, "Success");
-                    setTimeout(loadAdminUsers, 1200);
-                } catch(e) { customAlert("Failed to update restriction.", "Error"); }
+                    const result = await response.json();
+                    if (!result.success) { customAlert(result.error || 'Could not update this account restriction.', 'Error'); return; }
+                    customAlert(`User "${username}" ${restrict ? 'is now restricted to read-only access.' : 'can edit again.'}`, 'Success');
+                    await loadAdminUsers();
+                } catch (error) { customAlert('Failed to update restriction. Please retry.', 'Error'); }
             });
         }
 
@@ -4909,25 +5535,26 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             if (!p) return;
             profileCardPersonnelNo = no;
             const fullName = personnelFullName(p);
-            document.getElementById('profileCardAvatar').innerText = (p.rank || 'U').charAt(0);
-            document.getElementById('profileCardName').innerText = fullName;
-            document.getElementById('profileCardDesignation').innerText = (p.designation || '—') + ' • ' + (p.section || '—');
+            const initials = [p.firstName, p.lastName].map(v => String(v || '').trim()).filter(Boolean).map(v => v.charAt(0)).join('').slice(0,2);
+            document.getElementById('profileCardAvatar').innerText = initials || String(p.rank || 'U').charAt(0);
+            document.getElementById('profileCardName').innerText = fullName || 'Personnel Profile';
+            document.getElementById('profileCardDesignation').innerText = [p.designation, p.section].filter(Boolean).join('  •  ') || 'No designation assigned';
+            const meta = document.getElementById('profileCardMeta');
+            if (meta) meta.innerHTML = `<span class="profile-card-status ${String(p.status || 'Active').toLowerCase().replace(/[^a-z]/g,'-')}"><i aria-hidden="true"></i>${escapeHtml(p.status || 'Active')}</span><span class="profile-card-number">Personnel No. ${escapeHtml(String(p.no || '—'))}</span>`;
             const body = document.getElementById('profileCardBody');
             const rows = [
                 ['Rank', p.rank || '—'],
-                ['Last Name', p.lastName || '—'],
-                ['First Name', p.firstName || '—'],
-                ['Middle Name', p.middleName || '—'],
-                ['Qualifier', p.qualifiers || '—'],
+                ['Full Name', [p.firstName, p.middleName, p.lastName, p.qualifiers].filter(Boolean).join(' ') || '—'],
                 ['Designation', p.designation || '—'],
                 ['Section', p.section || '—'],
-                ['Status', p.status || 'Active'],
-                ['Contact No.', p.contactNo || '—'],
+                ['Contact Number', p.contactNo || '—'],
                 ['Remarks', p.remarks || '—']
             ];
-            body.innerHTML = rows.map(r => `<div class="profile-card-row"><span>${r[0]}</span><span>${escapeHtml(String(r[1]))}</span></div>`).join('');
-            const can = canManagePersonnel();
-            document.getElementById('profileCardEditBtn').style.display = can ? '' : 'none';
+            body.innerHTML = rows.map(([label, value], i) => `<div class="profile-card-row"><span class="profile-card-row-icon" aria-hidden="true">${['♙','▤','▧','⌂','☎','≡'][i]}</span><span class="profile-card-row-label">${label}</span><strong>${escapeHtml(String(value))}</strong></div>`).join('');
+            const editButton = document.getElementById('profileCardEditBtn');
+            const archiveButton = document.getElementById('profileCardArchiveBtn');
+            if (editButton) editButton.style.display = canPersonnelAction('list', 'edit') ? '' : 'none';
+            if (archiveButton) archiveButton.style.display = canPersonnelAction('list', 'delete') ? '' : 'none';
             document.getElementById('personnelProfileModal').classList.remove('hidden');
         }
         function closePersonnelProfile() { document.getElementById('personnelProfileModal').classList.add('hidden'); profileCardPersonnelNo = null; }
@@ -4935,4 +5562,9 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             const no = profileCardPersonnelNo;
             closePersonnelProfile();
             if (no != null) editPersonnel(no);
+        }
+        function archiveDetailsFromProfile() {
+            const no = profileCardPersonnelNo;
+            closePersonnelProfile();
+            if (no != null) archivePersonnel(no);
         }

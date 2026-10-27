@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="SPADES operational portal for memos, personnel, activities, and administrative data management.">
     <title>RHSU Data Entry System</title>
     <link rel="icon" type="image/png" href="images/RHSU Spades.png">
     <link rel="apple-touch-icon" href="images/RHSU Spades.png">
@@ -356,7 +357,9 @@
 
                 <!-- PROFILE HERO: cover photo + avatar + name + stats -->
                 <div class="pf-hero glass-panel">
-                    <div class="pf-cover" id="profileCoverBanner" aria-label="SPADES static cover banner"></div>
+                    <div class="pf-cover" id="profileCoverBanner" aria-label="SPADES static cover banner">
+                        <div class="pf-cover-actions"><div class="pf-cover-action-buttons pf-profile-quick-actions"><button type="button" onclick="openProfileModal('securitySettingsModal')">Security &amp; Authentication</button><button type="button" onclick="openProfileModal('profileSettingsModal')">Profile Settings</button></div></div>
+                    </div>
                     <div class="pf-hero-body">
                         <div class="pf-avatar-wrap">
                             <img id="profileAvatarImg" class="pf-avatar-img" src="" alt="Profile" onerror="this.style.display='none'; const fb=document.getElementById('profileAvatarFallback'); if(fb) fb.style.display='flex';">
@@ -391,6 +394,7 @@
                         <div class="setting-row"><span>Last Name</span> <span id="profLastName" class="profile-value">Not Available</span></div>
                         <div class="setting-row"><span>Qualifier</span> <span id="profQlf" class="profile-value">Not Available</span></div>
                         <div class="setting-row"><span>Email Address</span> <span id="profEmail" class="profile-value">Not Available</span></div>
+                        <div class="setting-row"><span>Contact Number</span> <span id="profContactNo" class="profile-value">Not Available</span></div>
                         <div class="setting-row"><span>Assigned Role</span> <span id="profAccType" style="font-weight:600;color:var(--primary);"></span></div>
                         <div class="setting-row"><span>Access Level</span> <span id="profAccessLevel" class="profile-value">Standard</span></div>
                         <div class="setting-row"><span>Account Status</span> <strong style="color:var(--success);">Active</strong></div>
@@ -404,36 +408,99 @@
                             <div id="profileRecentMemos" style="font-size:13px;"></div>
                         </div>
 
-                        <div class="glass-panel pf-panel">
-                            <h3 style="margin-top:0;">Security &amp; Authentication</h3>
-                            <div style="margin-bottom:15px;">
-                                <label style="font-size:13px;color:var(--text-muted);display:block;margin-bottom:5px;">Change Username</label>
-                                <input type="text" id="newUsernameInput" placeholder="Enter new Username" style="margin:0;">
-                            </div>
-                            <div style="margin-bottom:15px;">
-                                <label style="font-size:13px;color:var(--text-muted);display:block;margin-bottom:5px;">Change PIN / Password</label>
-                                <input type="password" id="newCredential" placeholder="Enter new PIN or Password" style="margin:0;">
-                            </div>
-                            <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:15px;">
-                                <button style="flex:1;margin:0;min-width:150px;" onclick="updateProfile()">Save Account Changes</button>
-                                <button class="action-btn" style="flex:1;margin:0;min-width:150px;" onclick="clearProfileFields()">Clear Fields</button>
-                                <button class="delete-btn" style="flex:1;margin:0;min-width:150px;" onclick="attemptLogout()">Logout</button>
-                            </div>
-                        </div>
+                    </div>
+                </div>
+            </div>
 
-                        <div class="glass-panel pf-panel">
-                            <h3 style="margin-top:0;">Profile Preferences</h3>
-                            <div class="setting-row"><span>Profile Display</span><select id="profileDisplayDensity" onchange="saveProfilePreferences()" style="width:150px;margin:0;"><option value="Comfortable">Comfortable</option><option value="Compact">Compact</option></select></div>
-                            <div class="setting-row"><span>Show Activity Summary</span><label class="switch"><input type="checkbox" id="profileShowActivity" onchange="saveProfilePreferences()" checked><span class="slider"></span></label></div>
-                            <div class="setting-row"><span>Show Contact Details</span><label class="switch"><input type="checkbox" id="profileShowContact" onchange="saveProfilePreferences()" checked><span class="slider"></span></label></div>
+            <!-- PROFILE SETTINGS MODALS -->
+            <div id="securitySettingsModal" class="modal-overlay hidden profile-settings-overlay" role="dialog" aria-modal="true" aria-labelledby="securitySettingsTitle" aria-describedby="securitySettingsDescription" onclick="if(event.target===this)closeProfileModal('securitySettingsModal')">
+                <div class="modal-content glass-panel profile-settings-modal security-settings-modal" tabindex="-1">
+                    <div class="profile-modal-heading">
+                        <div class="profile-modal-title-wrap">
+                            <span class="profile-modal-icon security-icon" aria-hidden="true">&#128274;</span>
+                            <div><div class="profile-modal-eyebrow">ACCOUNT PROTECTION</div><h2 id="securitySettingsTitle">Security &amp; Authentication</h2><p id="securitySettingsDescription">Update your sign-in details and manage this session.</p></div>
                         </div>
+                        <button type="button" class="profile-modal-close" onclick="closeProfileModal('securitySettingsModal')" aria-label="Close Security &amp; Authentication">×</button>
+                    </div>
 
-                        <div class="glass-panel pf-panel">
-                            <h3 style="margin-top:0;">Session &amp; Account Actions</h3>
-                            <button class="action-btn" style="width:100%;margin:0 0 8px;" onclick="refreshSessionProfile()">Refresh Session Information</button>
-                            <button class="action-btn delete-btn" style="width:100%;margin:0;color:white;" onclick="attemptLogout()">Sign Out of Current Session</button>
+                    <div class="profile-account-strip">
+                        <span class="profile-account-avatar" aria-hidden="true">&#128100;</span>
+                        <div class="profile-account-copy"><strong id="securityCurrentUsername">Current account</strong><span>Your account credentials are private.</span></div>
+                        <span class="profile-status-pill"><span></span> Signed in</span>
+                    </div>
+
+                    <div class="profile-modal-section-head"><div><h3>Sign-in credentials</h3><p>Leave a field blank to keep its current value.</p></div></div>
+                    <div class="profile-modal-field" id="usernameChangeField">
+                        <label for="newUsernameInput">New username <span class="field-optional">Optional</span></label>
+                        <div class="profile-input-wrap"><span class="profile-input-icon" aria-hidden="true">@</span><input type="text" id="newUsernameInput" placeholder="Enter a new username" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="80"></div>
+                        <small class="profile-field-hint">Your username must be unique. Your existing account role and permissions are retained.</small>
+                    </div>
+                    <div id="alphaUsernameLockNotice" class="profile-security-note hidden" role="note"><span aria-hidden="true">&#128274;</span><p>The Alpha Admin username is centrally managed by the backend and cannot be changed here. You can still update your authentication credential.</p></div>
+                    <div class="profile-modal-field">
+                        <label for="newCredential">New PIN or password <span class="field-optional">Optional</span></label>
+                        <div class="profile-input-wrap"><span class="profile-input-icon" aria-hidden="true">&#128273;</span><input type="password" id="newCredential" placeholder="Enter a new PIN or password" autocomplete="new-password" aria-describedby="credentialStrengthText"><button type="button" class="credential-visibility-toggle" id="toggleCredentialVisibility" onclick="toggleProfileCredentialVisibility()" aria-label="Show PIN or password" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.4-6.5 9.5-6.5 9.5 6.5 9.5 6.5-3.4 6.5-9.5 6.5S2.5 12 2.5 12Z"/><circle cx="12" cy="12" r="3"/></svg></button></div>
+                        <div class="credential-strength" aria-hidden="true"><span id="credentialStrengthBar"></span></div>
+                        <small id="credentialStrengthText" class="profile-field-hint" aria-live="polite">Enter a new credential to see its strength guidance. This is an estimate only.</small>
+                    </div>
+
+                    <div class="profile-security-note"><span aria-hidden="true">&#9432;</span><p>For your protection, avoid reusing passwords from other services. Sign out when using a shared device.</p></div>
+                    <div class="profile-modal-actions profile-modal-footer">
+                        <button type="button" class="profile-primary-action" onclick="updateProfile()"><span aria-hidden="true">&#10003;</span> Save account changes</button>
+                        <button type="button" class="action-btn" onclick="clearProfileFields()">Clear fields</button>
+                        <button type="button" class="delete-btn profile-signout-action" onclick="attemptLogout()">Sign out</button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="profileSettingsModal" class="modal-overlay hidden profile-settings-overlay" role="dialog" aria-modal="true" aria-labelledby="profileSettingsTitle" aria-describedby="profileSettingsDescription" onclick="if(event.target===this)closeProfileModal('profileSettingsModal')">
+                <div class="modal-content glass-panel profile-settings-modal profile-edit-modal" tabindex="-1">
+                    <div class="profile-modal-heading">
+                        <div class="profile-modal-title-wrap">
+                            <span class="profile-modal-icon profile-icon" aria-hidden="true">&#128100;</span>
+                            <div><div class="profile-modal-eyebrow">YOUR ACCOUNT</div><h2 id="profileSettingsTitle">Profile Settings</h2><p id="profileSettingsDescription">Keep your personal and contact information up to date.</p></div>
+                        </div>
+                        <button type="button" class="profile-modal-close" onclick="closeProfileModal('profileSettingsModal')" aria-label="Close Profile Settings">×</button>
+                    </div>
+
+                    <div class="profile-edit-identity">
+                        <span class="profile-edit-identity-avatar" id="editProfileInitial" aria-hidden="true">U</span>
+                        <div><strong id="editProfileSummaryName">Your profile</strong><span>@<span id="editProfileSummaryUsername">username</span></span></div>
+                        <span class="profile-edit-identity-badge">Personal details</span>
+                    </div>
+
+                    <div class="profile-modal-section">
+                        <div class="profile-modal-section-head"><span class="profile-section-icon" aria-hidden="true">&#128100;</span><div><h3>Identity &amp; name</h3><p>These details appear on your profile and account records.</p></div></div>
+                        <div class="profile-edit-grid">
+                            <label for="editProfileRank"><span class="profile-field-label-row"><span>Rank</span><span class="field-optional">Optional</span></span><input id="editProfileRank" type="text" placeholder="e.g. PCpl" autocomplete="organization-title"></label>
+                            <label for="editProfileQlf"><span class="profile-field-label-row"><span>Qualifier</span><span class="field-optional">Optional</span></span><input id="editProfileQlf" type="text" placeholder="e.g. (PNP)"></label>
+                            <label for="editProfileFirstName"><span class="profile-field-label-row"><span>First name</span></span><input id="editProfileFirstName" type="text" autocomplete="given-name" placeholder="Enter first name"></label>
+                            <label for="editProfileMiddleName"><span class="profile-field-label-row"><span>Middle name</span><span class="field-optional">Optional</span></span><input id="editProfileMiddleName" type="text" autocomplete="additional-name" placeholder="Enter middle name"></label>
+                            <label class="profile-edit-full" for="editProfileLastName"><span class="profile-field-label-row"><span>Last name</span></span><input id="editProfileLastName" type="text" autocomplete="family-name" placeholder="Enter last name"></label>
                         </div>
                     </div>
+
+                    <div class="profile-modal-section">
+                        <div class="profile-modal-section-head"><span class="profile-section-icon contact-section-icon" aria-hidden="true">&#9993;</span><div><h3>Contact information</h3><p>Use contact details that you can currently access.</p></div></div>
+                        <div class="profile-edit-grid">
+                            <label for="editProfileEmail"><span class="profile-field-label-row"><span>Email address</span></span><input id="editProfileEmail" type="email" autocomplete="email" placeholder="name@example.com"></label>
+                            <label for="editProfileContact"><span class="profile-field-label-row"><span>Contact number</span></span><input id="editProfileContact" type="tel" autocomplete="tel" inputmode="tel" placeholder="Enter contact number"></label>
+                        </div>
+                        <div class="profile-inline-note"><span aria-hidden="true">&#9432;</span> Your contact information is used for your profile records. Check for typing errors before saving.</div>
+                    </div>
+
+                    <div class="profile-modal-actions profile-modal-footer">
+                        <button type="button" class="profile-primary-action" onclick="savePersonalProfile()"><span aria-hidden="true">&#10003;</span> Save profile</button>
+                        <button type="button" class="action-btn" onclick="closeProfileModal('profileSettingsModal')">Cancel</button>
+                    </div>
+
+                    <div class="profile-settings-divider"></div>
+                    <div class="profile-modal-section-head preferences-heading"><span class="profile-section-icon preferences-section-icon" aria-hidden="true">&#9881;</span><div><h3>Profile preferences</h3><p>Personalize how information is displayed on this device.</p></div></div>
+                    <div class="profile-preferences-card">
+                        <div class="profile-preference-row"><div><strong>Profile display</strong><small>Choose the spacing used on the profile page.</small></div><select id="profileDisplayDensity" onchange="saveProfilePreferences()" aria-label="Profile display density"><option value="Comfortable">Comfortable</option><option value="Compact">Compact</option></select></div>
+                        <div class="profile-preference-row"><div><strong>Show activity summary</strong><small>Display your memo and activity summary.</small></div><label class="switch profile-preference-switch" aria-label="Show activity summary"><input type="checkbox" id="profileShowActivity" onchange="saveProfilePreferences()" checked><span class="slider"></span></label></div>
+                        <div class="profile-preference-row"><div><strong>Show contact details</strong><small>Display contact information on your profile.</small></div><label class="switch profile-preference-switch" aria-label="Show contact details"><input type="checkbox" id="profileShowContact" onchange="saveProfilePreferences()" checked><span class="slider"></span></label></div>
+                    </div>
+                    <div class="profile-modal-actions profile-utility-actions"><button type="button" class="action-btn" onclick="refreshSessionProfile()">&#8635; Refresh session information</button><button type="button" class="delete-btn" onclick="attemptLogout()">Sign out</button></div>
                 </div>
             </div>
 
@@ -676,42 +743,11 @@
                 <section class="activity-overview-calendar" aria-label="Activity calendar overview">
                     <div class="activity-overview-head">
                         <div><h3>Activity Calendar</h3><p>Scheduled activities by date. Select an activity to view its details.</p></div>
-                        <div class="activity-calendar-nav"><button type="button" onclick="changeActivityOverviewMonth(-1)" aria-label="Previous month">‹</button><strong id="activityOverviewMonthTitle"></strong><button type="button" onclick="changeActivityOverviewMonth(1)" aria-label="Next month">›</button></div>
+                        <div class="activity-calendar-head-actions"><button id="activityAddBtn" class="action-btn approve-btn activity-calendar-add" onclick="openActivityModal()" style="color:white;font-weight:bold;">＋ Add Activity</button><button type="button" class="action-btn activity-view-data-btn" onclick="openActivityDataModal()">▤ View Data</button><div class="activity-calendar-nav"><button type="button" onclick="changeActivityOverviewMonth(-1)" aria-label="Previous month">‹</button><strong id="activityOverviewMonthTitle"></strong><button type="button" onclick="changeActivityOverviewMonth(1)" aria-label="Next month">›</button></div></div>
                     </div>
                     <div id="activityOverviewCalendar" class="activity-overview-grid"></div>
                 </section>
-                <div class="activity-toolbar">
-                    <button id="activityAddBtn" class="action-btn approve-btn" onclick="openActivityModal()" style="color:white;font-weight:bold;width:auto;">
-                        ＋ Add Activity
-                    </button>
-                    <input id="activitySearch" class="activity-search" type="text" placeholder="Search activities..." oninput="filterActivities()">
-                </div>
-
-                <div class="table-wrapper" style="margin-top:0;">
-                    <table id="activityTable">
-                        <thead>
-                            <tr>
-                                <th>Date</th>
-                                <th>Activity Title</th>
-                                <th>Assigned Venue</th>
-                                <th>Requesting Office</th>
-                                <th>Concerned Office</th>
-                                <th>Time</th>
-                                <th>Status</th>
-                                <th id="activityActionHeader">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody id="activityTableBody"></tbody>
-                    </table>
-                </div>
-
-                <div id="activityPagination" class="pagination-container hidden">
-                    <span id="activityPageInfo" style="font-weight:bold;">Page 1 of 1</span>
-                    <div class="pagination-buttons">
-                        <button id="prevActivityBtn" class="page-btn" onclick="changeActivityPage(-1)">Prev</button>
-                        <button id="nextActivityBtn" class="page-btn" onclick="changeActivityPage(1)">Next</button>
-                    </div>
-                </div>
+                <!-- Activity records are opened in the View Data modal. -->
 
                 <div class="activity-archive-section">
                     <details id="archivedActivitiesDetails">
@@ -746,10 +782,20 @@
             <!-- SETTINGS TAB -->
             <div id="tabSettings" class="hidden">
                 <div id="settingsMainPanel">
-                    <div class="controls">
-                        <h2 style="margin:0; color: var(--primary);">System Settings</h2>
-                        <button class="action-btn delete-btn" style="color:white;" onclick="resetPreferences()">Reset Preferences</button>
-                    </div>
+                    <header class="settings-page-header">
+                        <div class="settings-page-heading">
+                            <div class="settings-page-icon" aria-hidden="true">⚙</div>
+                            <div>
+                                <div class="settings-eyebrow">PERSONALIZE YOUR WORKSPACE</div>
+                                <h2>System Settings</h2>
+                                <p>Customize the interface, notifications, security, and everyday workflow to suit your preferences.</p>
+                            </div>
+                        </div>
+                        <div class="settings-header-actions">
+                            <span class="settings-save-status"><span class="settings-status-dot"></span> Changes save automatically</span>
+                            <button type="button" class="settings-reset-btn" onclick="resetPreferences()"><span aria-hidden="true">↺</span> Reset preferences</button>
+                        </div>
+                    </header>
                     <div class="settings-grid">
                         <div class="settings-section glass-panel">
                             <h3>Appearance</h3>
@@ -811,40 +857,54 @@
                 </div>
 
                 <!-- USER MANAGEMENT SUB-PAGE -->
-                <div id="tabAdminMgmt" class="hidden">
-                    <div class="settings-subpage-head">
-                        <div>
-                            <h3>User Management</h3>
-                            <div style="font-size:12px;color:var(--text-muted);margin-top:4px;">Administration of user accounts, roles, approvals, and system announcement.</div>
+                <div id="tabAdminMgmt" class="hidden user-management-page">
+                    <div class="um-page-header">
+                        <div class="um-heading-copy">
+                            <div class="um-eyebrow"><span class="um-eyebrow-dot"></span> ADMINISTRATION CONSOLE</div>
+                            <h2>User Management</h2>
+                            <p>Manage accounts, review access requests, assign roles, and control account restrictions.</p>
                         </div>
-                        <button class="action-btn" onclick="closeAdminMgmtSubPage()" style="margin:0;width:auto;">← Back to Settings</button>
+                        <div class="um-header-actions">
+                            <button type="button" class="um-btn um-btn-secondary" onclick="loadAdminUsers()" title="Refresh user accounts"><span aria-hidden="true">&#8635;</span> Refresh</button>
+                            <button type="button" class="um-btn um-btn-secondary" onclick="closeAdminMgmtSubPage()">&#8592; Back to Settings</button>
+                        </div>
                     </div>
 
-                    <div style="display:flex;gap:20px;align-items:flex-start;flex-wrap:wrap;margin-top:0;">
-                        <div class="table-wrapper" style="flex:2;margin-top:0;min-width:300px;">
-                            <table id="adminUsersTable">
-                                <thead>
-                                    <tr>
-                                        <th>Rank & Name</th>
-                                        <th>Username</th>
-                                        <th>Assigned Role</th>
-                                        <th>Status</th>
-                                        <th>Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="adminUsersTableBody"></tbody>
+                    <div class="um-summary-grid" aria-label="User account summary">
+                        <div class="um-summary-card"><span class="um-summary-icon um-icon-total" aria-hidden="true">&#9783;</span><div><span class="um-summary-label">Total Accounts</span><strong id="umTotalUsers">—</strong><small>Registered accounts</small></div></div>
+                        <div class="um-summary-card"><span class="um-summary-icon um-icon-active" aria-hidden="true">&#10003;</span><div><span class="um-summary-label">Active Accounts</span><strong id="umActiveUsers">—</strong><small>Approved and active</small></div></div>
+                        <div class="um-summary-card"><span class="um-summary-icon um-icon-pending" aria-hidden="true">&#9202;</span><div><span class="um-summary-label">Pending Approval</span><strong id="umPendingUsers">—</strong><small>Awaiting review</small></div></div>
+                        <div class="um-summary-card"><span class="um-summary-icon um-icon-admin" aria-hidden="true">&#128737;</span><div><span class="um-summary-label">Admin Accounts</span><strong id="umAdminUsers">—</strong><small>Assigned administrators</small></div></div>
+                    </div>
+
+                    <section class="um-panel um-accounts-panel" aria-labelledby="umAccountsHeading">
+                        <div class="um-panel-heading">
+                            <div><h3 id="umAccountsHeading">System Accounts</h3><p>Search and filter accounts, update roles, and manage account access.</p></div>
+                            <span class="um-secure-tag"><span></span> Restricted access</span>
+                        </div>
+                        <div class="um-toolbar">
+                            <label class="um-search" for="adminUserSearch"><span aria-hidden="true">&#9906;</span><input id="adminUserSearch" type="search" placeholder="Search name or username…" oninput="renderAdminUsers()" autocomplete="off"></label>
+                            <label class="um-filter-label" for="adminStatusFilter">Status<select id="adminStatusFilter" onchange="renderAdminUsers()"><option value="all">All statuses</option><option value="active">Active</option><option value="pending">Pending</option></select></label>
+                            <label class="um-filter-label" for="adminRoleFilter">Role<select id="adminRoleFilter" onchange="renderAdminUsers()"><option value="all">All roles</option><option value="Admin">Admin</option><option value="Regular User">Regular User</option></select></label>
+                        </div>
+                        <div class="um-results-line"><span id="adminUsersResultCount">Loading accounts…</span><span>Role and access changes apply to the selected account.</span></div>
+                        <div class="um-table-scroll">
+                            <table id="adminUsersTable" class="um-table">
+                                <thead><tr><th>Account</th><th>Username</th><th>Assigned Role</th><th>Status</th><th>Access Control</th><th>Actions</th></tr></thead>
+                                <tbody id="adminUsersTableBody"><tr><td colspan="6" class="um-table-empty">Loading user accounts…</td></tr></tbody>
                             </table>
                         </div>
+                    </section>
 
-                        <div class="glass-panel" style="flex:1;padding:20px;background:white;min-width:250px;">
-                            <h3 style="margin-top:0;color:var(--primary);font-size:16px;">Global System Announcement Control</h3>
-                            <textarea id="adminAnnouncementText" placeholder="Enter the system announcement here..." style="min-height:100px;width:100%;"></textarea>
-                            <div style="display:flex;gap:10px;margin-top:10px;">
-                                <button class="approve-btn" style="flex:1;margin:0;" onclick="saveAdminAnnouncement()">Post Announcement</button>
-                                <button class="delete-btn" style="flex:1;margin:0;" onclick="deleteAdminAnnouncement()">Remove</button>
-                            </div>
+                    <section class="um-panel um-announcement-panel" aria-labelledby="umAnnouncementHeading">
+                        <div class="um-panel-heading">
+                            <div class="um-announcement-title-icon" aria-hidden="true">&#128226;</div>
+                            <div><h3 id="umAnnouncementHeading">Global System Announcement</h3><p>Publish a notice that is displayed to users throughout the system.</p></div>
                         </div>
-                    </div>
+                        <label class="um-announcement-label" for="adminAnnouncementText">Announcement message</label>
+                        <textarea id="adminAnnouncementText" class="um-announcement-input" placeholder="Write a clear system announcement for all users…" rows="4" maxlength="2000"></textarea>
+                        <div class="um-announcement-footer"><span>Keep announcements concise and relevant.</span><div><button type="button" class="um-btn um-btn-danger-outline" onclick="deleteAdminAnnouncement()">Remove Announcement</button><button type="button" class="um-btn um-btn-primary" onclick="saveAdminAnnouncement()">Publish Announcement</button></div></div>
+                    </section>
                 </div>
             </div>
 
@@ -901,7 +961,7 @@
             <div class="users-chat-composer">
                 <input id="usersChatFile" class="users-chat-file-input" type="file" onchange="handleChatAttachmentChange(event)">
                 <button type="button" class="action-btn users-chat-attach-btn" title="Attach file" aria-label="Attach file" onclick="document.getElementById('usersChatFile').click()">
-                    <img src="images/Attachment.png" alt="Attachment" onerror="this.style.display='none';this.nextElementSibling.style.display='block';">
+                    <img src="images/Attachment.svg" alt="" aria-hidden="true" onerror="this.style.display='none';this.nextElementSibling.style.display='block';">
                     <span class="users-chat-attach-fallback" style="display:none;">📎</span>
                 </button>
                 <div id="usersChatInput" class="users-chat-input" contenteditable="true" role="textbox" aria-multiline="true" data-placeholder="Write a message..." onkeydown="handleUsersChatKeydown(event)" oninput="updateChatFormatState()"></div>
@@ -963,10 +1023,10 @@
         </div>
     </div>
 
-    <div id="memoSubmissionModal" class="modal-overlay hidden">
-        <div class="modal-content glass-panel modal-large">
-            <h2 style="margin-top: 0; color: var(--primary);">Submit New Memo</h2>
-            <form id="memoForm" style="display: flex; gap: 10px; margin-top: 12px; margin-bottom: 20px; flex-wrap: wrap;">
+    <div id="memoSubmissionModal" class="modal-overlay hidden spades-form-modal">
+        <div class="modal-content glass-panel modal-large spades-polished-modal">
+            <div class="spades-modal-heading"><span class="spades-modal-icon" aria-hidden="true">✉</span><div><span class="spades-modal-eyebrow">MEMO DATABASE</span><h2 style="margin:0;color:var(--primary);">Submit New Memo</h2><p>Enter the memorandum details below to create a new record.</p></div></div>
+            <form id="memoForm" class="spades-modal-form" style="display:flex;gap:12px;margin-top:18px;margin-bottom:18px;flex-wrap:wrap;">
                 <select id="memoClassification" style="padding: 12px; border-radius: 6px; border: 1px solid var(--border-color); background: white; margin: 0; min-width: 200px;">
                     <option value="A">Admin</option>
                     <option value="S">Supply</option>
@@ -1002,18 +1062,20 @@
                 </div>
                 <button type="submit" id="memoSubmitBtn" style="white-space: nowrap; width: auto; margin-top: 0;">Submit Data</button>
             </form>
-            <button onclick="closeMemoModal()" style="margin-top: 25px; background: #e2e8f0; color: #475569; width: 100%;">Close Window</button>
+            <button class="spades-modal-secondary" onclick="closeMemoModal()" style="margin-top:8px;width:100%;">Cancel and Close</button>
         </div>
     </div>
 
-    <div id="adminModal" class="modal-overlay hidden">
-        <div class="modal-content glass-panel">
-            <h3 style="margin-top:0; color: var(--primary);">Alpha Admin Validation Required</h3>
-            <input type="password" id="adminPassInput" placeholder="Master Password" style="background: white;">
-            <div style="display: flex; gap: 10px; margin-top: 15px;">
-                <button style="flex: 1;" onclick="verifyAdmin()">Unlock</button>
-                <button style="flex: 1; background: #e2e8f0; color: #475569;" onclick="closeAdminModal()">Cancel</button>
+    <div id="adminModal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="adminCredentialTitle" aria-describedby="adminCredentialDescription">
+        <div class="modal-content glass-panel alpha-credential-modal">
+            <div class="alpha-credential-header">
+                <div class="alpha-credential-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M12 2.8 19 6v5.1c0 4.5-2.9 7.8-7 9.9-4.1-2.1-7-5.4-7-9.9V6l7-3.2Z"/><path d="m9 12 2 2 4-4"/></svg></div>
+                <div><span class="alpha-credential-eyebrow">SECURE ADMINISTRATION</span><h3 id="adminCredentialTitle">Verify Alpha Admin</h3><p id="adminCredentialDescription">Confirm your Alpha Admin credential to open User Management.</p></div>
             </div>
+            <label class="alpha-credential-label" for="adminPassInput">Alpha Admin credential</label>
+            <div class="alpha-credential-input-wrap"><input type="password" id="adminPassInput" placeholder="Enter your PIN or password" autocomplete="current-password" aria-label="Alpha Admin credential"><button type="button" id="toggleAdminCredentialVisibility" class="alpha-credential-eye" onclick="toggleAdminCredentialVisibility()" aria-label="Show credential" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.4-6.5 9.5-6.5 9.5 6.5 9.5 6.5-3.4 6.5-9.5 6.5S2.5 12 2.5 12Z"/><circle cx="12" cy="12" r="3"/></svg></button></div>
+            <p class="alpha-credential-footnote"><span aria-hidden="true">&#128274;</span> Your credential is verified securely by the system. It is not stored in this page.</p>
+            <div class="alpha-credential-actions"><button type="button" class="alpha-credential-cancel" onclick="closeAdminModal()">Cancel</button><button type="button" class="alpha-credential-submit" id="verifyAdminButton" onclick="verifyAdmin()"><span aria-hidden="true">&#128273;</span> Verify and Continue</button></div>
         </div>
     </div>
 
@@ -1065,12 +1127,9 @@
     </div>
 
 
-    <div id="personnelModal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="personnelModalTitle" onclick="if(event.target===this)closePersonnelModal()">
-        <div class="modal-content glass-panel modal-large">
-            <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;">
-                <h2 id="personnelModalTitle" style="margin:0;color:var(--primary);">Add Personnel</h2>
-                <button type="button" class="action-btn" onclick="closePersonnelModal()" aria-label="Close" title="Close">×</button>
-            </div>
+    <div id="personnelModal" class="modal-overlay hidden spades-form-modal" role="dialog" aria-modal="true" aria-labelledby="personnelModalTitle" onclick="if(event.target===this)closePersonnelModal()">
+        <div class="modal-content glass-panel modal-large spades-polished-modal">
+            <div class="spades-modal-heading"><span class="spades-modal-icon" aria-hidden="true">♙</span><div><span class="spades-modal-eyebrow">PERSONNEL MANAGEMENT</span><h2 id="personnelModalTitle" style="margin:0;color:var(--primary);">Add Personnel</h2><p>Maintain personnel information and assignment details.</p></div><button type="button" class="action-btn spades-modal-close" onclick="closePersonnelModal()" aria-label="Close" title="Close">×</button></div>
             <div class="personnel-form-grid">
                 <input id="pNo" type="text" placeholder="No. (auto)" disabled>
                 <select id="pRank">
@@ -1126,6 +1185,16 @@
         </div>
     </div>
 
+
+    <!-- ACTIVITY DATA MODAL -->
+    <div id="activityDataModal" class="modal-overlay hidden" style="z-index:2200;" role="dialog" aria-modal="true" aria-labelledby="activityDataModalTitle" onclick="if(event.target===this)closeActivityDataModal()">
+        <div class="modal-content glass-panel activity-data-modal">
+            <div class="activity-data-modal-head"><div><span class="activity-data-kicker">ACTIVITY MANAGEMENT</span><h2 id="activityDataModalTitle">Activity Records</h2><p>Search, review, and manage scheduled activities.</p></div><button type="button" class="action-btn activity-data-close" onclick="closeActivityDataModal()" aria-label="Close activity records">×</button></div>
+            <div class="activity-toolbar activity-toolbar-redesigned"><input id="activitySearch" class="activity-search" type="text" placeholder="Search activities..." oninput="filterActivities()" aria-label="Search activities"></div>
+            <div class="table-wrapper activity-data-table-wrap"><table id="activityTable"><thead><tr><th>Date</th><th>Activity Title</th><th>Assigned Venue</th><th>Requesting Office</th><th>Concerned Office</th><th>Time</th><th>Status</th><th id="activityActionHeader">Actions</th></tr></thead><tbody id="activityTableBody"></tbody></table></div>
+            <div id="activityPagination" class="pagination-container hidden"><span id="activityPageInfo" style="font-weight:bold;">Page 1 of 1</span><div class="pagination-buttons"><button id="prevActivityBtn" class="page-btn" onclick="changeActivityPage(-1)">Prev</button><button id="nextActivityBtn" class="page-btn" onclick="changeActivityPage(1)">Next</button></div></div>
+        </div>
+    </div>
 
     <div id="activityModal" class="modal-overlay hidden">
         <div class="modal-content glass-panel modal-large" style="font-family:inherit;max-width:820px;width:calc(100% - 30px);">
@@ -1234,7 +1303,7 @@
 
     <div id="notificationContainer"></div>
 
-        <script src="script/app.js"></script>
+        <script src="script/app.js" defer></script>
 
 
     <!-- DUTY SEQUENCE MODAL -->
@@ -1245,17 +1314,18 @@
                 <button type="button" class="action-btn" onclick="closeDutySequenceModal()" style="margin:0;padding:6px 12px;">×</button>
             </div>
             <p style="font-size:13px;color:var(--text-muted);margin:0 0 12px;">Drag or use the arrows to reorder. Mondays–Thursdays rotate through this sequence; Fridays (Duty Supply), Saturdays (Duty RBand), and Sundays (Duty Water Operator) are persistent.</p>
+            <div class="duty-sequence-add-row"><label for="dutyPersonnelToAdd">Add personnel to sequence</label><div class="duty-sequence-add-controls"><select id="dutyPersonnelToAdd" aria-label="Select personnel to add to duty sequence"><option value="">Select active personnel…</option></select><button type="button" class="action-btn approve-btn" onclick="addDutyPersonnelToSequence()" style="margin:0;color:white;">＋ Add</button></div><small>Choose active personnel, then use the arrows or drag handles to set the rotation order.</small></div>
             <div id="dutySequenceList" class="duty-sequence-list"></div>
             <div style="display:flex;gap:10px;margin-top:18px;">
-                <button class="approve-btn" style="flex:1;margin:0;color:white;" onclick="saveDutySequence()">Save Sequence</button>
+                <button id="dutySequenceSaveBtn" class="approve-btn" style="flex:1;margin:0;color:white;" onclick="saveDutySequence()">Save Sequence</button>
                 <button class="action-btn" style="flex:1;margin:0;" onclick="closeDutySequenceModal()">Cancel</button>
             </div>
         </div>
     </div>
 
     <!-- BMI RECORD MODAL -->
-    <div id="bmiRecordModal" class="modal-overlay hidden" style="z-index:2200;" role="dialog" aria-modal="true" onclick="if(event.target===this)closeBmiModal()">
-        <div class="modal-content glass-panel modal-large" style="max-width:640px;text-align:left;max-height:90vh;overflow-y:auto;">
+    <div id="bmiRecordModal" class="modal-overlay hidden spades-form-modal" style="z-index:2200;" role="dialog" aria-modal="true" onclick="if(event.target===this)closeBmiModal()">
+        <div class="modal-content glass-panel modal-large spades-polished-modal" style="max-width:640px;text-align:left;max-height:90vh;overflow-y:auto;">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px;">
                 <h2 style="margin:0;color:var(--primary);font-size:20px;" id="bmiModalTitle">Add BMI Record</h2>
                 <button type="button" class="action-btn" onclick="closeBmiModal()" style="margin:0;padding:6px 12px;">×</button>
@@ -1316,8 +1386,8 @@
     </div>
 
     <!-- SQUAD MODAL -->
-    <div id="squadModal" class="modal-overlay hidden" style="z-index:2200;" role="dialog" aria-modal="true" onclick="if(event.target===this)closeSquadModal()">
-        <div class="modal-content glass-panel modal-large" style="max-width:640px;text-align:left;max-height:90vh;overflow-y:auto;">
+    <div id="squadModal" class="modal-overlay hidden spades-form-modal" style="z-index:2200;" role="dialog" aria-modal="true" onclick="if(event.target===this)closeSquadModal()">
+        <div class="modal-content glass-panel modal-large spades-polished-modal" style="max-width:640px;text-align:left;max-height:90vh;overflow-y:auto;">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px;">
                 <h2 style="margin:0;color:var(--primary);font-size:20px;" id="squadModalTitle">Create Squad</h2>
                 <button type="button" class="action-btn" onclick="closeSquadModal()" style="margin:0;padding:6px 12px;">×</button>
@@ -1353,8 +1423,8 @@
     </div>
 
     <!-- LEAVE ENTRY MODAL -->
-    <div id="leaveEntryModal" class="modal-overlay hidden" style="z-index:2200;" role="dialog" aria-modal="true" onclick="if(event.target===this)closeLeaveModal()">
-        <div class="modal-content glass-panel modal-large" style="max-width:600px;text-align:left;max-height:90vh;overflow-y:auto;">
+    <div id="leaveEntryModal" class="modal-overlay hidden spades-form-modal" style="z-index:2200;" role="dialog" aria-modal="true" onclick="if(event.target===this)closeLeaveModal()">
+        <div class="modal-content glass-panel modal-large spades-polished-modal" style="max-width:600px;text-align:left;max-height:90vh;overflow-y:auto;">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px;">
                 <h2 style="margin:0;color:var(--primary);font-size:20px;">Add Leave Entry</h2>
                 <button type="button" class="action-btn" onclick="closeLeaveModal()" style="margin:0;padding:6px 12px;">×</button>
@@ -1411,8 +1481,8 @@
     </div>
 
     <!-- AREA MODAL -->
-    <div id="areaModal" class="modal-overlay hidden" style="z-index:2200;" role="dialog" aria-modal="true" onclick="if(event.target===this)closeAreaModal()">
-        <div class="modal-content glass-panel modal-large" style="max-width:600px;text-align:left;max-height:90vh;overflow-y:auto;">
+    <div id="areaModal" class="modal-overlay hidden spades-form-modal" style="z-index:2200;" role="dialog" aria-modal="true" onclick="if(event.target===this)closeAreaModal()">
+        <div class="modal-content glass-panel modal-large spades-polished-modal" style="max-width:600px;text-align:left;max-height:90vh;overflow-y:auto;">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px;">
                 <h2 style="margin:0;color:var(--primary);font-size:20px;" id="areaModalTitle">Add Area of Responsibility</h2>
                 <button type="button" class="action-btn" onclick="closeAreaModal()" style="margin:0;padding:6px 12px;">×</button>
@@ -1465,22 +1535,22 @@
     </div>
 
     <!-- USER ACCESS MODAL -->
-    <div id="userAccessModal" class="modal-overlay hidden" style="z-index:2200;" role="dialog" aria-modal="true" onclick="if(event.target===this)closeUserAccessModal()">
-        <div class="modal-content glass-panel" style="max-width:480px;text-align:left;max-height:85vh;overflow-y:auto;">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px;">
-                <h2 style="margin:0;color:var(--primary);font-size:18px;">Allowed Access</h2>
-                <button type="button" class="action-btn" onclick="closeUserAccessModal()" style="margin:0;padding:6px 12px;">×</button>
+    <div id="userAccessModal" class="modal-overlay hidden um-access-overlay" role="dialog" aria-modal="true" aria-labelledby="userAccessModalTitle" onclick="if(event.target===this)closeUserAccessModal()">
+        <div class="modal-content glass-panel um-access-modal">
+            <div class="um-access-modal-header">
+                <div><div class="um-eyebrow"><span class="um-eyebrow-dot"></span> ACCOUNT PERMISSIONS</div><h2 id="userAccessModalTitle">Allowed Access</h2><p>Configure page access and Personnel Management actions for the selected account.</p></div>
+                <button type="button" class="action-btn" onclick="closeUserAccessModal()" aria-label="Close Allowed Access">×</button>
             </div>
-            <div style="font-size:13px;color:var(--text-muted);margin-bottom:12px;">User: <strong id="userAccessUsername" style="color:var(--text-main);"></strong></div>
-            <p style="font-size:12px;color:var(--text-muted);margin:0 0 12px;">Select the pages this user and admin role are allowed to access. If none are selected, full access is retained by default.</p>
-            <div id="userAccessCheckboxes" style="display:flex;flex-direction:column;gap:10px;"></div>
-            <div style="display:flex;gap:10px;margin-top:18px;">
-                <button class="approve-btn" style="flex:1;margin:0;color:white;" onclick="saveUserAccess()">Save Access</button>
-                <button class="action-btn" style="flex:1;margin:0;" onclick="closeUserAccessModal()">Cancel</button>
-            </div>
+            <div class="um-access-target">User: <strong id="userAccessUsername"></strong></div>
+            <section class="um-page-access-section" aria-labelledby="umPageAccessTitle"><div class="um-permissions-heading"><div><h3 id="umPageAccessTitle">Page Access</h3><p>Select the pages this account can open. If no pages are selected, the existing full page-access default is retained.</p></div></div><div id="userAccessCheckboxes" class="um-page-access-list"></div></section>
+            <section class="um-personnel-permissions" aria-labelledby="userPersonnelPermissionsTitle">
+                <div class="um-permissions-heading"><div><h3 id="userPersonnelPermissionsTitle">Personnel Management Sub-page Permissions</h3><p>Choose which actions this account may perform in each sub-page. These permissions are enforced by the backend.</p></div><span class="um-permissions-badge">Add · Edit · Delete</span></div>
+                <div class="um-access-matrix-scroll"><table class="um-access-matrix"><thead><tr><th scope="col">Sub-page</th><th scope="col">Add</th><th scope="col">Edit</th><th scope="col">Delete</th></tr></thead><tbody id="userPersonnelPermissionMatrixBody"></tbody></table></div>
+                <p class="um-access-footnote">Unchecked actions remain blocked. Existing Admin accounts retain their current full editing access until permissions are explicitly saved for them.</p>
+            </section>
+            <div class="um-access-modal-actions"><button class="approve-btn um-btn um-btn-primary" type="button" onclick="saveUserAccess()">Save Access</button><button class="action-btn um-btn um-btn-secondary" type="button" onclick="closeUserAccessModal()">Cancel</button></div>
         </div>
     </div>
-
 
     <!-- SQUAD DETAILS MODAL -->
     <div id="squadDetailsModal" class="modal-overlay hidden" style="z-index:2200;" role="dialog" aria-modal="true" onclick="if(event.target===this)closeSquadDetailsModal()">
@@ -1502,14 +1572,17 @@
     <!-- PERSONNEL PROFILE CARD MODAL -->
     <div id="personnelProfileModal" class="modal-overlay hidden" style="z-index:2200;" role="dialog" aria-modal="true" onclick="if(event.target===this)closePersonnelProfile()">
         <div class="modal-content glass-panel profile-card-modal">
-            <div class="profile-card-banner"></div>
+            <div class="profile-card-banner"><span class="profile-card-banner-label">PERSONNEL PROFILE</span><button type="button" class="profile-card-close" onclick="closePersonnelProfile()" aria-label="Close personnel profile">×</button></div>
             <div class="profile-card-avatar" id="profileCardAvatar">U</div>
-            <h3 id="profileCardName" style="margin:0 0 4px 0;color:var(--text-main);">Name</h3>
-            <div id="profileCardDesignation" style="font-size:13px;color:var(--text-muted);margin-bottom:14px;"></div>
+            <h3 id="profileCardName" class="profile-card-name">Name</h3>
+            <div id="profileCardDesignation" class="profile-card-designation"></div>
+            <div id="profileCardMeta" class="profile-card-meta"></div>
+            <div class="profile-card-section-title"><span>Personnel Information</span><span class="profile-card-section-line"></span></div>
             <div class="profile-card-body" id="profileCardBody"></div>
             <div style="padding:0 24px 20px 24px;display:flex;gap:10px;">
-                <button class="action-btn approve-btn" id="profileCardEditBtn" style="flex:1;margin:0;color:white;display:none;" onclick="editDetailsFromProfile()">Edit Details</button>
-                <button class="action-btn" style="flex:1;margin:0;" onclick="closePersonnelProfile()">Close</button>
+                <button class="action-btn approve-btn" id="profileCardEditBtn" style="flex:1 1 120px;margin:0;color:white;display:none;" onclick="editDetailsFromProfile()">Edit Details</button>
+                <button class="action-btn delete-btn" id="profileCardArchiveBtn" style="flex:1 1 140px;margin:0;display:none;" onclick="archiveDetailsFromProfile()">Archive Personnel</button>
+                <button class="action-btn" style="flex:1 1 90px;margin:0;" onclick="closePersonnelProfile()">Close</button>
             </div>
         </div>
     </div>
