@@ -1,3 +1,149 @@
+/* -------------------------------------------------------------------------
+   SPADES GLOBAL MODAL STACK CONTROLLER
+   Every modal is promoted in open order; the most recently opened modal stays
+   above earlier dialogs regardless of legacy inline/static z-index values.
+   ------------------------------------------------------------------------- */
+(function initializeSpadesModalStack() {
+    'use strict';
+
+    const MODAL_SELECTOR = '.modal-overlay';
+    const STACK_BASE = 30000;
+    const STACK_STEP = 10;
+    let modalOrder = [];
+
+    function getModal(target) {
+        if (typeof target === 'string') return document.getElementById(target);
+        return target instanceof HTMLElement ? target : null;
+    }
+
+    function isManagedModal(el) {
+        return !!(el && el.matches && el.matches(MODAL_SELECTOR));
+    }
+
+    function isVisible(el) {
+        if (!el || !el.isConnected || el.hidden || el.classList.contains('hidden')) return false;
+        const style = window.getComputedStyle(el);
+        return style.display !== 'none' && style.visibility !== 'hidden' && style.visibility !== 'collapse';
+    }
+
+    function moveModalsToDocumentRoot() {
+        document.querySelectorAll(MODAL_SELECTOR).forEach(modal => {
+            // Root-level overlays are not trapped inside tab/layout stacking contexts.
+            if (modal.parentElement !== document.body) document.body.appendChild(modal);
+        });
+    }
+
+    function paintStack() {
+        modalOrder = modalOrder.filter(isVisible);
+        modalOrder.forEach((modal, index) => {
+            modal.style.setProperty('position', 'fixed', 'important');
+            modal.style.setProperty('z-index', String(STACK_BASE + index * STACK_STEP), 'important');
+            modal.style.setProperty('isolation', 'isolate', 'important');
+
+            const isTop = index === modalOrder.length - 1;
+            modal.setAttribute('aria-hidden', isTop ? 'false' : 'true');
+            if (isTop) modal.setAttribute('aria-modal', 'true');
+            else modal.removeAttribute('aria-modal');
+        });
+
+        document.querySelectorAll(MODAL_SELECTOR).forEach(modal => {
+            if (!isVisible(modal)) {
+                modal.setAttribute('aria-hidden', 'true');
+                modal.removeAttribute('aria-modal');
+            }
+        });
+        document.body.classList.toggle('spades-modal-stack-open', modalOrder.length > 0);
+    }
+
+    function refreshStack() {
+        modalOrder = modalOrder.filter(isVisible);
+        document.querySelectorAll(MODAL_SELECTOR).forEach(modal => {
+            if (isVisible(modal) && !modalOrder.includes(modal)) modalOrder.push(modal);
+        });
+        paintStack();
+    }
+
+    function bringToFront(target) {
+        const modal = getModal(target);
+        if (!isManagedModal(modal)) return;
+        if (modal.parentElement !== document.body) document.body.appendChild(modal);
+
+        modalOrder = modalOrder.filter(existing => existing !== modal && isVisible(existing));
+        document.querySelectorAll(MODAL_SELECTOR).forEach(existing => {
+            if (isVisible(existing) && existing !== modal && !modalOrder.includes(existing)) modalOrder.push(existing);
+        });
+        if (isVisible(modal)) modalOrder.push(modal);
+        paintStack();
+    }
+
+    function mutationHandler(records) {
+        // Re-home overlays added dynamically, if the app adds any in a future update.
+        records.forEach(record => {
+            if (record.type !== 'childList') return;
+            record.addedNodes.forEach(node => {
+                if (!(node instanceof HTMLElement)) return;
+                const candidates = [];
+                if (isManagedModal(node)) candidates.push(node);
+                node.querySelectorAll?.(MODAL_SELECTOR).forEach(modal => candidates.push(modal));
+                candidates.forEach(modal => {
+                    if (modal.parentElement !== document.body) document.body.appendChild(modal);
+                });
+            });
+        });
+
+        // Track class transitions from hidden -> visible in MutationObserver order,
+        // so when several dialogs open in one event cycle the last one wins.
+        const newlyOpened = [];
+        records.forEach(record => {
+            if (record.type !== 'attributes' || !isManagedModal(record.target)) return;
+            if (record.attributeName === 'class') {
+                const wasHidden = String(record.oldValue || '').split(/\s+/).includes('hidden');
+                if (wasHidden && isVisible(record.target)) newlyOpened.push(record.target);
+            } else if (record.attributeName === 'hidden' && record.oldValue !== null && isVisible(record.target)) {
+                newlyOpened.push(record.target);
+            }
+        });
+
+        modalOrder = modalOrder.filter(isVisible);
+        newlyOpened.forEach(modal => {
+            if (!isVisible(modal)) return;
+            modalOrder = modalOrder.filter(existing => existing !== modal);
+            modalOrder.push(modal);
+        });
+        document.querySelectorAll(MODAL_SELECTOR).forEach(modal => {
+            if (isVisible(modal) && !modalOrder.includes(modal)) modalOrder.push(modal);
+        });
+        paintStack();
+    }
+
+    function initialize() {
+        if (!document.body) return;
+        moveModalsToDocumentRoot();
+        refreshStack();
+
+        const observer = new MutationObserver(mutationHandler);
+        observer.observe(document.body, {
+            subtree: true,
+            childList: true,
+            attributes: true,
+            attributeOldValue: true,
+            attributeFilter: ['class', 'hidden']
+        });
+
+        window.SPADESModalStack = Object.freeze({
+            bringToFront,
+            refresh: refreshStack,
+            getOpenModalIds: () => modalOrder.filter(isVisible).map(modal => modal.id || '')
+        });
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initialize, { once: true });
+    } else {
+        initialize();
+    }
+})();
+
 const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUAf04mJqqHLcVfSsEC9Ku8bcYWd5KZ2S1H_zzGWs8zE-kS/exec";
         let ALPHA_ADMIN_NAME = ''; // Loaded from backend Script Properties; no Alpha Admin credential is stored in frontend source.
 
@@ -56,6 +202,8 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         let chatSelectedUser = '';
         let chatUsers = [];
         let chatMessagesTimer = null;
+        let chatbotHistory = [];
+        let chatbotRequestInFlight = false;
         let chatUsersLoaded = false;
         let chatAttachmentFile = null;
         const CHAT_MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
@@ -394,15 +542,54 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         }
 
         function customAlert(message, title = "System Notification") { showNotification(title, message); }
+        const pendingCustomConfirmRequests = [];
+        let activeCustomConfirmRequest = null;
+
+        function showNextCustomConfirm() {
+            if (activeCustomConfirmRequest || pendingCustomConfirmRequests.length === 0) return;
+            const modal = document.getElementById('customConfirmModal');
+            const messageNode = document.getElementById('customConfirmMessage');
+            const yes = document.getElementById('customConfirmYesBtn');
+            const no = document.getElementById('customConfirmNoBtn');
+
+            if (!modal || !messageNode || !yes || !no) {
+                const request = pendingCustomConfirmRequests.shift();
+                const result = window.confirm(String(request.message || 'Are you sure?'));
+                try { if (typeof request.callback === 'function') request.callback(result); }
+                catch (error) { console.error('Confirmation callback failed:', error); }
+                queueMicrotask(showNextCustomConfirm);
+                return;
+            }
+
+            activeCustomConfirmRequest = pendingCustomConfirmRequests.shift();
+            messageNode.textContent = activeCustomConfirmRequest.message;
+            if (modal.parentElement !== document.body) document.body.appendChild(modal);
+            modal.classList.remove('hidden');
+            window.SPADESModalStack?.bringToFront(modal);
+
+            let settled = false;
+            const finish = answer => {
+                if (settled) return;
+                settled = true;
+                const request = activeCustomConfirmRequest;
+                activeCustomConfirmRequest = null;
+                modal.classList.add('hidden');
+                yes.onclick = null;
+                no.onclick = null;
+                try {
+                    if (request && typeof request.callback === 'function') request.callback(answer);
+                } catch (error) {
+                    console.error('Confirmation callback failed:', error);
+                } finally {
+                    queueMicrotask(showNextCustomConfirm);
+                }
+            };
+            yes.onclick = () => finish(true);
+            no.onclick = () => finish(false);
+        }
+
         function customConfirm(message, callback) {
             const modal = document.getElementById('customConfirmModal');
-            // Keep confirmation dialogs at the document root so parent stacking contexts
-            // cannot trap them behind an already-open modal.
-            if (modal && modal.parentElement !== document.body) document.body.appendChild(modal);
-            if (modal) {
-                modal.style.setProperty('z-index', '50000', 'important');
-                modal.style.setProperty('position', 'fixed', 'important');
-            }
             const messageNode = document.getElementById('customConfirmMessage');
             const yes = document.getElementById('customConfirmYesBtn');
             const no = document.getElementById('customConfirmNoBtn');
@@ -411,19 +598,11 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 if (typeof callback === 'function') callback(result);
                 return;
             }
-            messageNode.textContent = String(message == null ? '' : message);
-            modal.classList.remove('hidden');
-            let settled = false;
-            const finish = (answer) => {
-                if (settled) return;
-                settled = true;
-                modal.classList.add('hidden');
-                yes.onclick = null;
-                no.onclick = null;
-                if (typeof callback === 'function') callback(answer);
-            };
-            yes.onclick = () => finish(true);
-            no.onclick = () => finish(false);
+            pendingCustomConfirmRequests.push({
+                message: String(message == null ? '' : message),
+                callback: typeof callback === 'function' ? callback : null
+            });
+            showNextCustomConfirm();
         }
 
         function getActivityLogTimestamp(log) {
@@ -1228,20 +1407,100 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             }
         });
 
-        function toggleChat() { const window = document.getElementById('chatbot-window'); window.classList.toggle('hidden'); if(!window.classList.contains('hidden')) document.getElementById('chatInput').focus(); }
-        function handleChat(e) {
-            if (e.key === 'Enter') {
-                const input = document.getElementById('chatInput'); const text = input.value.trim(); if (!text) return;
-                const chatBox = document.getElementById('chatMessages'); chatBox.innerHTML += `<div class="chat-msg user">${text}</div>`; input.value = "";
-                setTimeout(() => { const response = getChatbotResponse(text.toLowerCase()); chatBox.innerHTML += `<div class="chat-msg bot">${response}</div>`; chatBox.scrollTop = chatBox.scrollHeight; }, 500);
+        function toggleChat(forceState) {
+            const panel = document.getElementById('chatbot-window');
+            const bubble = document.getElementById('chatbot-bubble');
+            if (!panel) return;
+            const open = typeof forceState === 'boolean' ? forceState : panel.classList.contains('hidden');
+            panel.classList.toggle('hidden', !open);
+            bubble?.setAttribute('aria-expanded', open ? 'true' : 'false');
+            if (open) setTimeout(() => document.getElementById('chatInput')?.focus(), 50);
+        }
+
+        function appendChatbotMessage(role, text, className = '') {
+            const chatBox = document.getElementById('chatMessages');
+            if (!chatBox) return null;
+            const node = document.createElement('div');
+            node.className = `chat-msg ${role === 'user' ? 'user' : 'bot'}${className ? ' ' + className : ''}`;
+            node.textContent = String(text || '');
+            chatBox.appendChild(node);
+            chatBox.scrollTop = chatBox.scrollHeight;
+            return node;
+        }
+
+        function handleChat(event) {
+            if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault();
+                sendChatbotMessage();
             }
         }
+
+        async function sendChatbotMessage() {
+            const input = document.getElementById('chatInput');
+            const sendButton = document.getElementById('chatSendBtn');
+            const text = String(input?.value || '').trim();
+            if (!text || chatbotRequestInFlight) return;
+            if (text.length > 1600) return appendChatbotMessage('bot', 'Please keep your question under 1,600 characters.');
+
+            chatbotRequestInFlight = true;
+            if (input) input.value = '';
+            if (sendButton) { sendButton.disabled = true; sendButton.setAttribute('aria-busy', 'true'); }
+            appendChatbotMessage('user', text);
+            const typing = appendChatbotMessage('bot', 'Thinking…', 'chatbot-typing');
+
+            try {
+                const payload = {
+                    action: 'ai_chat',
+                    username: localStorage.getItem('loggedInUser') || '',
+                    credential: localStorage.getItem('loggedCred') || '',
+                    message: text,
+                    history: chatbotHistory.slice(-8)
+                };
+                const response = await fetch(API_URL, {
+                    method: 'POST', mode: 'cors',
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                    body: JSON.stringify(payload)
+                });
+                let data = {};
+                try { data = await response.json(); } catch (parseError) { throw new Error('The AI service returned an unreadable response.'); }
+                if (!response.ok || !data.success) throw new Error(data.error || 'The AI service is temporarily unavailable.');
+                const answer = String(data.reply || '').trim();
+                if (!answer) throw new Error('The AI assistant returned an empty response.');
+                if (typing) typing.remove();
+                appendChatbotMessage('bot', answer);
+                chatbotHistory.push({ role: 'user', content: text }, { role: 'assistant', content: answer });
+                chatbotHistory = chatbotHistory.slice(-12);
+            } catch (error) {
+                if (typing) typing.remove();
+                const message = String(error?.message || 'AI service unavailable');
+                const localGuide = getChatbotResponse(text.toLowerCase());
+                let fallback;
+                if (message.toLowerCase().includes('gemini_api_key') || message.toLowerCase().includes('not configured')) {
+                    fallback = `The AI service has not been configured by the system administrator yet. Here is a quick built-in guide in the meantime: ${localGuide}`;
+                } else if (message.toLowerCase().includes('too many') || message.toLowerCase().includes('rate limit')) {
+                    fallback = `The AI assistant is receiving several requests right now. Please try again shortly. ${localGuide}`;
+                } else {
+                    fallback = `I could not reach the AI service at the moment. ${localGuide}`;
+                }
+                appendChatbotMessage('bot', fallback);
+                console.warn('SPADES AI request failed:', message);
+            } finally {
+                chatbotRequestInFlight = false;
+                if (sendButton) { sendButton.disabled = false; sendButton.removeAttribute('aria-busy'); }
+                input?.focus();
+            }
+        }
+
         function getChatbotResponse(query) {
-            if (query.includes('memo')) return "To manage memos, go to the Home Page tab. Regular users can create and generate control numbers, while Admins can edit and update records.";
-            if (query.includes('admin')) return "Admin Management is strictly accessible to the Alpha Admin to configure user roles.";
-            if (query.includes('profile') || query.includes('password') || query.includes('pin')) return "You can change your PIN, password, or username securely by opening your Profile Settings.";
-            if (query.includes('setting') || query.includes('theme') || query.includes('dark mode')) return "You can adjust Theme, Notifications, AI behaviors, Auto Logout inside Settings.";
-            return "I am a polite system assistant. I can guide you on creating memos, settings, or managing your profile.";
+            if (query.includes('memo') || query.includes('control number')) return 'Open Memo Database to encode or review memorandums. Choose Create New Memo, complete the required fields, and submit. After saving, copy the generated control number and use search or filters to locate existing records. Only users with the appropriate permissions can edit or delete records.';
+            if (query.includes('duty office') || query.includes('duty sequence')) return 'Go to Personnel Management, then Duty Office. Authorized personnel can open Modify Duty Sequence to search the rotation, add active personnel, remove a name from the rotation, and change order before saving.';
+            if (query.includes('activity')) return 'Open Activity Management to review the monthly calendar. Use Add Activity to encode a schedule and View Data to search, review, or manage activity records, subject to your permissions.';
+            if (query.includes('personnel')) return 'Open Personnel Management and choose the relevant sub-page, such as Personnel List, Duty Office, BMI Monitoring, Squadding, Leave Management, or Area of Responsibilities.';
+            if (query.includes('admin') || query.includes('user management') || query.includes('permission')) return 'User Management is reserved for the configured Alpha Admin. Access and editing options elsewhere depend on your assigned role and permissions.';
+            if (query.includes('profile') || query.includes('password') || query.includes('pin') || query.includes('cover photo')) return 'Open My Profile to review your information. Use Profile Settings or Security & Authentication to update supported account settings. The profile banner can be changed from the Change Cover button.';
+            if (query.includes('chat') || query.includes('message')) return 'Use the chat icon in the top bar to open Global Chat or select an active user for a private conversation. Do not send passwords, PINs, or sensitive information in chat.';
+            if (query.includes('setting') || query.includes('theme') || query.includes('dark mode') || query.includes('notification')) return 'Open Settings to adjust theme, notifications, AI assistant visibility, automatic logout, table display, accessibility, and other personal preferences.';
+            return 'I can help explain SPADES workflows for memos, personnel, Duty Office, Activity Management, profile settings, and Users Chat. For account permissions or official records, rely on the data shown in the portal and your office guidance.';
         }
 
         function toggleAuthViews(viewId) { document.getElementById('loginPage').classList.add('hidden'); document.getElementById('registerPage').classList.add('hidden'); document.getElementById('appLayout').classList.add('hidden'); document.getElementById('mainTopBar').classList.add('hidden'); document.getElementById(viewId).classList.remove('hidden'); }
@@ -1263,6 +1522,20 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 fb.style.display = 'flex';
             }
         }
+        function applyProfileCover(coverUrl) {
+            const cover = document.getElementById('profileCoverBanner');
+            if (!cover) return;
+            const fallback = 'url("images/SPADES%20Banner.jpg")';
+            const selected = String(coverUrl || '').trim();
+            // Keep the banner visible if a saved Drive image is missing or blocked.
+            cover.style.backgroundImage = selected
+                ? `linear-gradient(90deg, rgba(5,18,48,.12), rgba(5,18,48,.08)), url("${selected.replace(/[\"\\]/g, '')}")`
+                : fallback;
+            cover.style.backgroundSize = 'cover';
+            cover.style.backgroundPosition = 'center center';
+            cover.style.backgroundRepeat = 'no-repeat';
+        }
+
         async function uploadProfilePhoto(type, inputEl) {
             const file = inputEl.files && inputEl.files[0];
             if (!file) return;
@@ -1273,7 +1546,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                     action: 'upload_photo',
                     username: localStorage.getItem('loggedInUser') || '',
                     credential: localStorage.getItem('loggedCred') || '',
-                    photoType: 'profile',
+                    photoType: type === 'cover' ? 'cover' : 'profile',
                     mime: file.type || 'image/jpeg',
                     dataBase64: e.target.result
                 };
@@ -1281,8 +1554,13 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                     const res = await fetch(API_URL, { method:'POST', mode:'cors', headers:{'Content-Type':'text/plain'}, body: JSON.stringify(payload) });
                     const data = await res.json();
                     if (data && data.success && data.url) {
-                        applyProfilePhotos(data.url);
-                        customAlert('Profile photo updated successfully.', 'Success');
+                        if (type === 'cover') {
+                            applyProfileCover(data.url);
+                            customAlert('Cover photo updated successfully.', 'Success');
+                        } else {
+                            applyProfilePhotos(data.url);
+                            customAlert('Profile photo updated successfully.', 'Success');
+                        }
                     } else {
                         customAlert((data && data.error) ? data.error : 'Photo upload failed. Please try again.', 'Error');
                     }
@@ -1294,9 +1572,21 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         function renderProfileRecentMemos(username) {
             const box = document.getElementById('profileRecentMemos');
             if (!box) return;
-            const mine = (allMemos || []).filter(m => String(m[3]||'').trim() === username).slice(-5).reverse();
-            if (!mine.length) { box.innerHTML = '<span style="color:var(--text-muted);font-size:12px;">No memos created yet.</span>'; return; }
-            box.innerHTML = mine.map(m => `<div style="padding:10px 0;border-bottom:1px solid var(--border-color);display:grid;grid-template-columns:minmax(0,1fr);gap:4px;"><strong style="color:var(--text-main);overflow-wrap:anywhere;">${escapeHtml(String(m[1]||'(no subject)'))}</strong><span style="color:var(--text-muted);font-size:11px;">Date: ${escapeHtml(String(m[0]||'—'))}</span><span style="color:var(--primary);font-size:11px;font-weight:600;overflow-wrap:anywhere;">Control No.: ${escapeHtml(String(m[2]||'—'))}</span></div>`).join('');
+            const key = String(username || '').trim().toLowerCase();
+            // loadData() sorts newest records first. Keep this order so the newest memo is always the first item.
+            const mine = (Array.isArray(allMemos) ? allMemos : [])
+                .filter(m => String((m && m[3]) || '').trim().toLowerCase() === key)
+                .slice(0, 5);
+            if (!mine.length) {
+                box.innerHTML = '<div class="profile-memos-empty"><span aria-hidden="true">▤</span><strong>No memos created yet</strong><small>Your latest encoded memos will appear here.</small></div>';
+                return;
+            }
+            box.innerHTML = mine.map((m, index) => `<article class="profile-recent-memo${index === 0 ? ' is-latest' : ''}">
+                <div class="profile-recent-memo-mark" aria-hidden="true">${index === 0 ? 'NEW' : 'MEMO'}</div>
+                <div class="profile-recent-memo-main"><strong>${escapeHtml(String(m[1] || '(no subject)'))}</strong>
+                <span class="profile-recent-memo-date">Date: ${escapeHtml(String(m[0] || '—'))}</span>
+                <span class="profile-recent-memo-control">Control No.: ${escapeHtml(String(m[2] || '—'))}</span></div>
+            </article>`).join('');
         }
         async function viewUserProfile(username) {
             try {
@@ -1323,6 +1613,9 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
 
         async function populateProfileData() {
             const currentUser = localStorage.getItem('loggedInUser') || 'Unknown';
+            if (!Array.isArray(allMemos) || allMemos.length === 0) {
+                try { await loadData(); } catch (loadMemoError) { console.warn('Could not refresh profile memo list:', loadMemoError); }
+            }
             document.getElementById('profUsername').innerText = currentUser;
             
             let displayRole = "Regular User";
@@ -1348,13 +1641,18 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                     Object.entries(editValues).forEach(([id,val]) => { const el=document.getElementById(id); if(el) el.value=val || ''; });
                     let contactRow = document.getElementById('profContactNo'); if (contactRow) contactRow.innerText = data.profile.contactNo || 'Not Available';
                     applyProfilePhotos(data.profile.profilePhotoUrl);
+                    applyProfileCover(data.profile.coverPhotoUrl);
                     const pfFull = [data.profile.rank, data.profile.firstName, data.profile.middleName, data.profile.lastName, data.profile.qlf].filter(Boolean).join(' ');
                     if (pfFull) { const dn2 = document.getElementById('profileDisplayName'); if (dn2) dn2.innerText = pfFull; const fb2 = document.getElementById('profileAvatarFallback'); if (fb2) fb2.innerText = String(pfFull.charAt(0)||'U').toUpperCase(); }
                 }
             } catch (err) {}
 
             let userMemos = 0; let lastAct = "Not Available";
-            if (allMemos && allMemos.length > 0) { const userMemosArr = allMemos.filter(m => m[3] === currentUser); userMemos = userMemosArr.length; if(userMemos > 0) lastAct = userMemosArr[0][0]; }
+            if (allMemos && allMemos.length > 0) {
+                const userMemosArr = allMemos.filter(m => String(m[3] || '').trim().toLowerCase() === String(currentUser).trim().toLowerCase());
+                userMemos = userMemosArr.length;
+                if (userMemos > 0) lastAct = userMemosArr[0][0] || 'Not Available';
+            }
             document.getElementById('profTotalMemos').innerText = userMemos; document.getElementById('profLastActivity').innerText = lastAct;
             renderProfileRecentMemos(currentUser);
             const fbMine = document.getElementById('profileAvatarFallback'); if (fbMine) fbMine.innerText = String((nameParts.join(' ') || currentUser).trim().charAt(0) || 'U').toUpperCase();
@@ -3465,10 +3763,10 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                     <td><span style="font-weight: 500; color: var(--primary);">${memoStatus}</span></td>
                     <td style="white-space: nowrap;">
                         <button class="action-btn icon-action-btn" title="Edit Memo" aria-label="Edit Memo" onclick="initiateEdit('${row[2]}', '${safeSubject}', '${safeDestination}', '${memoStatus}')">
-                            <img src="images/Edit.png" alt="Edit" style="width:16px;height:16px;filter:invert(1);display:block;">
+                            <i class="fi fi-rr-edit" aria-hidden="true"></i>
                         </button>
                         <button class="action-btn delete-btn icon-action-btn" title="Delete Memo" aria-label="Delete Memo" onclick="triggerDelete('${row[2]}')">
-                            <img src="images/Trash.png" alt="Delete" style="width:16px;height:16px;filter:invert(1);display:block;">
+                            <i class="fi fi-rr-trash" aria-hidden="true"></i>
                         </button>
                     </td>
                 </tr>`;
@@ -3574,8 +3872,8 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             actionTargetControl = controlNum; 
             const confirmationModal = document.getElementById('actionModal');
             if (confirmationModal && confirmationModal.parentElement !== document.body) document.body.appendChild(confirmationModal);
-            if (confirmationModal) confirmationModal.style.setProperty('z-index', '50000', 'important');
-            confirmationModal.classList.remove('hidden'); 
+            confirmationModal.classList.remove('hidden');
+            window.SPADESModalStack?.bringToFront(confirmationModal);
             
             const passInput = document.getElementById('actionAdminPass');
             const confirmBtn = document.getElementById('actionConfirmBtn');
@@ -3723,8 +4021,8 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             pendingAction = 'batch_status';
             const confirmationModal = document.getElementById('actionModal');
             if (confirmationModal && confirmationModal.parentElement !== document.body) document.body.appendChild(confirmationModal);
-            if (confirmationModal) confirmationModal.style.setProperty('z-index', '50000', 'important');
             confirmationModal.classList.remove('hidden');
+            window.SPADESModalStack?.bringToFront(confirmationModal);
             document.getElementById('actionModalTitle').innerText = `Bulk Edit Status (${actionTargetControl.length} items)`;
             document.getElementById('actionNewSubject').classList.add('hidden');
             document.getElementById('actionNewStatus').classList.remove('hidden');
@@ -4040,6 +4338,8 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         function openDutySequenceModal() {
             if (!canPersonnelAction('duty', 'edit')) { customAlert("You do not have permission to edit Duty Office entries.", "Permission Denied"); return; }
             dutySequenceWorking = dutySequence.slice();
+            const sequenceSearch = document.getElementById('dutySequenceSearch');
+            if (sequenceSearch) sequenceSearch.value = '';
             populateDutyPersonnelOptions();
             renderDutySequenceList();
             document.getElementById('dutySequenceModal').classList.remove('hidden');
@@ -4074,10 +4374,32 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
 
         function closeDutySequenceModal() { document.getElementById('dutySequenceModal').classList.add('hidden'); }
         let dutyDragIndex = null;
+        function filterDutySequenceList() { renderDutySequenceList(); }
+
+        function removeDutyItem(index) {
+            if (!canPersonnelAction('duty', 'edit')) return customAlert('You do not have permission to edit Duty Office entries.', 'Permission Denied');
+            const i = Number(index);
+            const name = dutySequenceWorking[i];
+            if (name == null) return;
+            customConfirm(`Remove ${name} from the Duty Office rotation sequence? The personnel record will remain unchanged.`, confirmed => {
+                if (!confirmed) return;
+                dutySequenceWorking.splice(i, 1);
+                renderDutySequenceList();
+                populateDutyPersonnelOptions();
+            });
+        }
+
         function renderDutySequenceList() {
             const list = document.getElementById('dutySequenceList');
             if (!list) return;
-            list.innerHTML = dutySequenceWorking.map((name, i) => `<div class="duty-seq-item" draggable="true" data-index="${i}"
+            const query = String(document.getElementById('dutySequenceSearch')?.value || '').trim().toLowerCase();
+            const visibleItems = dutySequenceWorking.map((name, index) => ({name, index}))
+                .filter(item => !query || String(item.name).toLowerCase().includes(query));
+            if (!visibleItems.length) {
+                list.innerHTML = `<div class="duty-sequence-empty">${dutySequenceWorking.length ? 'No matching personnel found.' : 'No personnel are currently in the rotation. Add active personnel above.'}</div>`;
+                return;
+            }
+            list.innerHTML = visibleItems.map(({name, index: i}) => `<div class="duty-seq-item" draggable="true" data-index="${i}"
                 ondragstart="dutySeqDragStart(event, ${i})"
                 ondragover="dutySeqDragOver(event, ${i})"
                 ondragleave="dutySeqDragLeave(event)"
@@ -4087,8 +4409,9 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 <span class="duty-seq-pos">${i + 1}</span>
                 <span class="duty-seq-name">${escapeHtml(name)}</span>
                 <span class="duty-seq-controls">
-                    <button type="button" class="action-btn" style="margin:0;padding:2px 8px;font-size:12px;" ${i===0?'disabled':''} onclick="moveDutyItem(${i}, -1)">&#8593;</button>
-                    <button type="button" class="action-btn" style="margin:0;padding:2px 8px;font-size:12px;" ${i===dutySequenceWorking.length-1?'disabled':''} onclick="moveDutyItem(${i}, 1)">&#8595;</button>
+                    <button type="button" class="action-btn duty-seq-move" ${i===0?'disabled':''} aria-label="Move ${escapeAttr(name)} up" title="Move up" onclick="moveDutyItem(${i}, -1)">↑</button>
+                    <button type="button" class="action-btn duty-seq-move" ${i===dutySequenceWorking.length-1?'disabled':''} aria-label="Move ${escapeAttr(name)} down" title="Move down" onclick="moveDutyItem(${i}, 1)">↓</button>
+                    <button type="button" class="action-btn duty-seq-remove" aria-label="Remove ${escapeAttr(name)} from rotation" title="Remove from rotation" onclick="removeDutyItem(${i})">×</button>
                 </span>
             </div>`).join('');
         }
@@ -4138,27 +4461,15 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
 
         /* ---------- BMI Monitoring ---------- */
         function computeBmiClient(heightCm, weightKg, age) {
-            // BMI Calculator sheet formula: BMI = weight(kg) / height(m)^2
-            // PNP age-adjusted classification (PCPT Jason Ed T. Javier, Medical Officer)
+            // BMI = weight (kg) / height (m)^2. Classification rule requested for SPADES:
+            // any displayed BMI result greater than 25.00 is Overweight (OW).
             const h = Number(heightCm), w = Number(weightKg);
             if (!h || !w || h <= 0 || w <= 0) return {bmi:'', classification:''};
             const bmi = Math.round((w / ((h/100)*(h/100))) * 100) / 100;
-            const a = Number(age) || 0;
-            let normalMax;
-            if (a > 0) {
-                if (a < 29) normalMax = 24.9;
-                else if (a < 35) normalMax = 25.0;
-                else if (a < 40) normalMax = 25.5;
-                else if (a < 45) normalMax = 26.0;
-                else if (a < 51) normalMax = 26.5;
-                else normalMax = 27.0;
-            } else { normalMax = 24.9; }
             let cls = '';
             if (bmi < 18.5) cls = 'Underweight (UW)';
-            else if (bmi <= normalMax) cls = 'Normal (N)';
-            else if (bmi < 30) cls = 'Overweight (OW)';
-            else if (bmi < 35) cls = 'Obese I (OB 1)';
-            else cls = 'Obese II (OB 2)';
+            else if (bmi > 25.0) cls = 'Overweight (OW)';
+            else cls = 'Normal (N)';
             return {bmi:bmi, classification:cls};
         }
         function bmiClassColor(cls) {

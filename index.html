@@ -4,9 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="SPADES operational portal for memos, personnel, activities, and administrative data management.">
-    <title>RHSU Data Entry System</title>
+    <title>SPADES | RHSU Operations Portal</title>
     <link rel="icon" type="image/png" href="images/RHSU Spades.png">
     <link rel="apple-touch-icon" href="images/RHSU Spades.png">
+    <link rel="stylesheet" href="https://cdn-uicons.flaticon.com/4.0.0/uicons-regular-rounded/css/uicons-regular-rounded.css">
     <link rel="stylesheet" href="css/styles.css">
 
 </head>
@@ -14,7 +15,7 @@
     <div class="top-bar hidden" id="mainTopBar">
         <div class="top-bar-left">
             <button onclick="toggleNav()" style="background: transparent; border: none; cursor: pointer; padding: 5px;">
-                <img src="images/Menu.png" alt="Menu" style="width: 24px; height: 24px; filter: invert(1);" onerror="this.src='data:image/svg+xml;utf8,<svg viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'currentColor\' stroke-width=\'2\' stroke-linecap=\'round\' stroke-linejoin=\'round\' xmlns=\'http://www.w3.org/2000/svg\'><line x1=\'3\' y1=\'12\' x2=\'21\' y2=\'12\'></line><line x1=\'3\' y1=\'6\' x2=\'21\' y2=\'6\'></line><line x1=\'3\' y1=\'18\' x2=\'21\' y2=\'18\'></line></svg>'">
+                <i class="fi fi-rr-menu-burger spades-ui-icon" aria-hidden="true"></i>
             </button>
             <span id="appBrand">REGIONAL HEADQUARTERS SUPPORT UNIT</span>
         </div>
@@ -24,7 +25,7 @@
 
             <div class="header-chat-wrap" id="headerChatWrap">
                 <button class="profile-btn header-icon-btn" id="usersChatHeaderBtn" type="button" onclick="toggleUsersChatDropdown(event)" title="Users Chat" aria-label="Users Chat" aria-expanded="false">
-                    <img src="images/Message.png" alt="Users Chat" style="filter: invert(1);" onerror="this.src='data:image/svg+xml;utf8,<svg viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'currentColor\' stroke-width=\'2\' stroke-linecap=\'round\' stroke-linejoin=\'round\' xmlns=\'http://www.w3.org/2000/svg\'><path d=\'M21 11.5a8.38 8.38 0 0 1-9 8.5 8.5 8.5 0 0 1-7.3-4.1L3 21l1.1-4.2A8.4 8.4 0 1 1 21 11.5z\'></path></svg>'">
+                    <i class="fi fi-rr-comment-alt spades-ui-icon" aria-hidden="true"></i>
                     <span id="usersChatUnreadBadge" class="users-chat-unread-badge hidden" aria-label="Unread messages">0</span>
                 </button>
                 <div id="usersChatDropdown" class="users-chat-dropdown hidden" role="menu" aria-label="Users Chat">
@@ -36,7 +37,7 @@
                         <button type="button" class="users-chat-dropdown-close" onclick="toggleUsersChatDropdown(event, false)" aria-label="Close">×</button>
                     </div>
                     <button type="button" class="users-chat-dropdown-global" onclick="openUsersChatWindow('global')" role="menuitem">
-                        <span class="users-chat-menu-icon">💬</span>
+                        <span class="users-chat-menu-icon"><i class="fi fi-rr-comment-alt" aria-hidden="true"></i></span>
                         <span><strong>Global Chat</strong><small>Visible to all active users</small></span>
                     </button>
                     <div class="users-chat-dropdown-label">Active Users</div>
@@ -46,7 +47,7 @@
             </div>
 
             <button class="profile-btn header-icon-btn" id="profileHeaderBtn" type="button" onclick="switchTab('profile')" title="My Profile" aria-label="My Profile">
-                <img src="images/User.png" alt="Profile" style="filter: invert(1);" onerror="this.src='data:image/svg+xml;utf8,<svg viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'currentColor\' stroke-width=\'2\' stroke-linecap=\'round\' stroke-linejoin=\'round\' xmlns=\'http://www.w3.org/2000/svg\'><path d=\'M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2\'></path><circle cx=\'12\' cy=\'7\' r=\'4\'></circle></svg>'">
+                <i class="fi fi-rr-user spades-ui-icon" aria-hidden="true"></i>
             </button>
         </div>
     </div>
@@ -127,41 +128,42 @@
             </div>
             
             <button class="sidebar-btn active" id="btnDashboard" onclick="switchTab('dashboard');">
-                <img src="images/Home.png" alt="Dashboard" class="nav-icon" onerror="this.style.display='none'">
+                <i class="fi fi-rr-home nav-icon" aria-hidden="true"></i>
                 <span class="nav-text">Dashboard</span>
             </button>
 
             <button class="sidebar-btn" id="btnHome" onclick="switchTab('home');">
-                <img src="images/Memo.png" alt="Memos" class="nav-icon" onerror="this.style.display='none'">
+                <i class="fi fi-rr-memo nav-icon" aria-hidden="true"></i>
                 <span class="nav-text">Memo Database</span>
             </button>
             
             <button class="sidebar-btn" id="btnPersonnel" onclick="switchTab('personnel');">
-                <img src="images/Personnel.png" alt="Personnel" class="nav-icon" onerror="this.style.display='none'">
+                <i class="fi fi-rr-id-badge nav-icon" aria-hidden="true"></i>
                 <span class="nav-text">Personnel Management</span>
             </button>
 
             <button class="sidebar-btn hidden" id="btnAdminMgmt" style="display:none !important;" onclick="switchTab('adminMgmt');">
-                <img src="images/Users.png" alt="Admin" class="nav-icon" onerror="this.src='data:image/svg+xml;utf8,<svg viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'currentColor\' stroke-width=\'2\' stroke-linecap=\'round\' stroke-linejoin=\'round\' xmlns=\'http://www.w3.org/2000/svg\'><path d=\'M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2\'></path><circle cx=\'9\' cy=\'7\' r=\'4\'></circle><path d=\'M23 21v-2a4 4 0 0 0-3-3.87\'></path><path d=\'M16 3.13a4 4 0 0 1 0 7.75\'></path></svg>'">
+                <i class="fi fi-rr-users nav-icon" aria-hidden="true"></i>
                 <span class="nav-text">User Management</span>
             </button>
 
 
             <button class="sidebar-btn" id="btnActivityManagement" onclick="switchTab('activityManagement');">
-                <img src="images/Activity.png" alt="Activity Management" class="nav-icon" onerror="this.src='data:image/svg+xml;utf8,<svg viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'currentColor\' stroke-width=\'2\' stroke-linecap=\'round\' stroke-linejoin=\'round\' xmlns=\'http://www.w3.org/2000/svg\'><rect x=\'3\' y=\'4\' width=\'18\' height=\'18\' rx=\'2\'></rect><line x1=\'16\' y1=\'2\' x2=\'16\' y2=\'6\'></line><line x1=\'8\' y1=\'2\' x2=\'8\' y2=\'6\'></line><line x1=\'3\' y1=\'10\' x2=\'21\' y2=\'10\'></line></svg>'">
+                <i class="fi fi-rr-calendar nav-icon" aria-hidden="true"></i>
                 <span class="nav-text">Activity Management</span>
             </button>
 
             <button class="sidebar-btn" id="btnSettings" onclick="switchTab('settings');">
-                <img src="images/Settings.png" alt="Settings" class="nav-icon" onerror="this.src='data:image/svg+xml;utf8,<svg viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'currentColor\' stroke-width=\'2\' stroke-linecap=\'round\' stroke-linejoin=\'round\' xmlns=\'http://www.w3.org/2000/svg\'><circle cx=\'12\' cy=\'12\' r=\'3\'></circle><path d=\'M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z\'></path></svg>'">
+                <i class="fi fi-rr-settings nav-icon" aria-hidden="true"></i>
                 <span class="nav-text">Settings</span>
             </button>
             
             <div style="flex-grow: 1;"></div>
             <div class="sidebar-version" aria-label="Application version and developer">
-                <div class="sidebar-version-number">v1.0.3</div>
+                <div class="sidebar-version-number">v2.0.0</div>
                 <div class="sidebar-developer">@ MC GANDIA</div>
                 <div class="sidebar-rights">All rights reserved to RHSU PRO 1</div>
+                <div class="flaticon-attribution"><a href="https://www.flaticon.com/uicons" target="_blank" rel="noopener noreferrer">Uicons by Flaticon</a></div>
             </div>
         </aside>
 
@@ -182,9 +184,9 @@
                             <span class="exec-pill" id="execDashUpdated">Data not loaded</span>
                         </div>
                         <div class="exec-hero-actions">
-                            <button class="rhsu-dashboard-action-btn" onclick="dashboardAddMemo()" aria-label="Add Memo" title="Add Memo"><span class="dashboard-action-icon" aria-hidden="true">＋</span><span class="dashboard-action-label">Add Memo</span></button>
-                            <button class="rhsu-dashboard-action-btn" onclick="switchTab('personnel')" aria-label="Personnel" title="Personnel"><span class="dashboard-action-icon" aria-hidden="true">♙</span><span class="dashboard-action-label">Personnel</span></button>
-                            <button class="rhsu-dashboard-action-btn" onclick="switchTab('activityManagement')" aria-label="Add Activity" title="Add Activity"><span class="dashboard-action-icon" aria-hidden="true">▦</span><span class="dashboard-action-label">Add Activity</span></button>
+                            <button class="rhsu-dashboard-action-btn" onclick="dashboardAddMemo()" aria-label="Add Memo" title="Add Memo"><span class="dashboard-action-icon" aria-hidden="true"><i class="fi fi-rr-plus"></i></span><span class="dashboard-action-label">Add Memo</span></button>
+                            <button class="rhsu-dashboard-action-btn" onclick="switchTab('personnel')" aria-label="Personnel" title="Personnel"><span class="dashboard-action-icon" aria-hidden="true"><i class="fi fi-rr-users"></i></span><span class="dashboard-action-label">Personnel</span></button>
+                            <button class="rhsu-dashboard-action-btn" onclick="switchTab('activityManagement')" aria-label="Add Activity" title="Add Activity"><span class="dashboard-action-icon" aria-hidden="true"><i class="fi fi-rr-calendar"></i></span><span class="dashboard-action-label">Add Activity</span></button>
                         </div>
                     </div>
                 </section>
@@ -242,7 +244,7 @@
                     <h2 style="margin:0; color: var(--primary);">Memo Database</h2>
                     <div>
                         <button class="action-btn approve-btn" onclick="openMemoModalUser()" style="padding: 10px 18px; font-weight: bold; color:white;">
-                            <img src="images/Add.png" alt="Add" style="width: 14px; height: 14px; filter: invert(1);" onerror="this.style.display='none'"> Add Memo
+                            <i class="fi fi-rr-plus spades-ui-icon" aria-hidden="true"></i> Add Memo
                         </button>
                     </div>
                 </div>
@@ -311,7 +313,7 @@
                         Bulk Edit Status
                     </button>
                     <button class="action-btn delete-btn" onclick="batchDelete()" style="color:white; margin-left: auto;">
-                        <img src="images/Trash.png" alt="Delete" style="width: 14px; height: 14px; filter: invert(1);" onerror="this.style.display='none'"> Delete Selected
+                        <i class="fi fi-rr-trash spades-ui-icon" aria-hidden="true"></i> Delete Selected
                     </button>
                 </div>
 
@@ -353,12 +355,13 @@
                 </div>
 
                 <input type="file" id="avatarPhotoInput" accept="image/*" style="display:none;" onchange="uploadProfilePhoto('profile', this)">
+                <input type="file" id="coverPhotoInput" accept="image/*" style="display:none;" onchange="uploadProfilePhoto('cover', this)">
                 <span id="profileAvatar" style="display:none;"></span>
 
                 <!-- PROFILE HERO: cover photo + avatar + name + stats -->
                 <div class="pf-hero glass-panel">
                     <div class="pf-cover" id="profileCoverBanner" aria-label="SPADES static cover banner">
-                        <div class="pf-cover-actions"><div class="pf-cover-action-buttons pf-profile-quick-actions"><button type="button" onclick="openProfileModal('securitySettingsModal')">Security &amp; Authentication</button><button type="button" onclick="openProfileModal('profileSettingsModal')">Profile Settings</button></div></div>
+                        <div class="pf-cover-actions"><span class="pf-cover-label">SPADES PROFILE</span><div class="pf-cover-action-buttons pf-profile-quick-actions"><button type="button" class="pf-cover-change-btn" onclick="document.getElementById('coverPhotoInput').click()">Change Cover</button><button type="button" onclick="openProfileModal('securitySettingsModal')">Security &amp; Authentication</button><button type="button" onclick="openProfileModal('profileSettingsModal')">Profile Settings</button></div></div>
                     </div>
                     <div class="pf-hero-body">
                         <div class="pf-avatar-wrap">
@@ -914,18 +917,24 @@
 
 
 
-    <!-- FLOATING CHATBOT AI -->
+    <!-- FLOATING AI ASSISTANT -->
     <div id="chatbot-container">
-        <div id="chatbot-window" class="hidden">
-            <div class="chat-header">System AI Assistant</div>
-            <div class="chat-messages" id="chatMessages">
-                <div class="chat-msg bot">Hello! I am your AI assistant for the RHSU Memo Control system. How can I politely assist you today?</div>
+        <section id="chatbot-window" class="hidden" role="dialog" aria-label="SPADES AI Assistant" aria-modal="false">
+            <div class="chat-header">
+                <span class="chatbot-avatar"><i class="fi fi-rr-sparkles" aria-hidden="true"></i></span>
+                <div class="chatbot-title-wrap"><strong>SPADES AI Assistant</strong><small><span class="chatbot-status-dot"></span> Ready to help</small></div>
+                <button type="button" class="chatbot-close" onclick="toggleChat(false)" aria-label="Close AI assistant">×</button>
+            </div>
+            <div class="chat-messages" id="chatMessages" role="log" aria-live="polite" aria-relevant="additions">
+                <div class="chat-msg bot">Hello! I’m your SPADES assistant. Ask me about memo workflows, personnel tools, activity records, profile settings, or how to use the portal.</div>
             </div>
             <div class="chat-input-area">
-                <input type="text" id="chatInput" placeholder="Ask a question..." onkeypress="handleChat(event)">
+                <input type="text" id="chatInput" placeholder="Ask about SPADES…" maxlength="1600" autocomplete="off" onkeydown="handleChat(event)" aria-label="Message the SPADES AI Assistant">
+                <button type="button" id="chatSendBtn" onclick="sendChatbotMessage()" aria-label="Send message" title="Send message"><i class="fi fi-rr-paper-plane" aria-hidden="true"></i></button>
             </div>
-        </div>
-        <button id="chatbot-bubble" onclick="toggleChat()" title="Chat with Assistant">💬</button>
+            <div class="chatbot-footnote">AI responses can be imperfect. Do not enter passwords, PINs, or other sensitive information.</div>
+        </section>
+        <button id="chatbot-bubble" onclick="toggleChat()" title="Chat with SPADES Assistant" aria-label="Open SPADES AI Assistant" aria-expanded="false"><i class="fi fi-rr-comment-dots" aria-hidden="true"></i></button>
     </div>
 
     <!-- USERS CHAT DROPDOWN/FLOATING MESSENGER WINDOW -->
@@ -1315,7 +1324,9 @@
             </div>
             <p style="font-size:13px;color:var(--text-muted);margin:0 0 12px;">Drag or use the arrows to reorder. Mondays–Thursdays rotate through this sequence; Fridays (Duty Supply), Saturdays (Duty RBand), and Sundays (Duty Water Operator) are persistent.</p>
             <div class="duty-sequence-add-row"><label for="dutyPersonnelToAdd">Add personnel to sequence</label><div class="duty-sequence-add-controls"><select id="dutyPersonnelToAdd" aria-label="Select personnel to add to duty sequence"><option value="">Select active personnel…</option></select><button type="button" class="action-btn approve-btn" onclick="addDutyPersonnelToSequence()" style="margin:0;color:white;">＋ Add</button></div><small>Choose active personnel, then use the arrows or drag handles to set the rotation order.</small></div>
+            <div class="duty-sequence-search-wrap"><label for="dutySequenceSearch">Find personnel in the rotation</label><input id="dutySequenceSearch" type="search" autocomplete="off" placeholder="Search by rank or name…" oninput="filterDutySequenceList()" aria-label="Search duty sequence"></div>
             <div id="dutySequenceList" class="duty-sequence-list"></div>
+            <p class="duty-sequence-note">Removing a name here only removes it from the Duty Office rotation; the personnel record remains in Personnel Management.</p>
             <div style="display:flex;gap:10px;margin-top:18px;">
                 <button id="dutySequenceSaveBtn" class="approve-btn" style="flex:1;margin:0;color:white;" onclick="saveDutySequence()">Save Sequence</button>
                 <button class="action-btn" style="flex:1;margin:0;" onclick="closeDutySequenceModal()">Cancel</button>
