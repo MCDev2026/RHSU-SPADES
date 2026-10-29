@@ -1506,21 +1506,91 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         function toggleAuthViews(viewId) { document.getElementById('loginPage').classList.add('hidden'); document.getElementById('registerPage').classList.add('hidden'); document.getElementById('appLayout').classList.add('hidden'); document.getElementById('mainTopBar').classList.add('hidden'); document.getElementById(viewId).classList.remove('hidden'); }
         function toggleInputType(inputId, type) { const input = document.getElementById(inputId); if (type === 'pin') { input.placeholder = "Enter 6-Digit PIN"; input.setAttribute("maxlength", "6"); } else { input.placeholder = "Enter Password"; input.removeAttribute("maxlength"); } input.value = ""; }
 
+        // Google Drive may return different redirects for view links. Prefer its image thumbnail
+        // endpoint, then retry the direct view URL so uploaded avatars render reliably in <img> tags.
+        function extractDriveImageId(url) {
+            const value = String(url || '').trim();
+            if (!value) return '';
+            try {
+                const parsed = new URL(value, window.location.href);
+                const queryId = parsed.searchParams.get('id');
+                if (queryId) return queryId;
+            } catch (_) {}
+            const match = value.match(/\/file\/d\/([^/?#]+)|\/d\/([^/?#]+)/i);
+            return match ? (match[1] || match[2] || '') : '';
+        }
+
+        function getProfileImageCandidates(url) {
+            const raw = String(url || '').trim();
+            if (!raw) return [];
+            const id = extractDriveImageId(raw);
+            const cacheKey = 'spades=' + Date.now();
+            const withCacheBust = value => value + (value.includes('?') ? '&' : '?') + cacheKey;
+            const candidates = [];
+            if (id) {
+                candidates.push(withCacheBust('https://drive.google.com/thumbnail?id=' + encodeURIComponent(id) + '&sz=w512'));
+                candidates.push(withCacheBust('https://drive.google.com/uc?export=view&id=' + encodeURIComponent(id)));
+            }
+            candidates.push(withCacheBust(raw));
+            return [...new Set(candidates)];
+        }
+
+        function setProfileImageDisplay(imageEl, fallbackEl, imageUrl, fallbackInitial) {
+            if (!imageEl || !fallbackEl) return;
+            const initial = String(fallbackInitial || 'U').trim().charAt(0).toUpperCase() || 'U';
+            fallbackEl.textContent = initial;
+            fallbackEl.style.display = 'flex';
+            imageEl.style.display = 'none';
+            imageEl.style.objectFit = 'cover';
+            imageEl.style.objectPosition = 'center';
+            imageEl.decoding = 'async';
+            imageEl.loading = 'eager';
+
+            const candidates = getProfileImageCandidates(imageUrl);
+            if (!candidates.length) {
+                imageEl.removeAttribute('src');
+                imageEl.onload = null;
+                imageEl.onerror = null;
+                return;
+            }
+
+            let candidateIndex = 0;
+            imageEl.onload = function () {
+                imageEl.style.display = 'block';
+                fallbackEl.style.display = 'none';
+            };
+            imageEl.onerror = function () {
+                candidateIndex += 1;
+                if (candidateIndex < candidates.length) {
+                    imageEl.src = candidates[candidateIndex];
+                } else {
+                    imageEl.style.display = 'none';
+                    fallbackEl.style.display = 'flex';
+                }
+            };
+            imageEl.src = candidates[candidateIndex];
+        }
+
+        function profilePhotoCacheKey(username, photoType) {
+            const userKey = String(username || '').trim().toLowerCase();
+            const typeKey = String(photoType || 'profile').trim().toLowerCase() === 'cover' ? 'cover' : 'profile';
+            return 'spades.savedPhoto.' + typeKey + '.' + encodeURIComponent(userKey);
+        }
+        function getCachedProfilePhotoUrl(username, photoType) {
+            try { return localStorage.getItem(profilePhotoCacheKey(username, photoType)) || ''; }
+            catch (_) { return ''; }
+        }
+        function rememberProfilePhotoUrl(username, photoType, url) {
+            const safeUrl = String(url || '').trim();
+            if (!username || !safeUrl) return;
+            try { localStorage.setItem(profilePhotoCacheKey(username, photoType), safeUrl); }
+            catch (_) { /* Backend Drive storage remains the source of truth if browser storage is full/disabled. */ }
+        }
         function applyProfilePhotos(profileUrl) {
             const av = document.getElementById('profileAvatarImg');
             const fb = document.getElementById('profileAvatarFallback');
-            if (!av || !fb) return;
-            if (profileUrl) {
-                // Set the fallback first, then reveal the image only after it loads successfully.
-                fb.style.display = 'flex';
-                av.onload = function () { av.style.display = 'block'; fb.style.display = 'none'; };
-                av.onerror = function () { av.style.display = 'none'; fb.style.display = 'flex'; };
-                av.src = profileUrl;
-            } else {
-                av.removeAttribute('src');
-                av.style.display = 'none';
-                fb.style.display = 'flex';
-            }
+            const displayName = document.getElementById('profileDisplayName')?.textContent || localStorage.getItem('loggedInUser') || 'U';
+            setProfileImageDisplay(av, fb, profileUrl || getCachedProfilePhotoUrl(localStorage.getItem('loggedInUser'), 'profile'), displayName);
         }
         function applyProfileCover(coverUrl) {
             const cover = document.getElementById('profileCoverBanner');
@@ -1540,7 +1610,11 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             const file = inputEl.files && inputEl.files[0];
             if (!file) return;
             if (file.size > 4 * 1024 * 1024) { customAlert("Image too large. Please use an image under 4 MB.", "Validation"); inputEl.value=''; return; }
+            if (file.type && !['image/jpeg', 'image/jpg', 'image/png', 'image/webp'].includes(file.type.toLowerCase())) {
+                customAlert('Please select a JPG, PNG, or WebP image.', 'Validation'); inputEl.value=''; return;
+            }
             const reader = new FileReader();
+            reader.onerror = function () { customAlert('The selected image could not be read. Please try another image.', 'Error'); inputEl.value = ''; };
             reader.onload = async function(e) {
                 const payload = {
                     action: 'upload_photo',
@@ -1554,6 +1628,8 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                     const res = await fetch(API_URL, { method:'POST', mode:'cors', headers:{'Content-Type':'text/plain'}, body: JSON.stringify(payload) });
                     const data = await res.json();
                     if (data && data.success && data.url) {
+                        const photoOwner = localStorage.getItem('loggedInUser') || '';
+                        rememberProfilePhotoUrl(photoOwner, type === 'cover' ? 'cover' : 'profile', data.url);
                         if (type === 'cover') {
                             applyProfileCover(data.url);
                             customAlert('Cover photo updated successfully.', 'Success');
@@ -1600,10 +1676,13 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 document.getElementById('viewProfileRole').innerText = p.role || 'Regular User';
                 document.getElementById('viewTotalMemos').innerText = (p.totalMemos != null) ? p.totalMemos : 0;
                 const av = document.getElementById('viewAvatarImg'); const fb = document.getElementById('viewAvatarFallback');
-                if (p.profilePhotoUrl) { av.src = p.profilePhotoUrl; av.style.display='block'; fb.style.display='none'; } else { av.style.display='none'; fb.style.display='flex'; fb.innerText = String(fullName.charAt(0)||'U').toUpperCase(); }
+                const savedViewProfilePhoto = p.profilePhotoUrl || getCachedProfilePhotoUrl(p.username, 'profile');
+                const savedViewCoverPhoto = p.coverPhotoUrl || getCachedProfilePhotoUrl(p.username, 'cover');
+                if (p.profilePhotoUrl) rememberProfilePhotoUrl(p.username, 'profile', p.profilePhotoUrl);
+                if (p.coverPhotoUrl) rememberProfilePhotoUrl(p.username, 'cover', p.coverPhotoUrl);
+                setProfileImageDisplay(av, fb, savedViewProfilePhoto, fullName);
                 const cv = document.getElementById('viewCoverBanner');
-                if (p.coverPhotoUrl) cv.style.backgroundImage = `url("${p.coverPhotoUrl}")`; else cv.style.backgroundImage = '';
-                const fbInitial = document.getElementById('viewAvatarFallback'); if (fbInitial && !p.profilePhotoUrl) fbInitial.innerText = String(fullName.charAt(0)||'U').toUpperCase();
+                if (savedViewCoverPhoto) cv.style.backgroundImage = `url("${savedViewCoverPhoto}")`; else cv.style.backgroundImage = '';
                 const rows = [['Rank', p.rank], ['First Name', p.firstName], ['Middle Name', p.middleName], ['Last Name', p.lastName], ['Qualifier', p.qlf], ['Email', p.email], ['Role', p.role], ['Total Memos', p.totalMemos]];
                 document.getElementById('viewProfileInfo').innerHTML = rows.map(([k,v]) => `<div class="setting-row" style="margin:0;"><span>${k}</span><span class="profile-value">${escapeHtml(v || '—')}</span></div>`).join('');
                 document.getElementById('userProfileViewModal').classList.remove('hidden');
@@ -1631,17 +1710,23 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             const roleBadge = document.getElementById('profileRoleBadge'); if (roleBadge) roleBadge.innerText = displayRole;
             const access = document.getElementById('profAccessLevel'); if (access) access.innerText = currentUser === ALPHA_ADMIN_NAME ? 'Full Administrative Access' : (localStorage.getItem('canEdit') === 'Yes' || localStorage.getItem('userRole') === 'Admin' ? 'Administrative Editing' : 'Standard User');
             loadProfilePreferences();
+            // Display the last successfully saved image immediately while the backend profile loads.
+            // The Drive-backed backend URL below remains authoritative and refreshes this cache.
+            applyProfilePhotos(getCachedProfilePhotoUrl(currentUser, 'profile'));
+            applyProfileCover(getCachedProfilePhotoUrl(currentUser, 'cover'));
             
             try {
-                const res = await fetch(`${API_URL}?action=get_profile&username=${encodeURIComponent(currentUser)}`); const data = await res.json();
+                const res = await fetch(`${API_URL}?action=get_profile&username=${encodeURIComponent(currentUser)}&_ts=${Date.now()}`, { cache: 'no-store' }); const data = await res.json();
                 if (data.success && data.profile) {
                     const updateField = (id, val) => { const el = document.getElementById(id); el.innerText = val || 'Not Available'; if(val) el.style.color = 'var(--text-main)'; };
                     updateField('profRank', data.profile.rank); updateField('profFirstName', data.profile.firstName); updateField('profMiddleName', data.profile.middleName); updateField('profLastName', data.profile.lastName); updateField('profQlf', data.profile.qlf); updateField('profEmail', data.profile.email);
                     const editValues = {editProfileRank:data.profile.rank, editProfileFirstName:data.profile.firstName, editProfileMiddleName:data.profile.middleName, editProfileLastName:data.profile.lastName, editProfileQlf:data.profile.qlf, editProfileEmail:data.profile.email, editProfileContact:data.profile.contactNo};
                     Object.entries(editValues).forEach(([id,val]) => { const el=document.getElementById(id); if(el) el.value=val || ''; });
                     let contactRow = document.getElementById('profContactNo'); if (contactRow) contactRow.innerText = data.profile.contactNo || 'Not Available';
-                    applyProfilePhotos(data.profile.profilePhotoUrl);
-                    applyProfileCover(data.profile.coverPhotoUrl);
+                    if (data.profile.profilePhotoUrl) rememberProfilePhotoUrl(currentUser, 'profile', data.profile.profilePhotoUrl);
+                    if (data.profile.coverPhotoUrl) rememberProfilePhotoUrl(currentUser, 'cover', data.profile.coverPhotoUrl);
+                    applyProfilePhotos(data.profile.profilePhotoUrl || getCachedProfilePhotoUrl(currentUser, 'profile'));
+                    applyProfileCover(data.profile.coverPhotoUrl || getCachedProfilePhotoUrl(currentUser, 'cover'));
                     const pfFull = [data.profile.rank, data.profile.firstName, data.profile.middleName, data.profile.lastName, data.profile.qlf].filter(Boolean).join(' ');
                     if (pfFull) { const dn2 = document.getElementById('profileDisplayName'); if (dn2) dn2.innerText = pfFull; const fb2 = document.getElementById('profileAvatarFallback'); if (fb2) fb2.innerText = String(pfFull.charAt(0)||'U').toUpperCase(); }
                 }
@@ -2379,7 +2464,9 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             });
         }
         function isAlphaAdmin() {
-            return localStorage.getItem('loggedInUser') === ALPHA_ADMIN_NAME;
+            const current = String(localStorage.getItem('loggedInUser') || '').trim().toLowerCase();
+            const configured = String(ALPHA_ADMIN_NAME || '').trim().toLowerCase();
+            return !!current && !!configured && current === configured;
         }
 
         function canManagePersonnel() {
@@ -2933,6 +3020,16 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         function escapeHtml(v){ return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
         function escapeAttr(v){ return escapeHtml(v); }
 
+        // Alpha Admin may edit any encoded entry. Other users may edit only
+        // entries whose original encoder/creator matches their signed-in account.
+        // These UI checks improve visibility; backend authorization is authoritative.
+        function isCurrentUserRecordOwner(owner) {
+            if (isAlphaAdmin()) return true;
+            const current = String(localStorage.getItem('loggedInUser') || '').trim().toLowerCase();
+            const recorded = String(owner || '').trim().toLowerCase();
+            return !!current && !!recorded && current === recorded;
+        }
+
 
         function canManageActivities() {
             const role = localStorage.getItem('userRole') || '';
@@ -3149,6 +3246,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             if (!canManageActivities()) return customAlert('Permission denied.', 'Error');
             const a = allActivities.find(x => String(x.id) === String(id));
             if (!a) return;
+            if (!isCurrentUserRecordOwner(a.encodedBy)) return customAlert('You can edit only activities that you encoded.', 'Permission Denied');
             activityEditId = String(id);
             document.getElementById('activityModalTitle').innerText = 'Edit Activity';
             document.getElementById('activitySaveBtn').innerText = 'Update Activity';
@@ -3434,6 +3532,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             body.innerHTML = rows.length ? rows.map(a => {
                 const status = a.status || activityStatusForDate(a.date);
                 const statusClass = status.toLowerCase() === 'ongoing' ? 'ongoing' : status.toLowerCase() === 'archive' ? 'archive' : 'recurring';
+                const canEditThisActivity = can && isCurrentUserRecordOwner(a.encodedBy);
                 return `<tr>
                     <td>${escapeHtml(a.date)}</td>
                     <td><button type="button" class="activity-title-link" onclick="showActivityDetails('${escapeAttr(a.id)}')">${escapeHtml(a.activityTitle)}</button></td>
@@ -3443,7 +3542,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                     <td>${escapeHtml(formatActivityTime(a.time))}</td>
                     <td><span class="activity-status ${statusClass}">${escapeHtml(status)}</span></td>
                     ${can ? `<td class="activity-action-cell">
-                        <button class="action-btn" onclick="editActivity('${escapeAttr(a.id)}')">Edit</button>
+                        ${canEditThisActivity ? `<button class="action-btn" onclick="editActivity('${escapeAttr(a.id)}')">Edit</button>` : ''}
                         <button class="action-btn delete-btn" style="color:white;" onclick="deleteActivity('${escapeAttr(a.id)}')">Delete</button>
                     </td>` : ''}
                 </tr>`;
@@ -3510,12 +3609,37 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             const entries = Object.entries(map || {}).sort((a,b) => b[1]-a[1] || a[0].localeCompare(b[0]));
             if (!entries.length) { el.innerHTML = '<div class="exec-empty">No data available.</div>'; return; }
             const max = entries[0][1] || 1;
-            el.innerHTML = entries.slice(0, 12).map(([name,count]) => `
+            el.innerHTML = entries.map(([name,count]) => `
                 <div class="exec-row">
                     <div style="min-width:0;flex:1"><strong title="${escapeHtml(name)}">${escapeHtml(name)}</strong>
                     <div class="exec-bar"><i style="width:${Math.max(4,(count/max)*100)}%"></i></div></div>
                     <span>${count}</span>
                 </div>`).join('');
+        }
+
+        function renderExecVenueActivities(activities) {
+            const el = document.getElementById('execVenues');
+            if (!el) return;
+            const rows = Array.isArray(activities) ? activities : [];
+            const ongoing = rows.filter(a => {
+                const status = String(a.status || '').trim().toLowerCase();
+                return status === 'ongoing' || (typeof activityStatusForDate === 'function' && activityStatusForDate(a.date) === 'Ongoing');
+            }).sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')) || String(a.activityTitle || '').localeCompare(String(b.activityTitle || '')));
+            const venues = execCountMap(rows, a => a.assignedVenue);
+            const venueEntries = Object.entries(venues).sort((a,b) => b[1]-a[1] || a[0].localeCompare(b[0]));
+            const max = venueEntries.length ? Math.max(1, venueEntries[0][1]) : 1;
+            const ongoingHtml = ongoing.length
+                ? `<div class="exec-venue-section-title"><span class="exec-venue-live-dot"></span> Ongoing Activities <span class="exec-venue-section-count">${ongoing.length}</span></div>` +
+                  ongoing.map(a => `<div class="exec-ongoing-activity-row">
+                      <div class="exec-ongoing-activity-main"><span class="exec-status">ONGOING</span><strong title="${escapeAttr(a.activityTitle || 'Untitled Activity')}">${escapeHtml(a.activityTitle || 'Untitled Activity')}</strong></div>
+                      <div class="exec-ongoing-activity-meta"><span>${escapeHtml(String(a.date || 'Today').slice(0, 10))}</span><span>${escapeHtml(a.assignedVenue || 'Venue not specified')}</span></div>
+                  </div>`).join('')
+                : `<div class="exec-venue-section-title"><span class="exec-venue-live-dot is-idle"></span> Ongoing Activities <span class="exec-venue-section-count">0</span></div><div class="exec-venue-empty">No activity is marked ongoing today.</div>`;
+            const venueHtml = venueEntries.length
+                ? `<div class="exec-venue-section-title exec-venue-recap-title">Venue Recap</div>` + venueEntries.slice(0, 12).map(([name, count]) => `<div class="exec-row"><div style="min-width:0;flex:1"><strong title="${escapeAttr(name)}">${escapeHtml(name)}</strong><div class="exec-bar"><i style="width:${Math.max(4,(count/max)*100)}%"></i></div></div><span>${count}</span></div>`).join('')
+                : '<div class="exec-venue-empty">No venue records available.</div>';
+            el.classList.add('exec-venue-list');
+            el.innerHTML = ongoingHtml + venueHtml;
         }
 
         function execFormatDate(value) {
@@ -3600,8 +3724,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             };
             execRenderList('execPersonnelGroups', personnelRecap, totalPersonnel);
 
-            const venues = execCountMap(allActivities, a => a.assignedVenue);
-            execRenderList('execVenues', venues, totalActivities);
+            renderExecVenueActivities(allActivities);
 
             // Operational details strip
             (function(){
@@ -3753,6 +3876,13 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 const safeDestination = String(row[5] || "N/A").replace(/'/g, "\\'").replace(/"/g, '&quot;');
                 const memoStatus = row[4] || "For Dispatched";
                 
+                const currentIsEncoder = isCurrentUserRecordOwner(row[3]);
+                const isAlphaAdmin = localStorage.getItem('loggedInUser') === ALPHA_ADMIN_NAME;
+                const encoderArgument = JSON.stringify(String(row[3] || '')).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                const memoActionButtons = [
+                    currentIsEncoder ? `<button class="action-btn icon-action-btn" title="Edit Memo" aria-label="Edit Memo" onclick="initiateEdit('${row[2]}', '${safeSubject}', '${safeDestination}', '${memoStatus}', ${encoderArgument})"><i class="fi fi-rr-edit" aria-hidden="true"></i></button>` : '',
+                    isAlphaAdmin ? `<button class="action-btn delete-btn icon-action-btn" title="Delete Memo" aria-label="Delete Memo" onclick="triggerDelete('${row[2]}')"><i class="fi fi-rr-trash" aria-hidden="true"></i></button>` : ''
+                ].filter(Boolean).join(' ');
                 tableBody.innerHTML += `<tr>
                     <td><input type="checkbox" class="row-checkbox" value="${row[2]}"></td>
                     <td>${row[0]}</td>
@@ -3761,14 +3891,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                     <td>${row[2]}</td>
                     <td>${row[3] || "N/A"}</td>
                     <td><span style="font-weight: 500; color: var(--primary);">${memoStatus}</span></td>
-                    <td style="white-space: nowrap;">
-                        <button class="action-btn icon-action-btn" title="Edit Memo" aria-label="Edit Memo" onclick="initiateEdit('${row[2]}', '${safeSubject}', '${safeDestination}', '${memoStatus}')">
-                            <i class="fi fi-rr-edit" aria-hidden="true"></i>
-                        </button>
-                        <button class="action-btn delete-btn icon-action-btn" title="Delete Memo" aria-label="Delete Memo" onclick="triggerDelete('${row[2]}')">
-                            <i class="fi fi-rr-trash" aria-hidden="true"></i>
-                        </button>
-                    </td>
+                    <td style="white-space: nowrap;">${memoActionButtons || '<span style="color:var(--text-muted);">—</span>'}</td>
                 </tr>`;
             });
             const pagination = document.getElementById('memoPagination');
@@ -3826,7 +3949,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 const response = await fetch(API_URL, {
                     method: 'POST', mode: 'cors',
                     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                    body: JSON.stringify({ action: 'create', memoSubject: subject, officeDestination: officeDestination, classification: classification, userName: localStorage.getItem('loggedInUser') })
+                    body: JSON.stringify({ action: 'create', memoSubject: subject, officeDestination: officeDestination, classification: classification, userName: localStorage.getItem('loggedInUser'), credential: localStorage.getItem('loggedCred') || '' })
                 });
                 if (!response.ok) throw new Error('The server could not confirm the submission.');
                 const result = await response.json();
@@ -3846,16 +3969,12 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             }
         });
 
-        function initiateEdit(controlNum, currentSubject, currentOfficeDestination = "", currentStatus = "For Dispatched") {
-            const isAlphaAdmin = localStorage.getItem('loggedInUser') === ALPHA_ADMIN_NAME; 
-            const userRole = localStorage.getItem('userRole');
-            const canEdit = localStorage.getItem('canEdit') === 'Yes' || userRole === 'Admin';
-            
-            if (!isAlphaAdmin && !canEdit) { 
-                customAlert("Regular Users can add and generate control numbers, but only Admins can edit records.", "Permission Denied"); 
-            } else { 
-                triggerActionModal('edit', controlNum, currentSubject, currentOfficeDestination, currentStatus); 
-            } 
+        function initiateEdit(controlNum, currentSubject, currentOfficeDestination = "", currentStatus = "For Dispatched", encodedBy = "") {
+            if (!isCurrentUserRecordOwner(encodedBy)) {
+                customAlert('You can edit only memo entries that you encoded.', 'Permission Denied');
+                return;
+            }
+            triggerActionModal('edit', controlNum, currentSubject, currentOfficeDestination, currentStatus);
         }
 
         function triggerDelete(controlNum) {
@@ -3927,7 +4046,9 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                     if (!newSubject) throw new Error("Please enter a Memo Subject."); 
                     if (!newOfficeDestination) throw new Error("Please select or enter the Office Destination."); 
                     
-                    await fetch(API_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify({ action: 'update', controlNumber: actionTargetControl, newSubject: newSubject, newStatus: newStatus, officeDestination: newOfficeDestination, password: pass, userName: currentUser }) }); 
+                    const response = await fetch(API_URL, { method: 'POST', mode: 'cors', headers: {'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({ action: 'update', controlNumber: actionTargetControl, newSubject: newSubject, newStatus: newStatus, officeDestination: newOfficeDestination, password: pass, userName: currentUser }) });
+                    const result = await response.json();
+                    if (!result || result.success !== true) throw new Error((result && result.error) || 'The memo update was rejected.');
                     logActivity(`updated memo: ${actionTargetControl}`);
                 } else if (pendingAction === 'delete') { 
                     await fetch(API_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify({ action: 'delete', controlNumber: actionTargetControl, password: pass, userName: currentUser }) }); 
@@ -3943,7 +4064,9 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                         const row = (allMemos || []).find(r => String(r[2]) === String(c));
                         const newSubject = row ? String(row[1] || '') : '';
                         const newOfficeDestination = row ? String(row[5] || 'N/A') : 'N/A';
-                        await fetch(API_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify({ action: 'update', controlNumber: c, newSubject: newSubject, newStatus: newStatus, officeDestination: newOfficeDestination, password: pass, userName: currentUser }) });
+                        const response = await fetch(API_URL, { method: 'POST', mode: 'cors', headers: {'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({ action: 'update', controlNumber: c, newSubject: newSubject, newStatus: newStatus, officeDestination: newOfficeDestination, password: pass, userName: currentUser }) });
+                        const result = await response.json();
+                        if (!result || result.success !== true) throw new Error((result && result.error) || `Memo ${c} could not be updated.`);
                     }
                     logActivity(`bulk updated status to ${newStatus} for ${actionTargetControl.length} memos`);
                 }
@@ -4011,13 +4134,14 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         }
 
         function batchEditStatus() {
-            const isAlphaAdmin = localStorage.getItem('loggedInUser') === ALPHA_ADMIN_NAME;
-            const userRole = localStorage.getItem('userRole');
-            const canEdit = localStorage.getItem('canEdit') === 'Yes' || userRole === 'Admin';
-            if (!isAlphaAdmin && !canEdit) return customAlert("Regular Users cannot bulk edit memo status. Admin permission is required.", "Permission Denied");
             const checked = document.querySelectorAll('.row-checkbox:checked');
             if (checked.length === 0) return customAlert("No memos selected for status update.", "Error");
-            actionTargetControl = Array.from(checked).map(cb => cb.value);
+            const selectedControls = Array.from(checked).map(cb => cb.value);
+            const selectedMemos = allMemos.filter(row => selectedControls.includes(String(row[2])));
+            if (selectedMemos.length !== selectedControls.length || selectedMemos.some(row => !isCurrentUserRecordOwner(row[3]))) {
+                return customAlert('You can update the status only of memo entries that you encoded. Deselect entries encoded by other users.', 'Permission Denied');
+            }
+            actionTargetControl = selectedControls;
             pendingAction = 'batch_status';
             const confirmationModal = document.getElementById('actionModal');
             if (confirmationModal && confirmationModal.parentElement !== document.body) document.body.appendChild(confirmationModal);
@@ -4674,8 +4798,11 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                     const storedRec = recordMap.get(key) || null;
                     const rec = storedRec ? normalizeBmiRecordForDisplay(storedRec) : null;
                     const fullName = personnelFullName(p);
-                    const nameCell = (rec ? canPersonnelAction('bmi', 'edit') : canPersonnelAction('bmi', 'add'))
-                        ? `<td><span class="bmi-name-link" onclick="openBmiModalForPersonnel(${x.origIdx})" title="Click to encode / edit BMI record">${escapeHtml(fullName)}</span></td>`
+                    const canEditThisBmi = rec
+                        ? (canPersonnelAction('bmi', 'edit') && isCurrentUserRecordOwner(rec.encodedBy))
+                        : canPersonnelAction('bmi', 'add');
+                    const nameCell = canEditThisBmi
+                        ? `<td><span class="bmi-name-link" onclick="openBmiModalForPersonnel(${x.origIdx})" title="${rec ? 'Edit your BMI record' : 'Encode BMI record'}">${escapeHtml(fullName)}</span></td>`
                         : `<td>${escapeHtml(fullName)}</td>`;
                     const actionCell = (canPersonnelAction('bmi', 'edit') || canPersonnelAction('bmi', 'delete'))
                         ? (rec
@@ -4830,6 +4957,13 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         function openBmiModal(editId) {
             const operation = editId ? 'edit' : 'add';
             if (!canPersonnelAction('bmi', operation)) { customAlert(`You do not have permission to ${operation} BMI records.`, "Permission Denied"); return; }
+            if (editId) {
+                const existingRecord = bmiRecords.find(r => String(r.id) === String(editId));
+                if (!existingRecord || !isCurrentUserRecordOwner(existingRecord.encodedBy)) {
+                    customAlert('You can edit only BMI records that you encoded.', 'Permission Denied');
+                    return;
+                }
+            }
             if (!allPersonnel || !allPersonnel.length) { loadPersonnel(); customAlert("Personnel data is still loading. Please try again in a moment.", "Loading"); return; }
 
             bmiEditingId = editId || null;
@@ -4958,6 +5092,14 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 const res = await fetch(API_URL + "?action=get_squads&_ts=" + Date.now(), {cache:'no-store'});
                 const data = await res.json();
                 squads = (data.success && Array.isArray(data.squads)) ? data.squads : [];
+                // Defensive UI filter: archived personnel should never remain visible in a squad.
+                const key = value => String(value || '').toLocaleLowerCase().replace(/\s+/g, ' ').trim();
+                const archivedFull = new Set((archivedPersonnel || []).map(p => key(personnelFullName(p))));
+                const archivedShort = new Set((archivedPersonnel || []).map(p => key(personnelShortName(p))));
+                squads = squads.map(s => ({...s,
+                    squadLeader: archivedShort.has(key(s.squadLeader)) ? '' : s.squadLeader,
+                    members: (Array.isArray(s.members) ? s.members : []).filter(m => !archivedFull.has(key(personnelFullName(m))))
+                }));
             } catch (e) { squads = []; }
             renderSquadCarousel();
         }
@@ -4976,7 +5118,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                     ? s.members.map(m => `<div class="squad-member-chip">${escapeHtml([m.rank,m.lastName].filter(Boolean).join(' '))}</div>`).join('')
                     : '<span style="font-size:12px;color:var(--text-muted);">No members assigned.</span>';
                 const actions = (canEditSquad || canDeleteSquad) ? `<div style="margin-top:10px;display:flex;gap:6px;">
-                    ${canEditSquad ? `<button class="action-btn" style="margin:0;padding:4px 10px;font-size:11px;flex:1;" onclick="event.stopPropagation();editSquad('${escapeAttr(s.squadId)}')">Edit</button>` : ''}
+                    ${(canEditSquad && isCurrentUserRecordOwner(s.createdBy)) ? `<button class="action-btn" style="margin:0;padding:4px 10px;font-size:11px;flex:1;" onclick="event.stopPropagation();editSquad('${escapeAttr(s.squadId)}')">Edit</button>` : ''}
                     ${canDeleteSquad ? `<button class="action-btn delete-btn" style="margin:0;padding:4px 10px;font-size:11px;flex:1;" onclick="event.stopPropagation();deleteSquad('${escapeAttr(s.squadId)}')">Delete</button>` : ''}
                 </div>` : '';
                 return `<div class="squad-card glass-panel" onclick="openSquadDetails('${escapeAttr(s.squadId)}')" role="button" tabindex="0" aria-label="View ${escapeAttr(s.squadName)} details" style="cursor:pointer;">
@@ -5121,7 +5263,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                     <span>${escapeHtml(personnelFullName(m))}</span>
                 </div>`).join('');
             }
-            document.getElementById('squadDetailsEditBtn').style.display = canPersonnelAction('squad', 'edit') ? '' : 'none';
+            document.getElementById('squadDetailsEditBtn').style.display = (canPersonnelAction('squad', 'edit') && isCurrentUserRecordOwner(s.createdBy)) ? '' : 'none';
             document.getElementById('squadDetailsDeleteBtn').style.display = canPersonnelAction('squad', 'delete') ? '' : 'none';
             document.getElementById('squadDetailsEditBtn').setAttribute('data-squad-id', s.squadId);
             document.getElementById('squadDetailsDeleteBtn').setAttribute('data-squad-id', s.squadId);
@@ -5174,7 +5316,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             } catch (e) { customAlert(e.message || 'Failed to save squad.', 'Error'); }
             finally { if (saveButton) { saveButton.disabled = false; saveButton.textContent = 'Save Squad'; } }
         }
-        function editSquad(id) { if (!canPersonnelAction('squad', 'edit')) return customAlert('You do not have permission to edit Squadding entries.', 'Permission Denied'); openSquadModal(id); }
+        function editSquad(id) { if (!canPersonnelAction('squad', 'edit')) return customAlert('You do not have permission to edit Squadding entries.', 'Permission Denied'); const squad = squads.find(s => String(s.squadId) === String(id)); if (!squad || !isCurrentUserRecordOwner(squad.createdBy)) return customAlert('You can edit only squads that you encoded.', 'Permission Denied'); openSquadModal(id); }
         function deleteSquad(id) {
             if (!canPersonnelAction('squad', 'delete')) return customAlert('You do not have permission to delete Squadding entries.', 'Permission Denied');
             customConfirm('Delete this squad and remove all member assignments?', async confirmed => {
@@ -5258,16 +5400,46 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         function renderLeaveTypeRecap() {
             const wrap = document.getElementById('leaveTypeRecap');
             if (!wrap) return;
-            const counts = {};
+            const counts = new Map();
+            let totalDays = 0;
             leaveEntries.forEach(e => {
-                const label = e.leaveType === 'Others' && e.otherType ? `Others (${e.otherType})` : e.leaveType;
-                counts[label] = (counts[label] || 0) + 1;
+                const rawType = String(e.leaveType || 'Unspecified').trim() || 'Unspecified';
+                const label = rawType === 'Others' && e.otherType ? `Others (${e.otherType})` : rawType;
+                const key = label.toLocaleLowerCase();
+                const dates = Array.isArray(e.dates) ? e.dates : [];
+                const days = new Set(dates.map(d => String(d || '').trim()).filter(Boolean)).size;
+                totalDays += days;
+                if (!counts.has(key)) counts.set(key, { label, entries: 0, days: 0, personnel: new Set() });
+                const item = counts.get(key);
+                item.entries += 1;
+                item.days += days;
+                if (e.personnelName) item.personnel.add(String(e.personnelName).trim());
             });
-            const keys = Object.keys(counts).sort();
-            wrap.innerHTML = keys.length
-                ? '<span style="font-size:12px;font-weight:600;color:var(--text-muted);margin-right:8px;">Recap by Leave Type:</span>' + keys.map(k =>
-                    `<span class="bmi-class-chip" style="border-color:var(--primary);color:var(--primary);">${escapeHtml(k)}: <strong>${counts[k]}</strong></span>`).join('')
-                : '<span style="font-size:12px;color:var(--text-muted);">No leave entries recorded.</span>';
+            const items = [...counts.values()].sort((a,b) => b.entries-a.entries || a.label.localeCompare(b.label));
+            const maxEntries = Math.max(1, ...items.map(x => x.entries));
+            const totalPeople = new Set(leaveEntries.map(e => String(e.personnelName || '').trim()).filter(Boolean)).size;
+            wrap.classList.add('leave-type-recap-panel');
+            if (!items.length) {
+                wrap.innerHTML = `<div class="leave-recap-heading"><div><strong>Leave Recap by Type</strong><span>Overview of encoded leave entries</span></div></div><div class="leave-recap-empty">No leave entries recorded yet.</div>`;
+                return;
+            }
+            wrap.innerHTML = `<div class="leave-recap-heading">
+                    <div><strong>Leave Recap by Type</strong><span>Distribution of encoded leave entries</span></div>
+                    <div class="leave-recap-total"><strong>${leaveEntries.length}</strong><span>entries</span></div>
+                </div>
+                <div class="leave-recap-overview">
+                    <div class="leave-recap-overview-item"><span>Total Leave Days</span><strong>${totalDays}</strong></div>
+                    <div class="leave-recap-overview-item"><span>Personnel Covered</span><strong>${totalPeople}</strong></div>
+                    <div class="leave-recap-overview-item"><span>Leave Types</span><strong>${items.length}</strong></div>
+                </div>
+                <div class="leave-type-recap-grid">${items.map(item => {
+                    const percent = Math.max(5, Math.round((item.entries / maxEntries) * 100));
+                    return `<div class="leave-type-recap-card">
+                        <div class="leave-type-recap-card-top"><strong title="${escapeAttr(item.label)}">${escapeHtml(item.label)}</strong><span class="leave-type-recap-count">${item.entries}</span></div>
+                        <div class="leave-type-recap-bar"><i style="width:${percent}%"></i></div>
+                        <div class="leave-type-recap-details"><span>${item.days} day${item.days === 1 ? '' : 's'}</span><span>${item.personnel.size} personnel</span></div>
+                    </div>`;
+                }).join('')}</div>`;
         }
         function formatLeaveDates(datesArr) {
             // Group dates by month+year and render as (Month, D1, D2, ..., YYYY).
@@ -5460,15 +5632,18 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 return;
             }
             const canEdit = canPersonnelAction('aor', 'edit');
-            container.innerHTML = areas.map(a => `<div class="area-card glass-panel" draggable="${canEdit?'true':'false'}" data-area-id="${escapeAttr(a.areaId)}"
-                onclick="openAreaDetails('${escapeAttr(a.areaId)}')" role="button" tabindex="0" aria-label="View details for ${escapeAttr(a.areaName)}"
-                ${canEdit ? `ondragstart="areaCardDragStart(event, '${escapeAttr(a.areaId)}')" ondragover="areaCardDragOver(event)" ondragleave="areaCardDragLeave(event)" ondrop="areaCardDrop(event, '${escapeAttr(a.areaId)}')" ondragend="areaCardDragEnd(event)"` : ''}>
-                <div class="area-card-icon" aria-hidden="true">&#9635;</div>
-                <h4 style="margin:8px 0 4px;color:var(--primary);">${escapeHtml(a.areaName)}</h4>
-                <div style="font-size:12px;color:var(--text-muted);">${escapeHtml(a.camp||'PRO 1 Camp')}</div>
-                <div style="margin-top:10px;font-size:13px;"><strong>${a.personnel.length}</strong> personnel assigned</div>
-                <div style="margin-top:6px;font-size:11px;color:var(--text-muted);">${canEdit ? 'Drag to reorder &bull; ' : ''}Click to view personnel in-charge</div>
-            </div>`).join('');
+            container.innerHTML = areas.map(a => {
+                const canEditThisArea = canEdit && isCurrentUserRecordOwner(a.createdBy);
+                return `<div class="area-card glass-panel" draggable="${canEditThisArea?'true':'false'}" data-area-id="${escapeAttr(a.areaId)}"
+                    onclick="openAreaDetails('${escapeAttr(a.areaId)}')" role="button" tabindex="0" aria-label="View details for ${escapeAttr(a.areaName)}"
+                    ${canEditThisArea ? `ondragstart="areaCardDragStart(event, '${escapeAttr(a.areaId)}')" ondragover="areaCardDragOver(event)" ondragleave="areaCardDragLeave(event)" ondrop="areaCardDrop(event, '${escapeAttr(a.areaId)}')" ondragend="areaCardDragEnd(event)"` : ''}>
+                    <div class="area-card-icon" aria-hidden="true">&#9635;</div>
+                    <h4 style="margin:8px 0 4px;color:var(--primary);">${escapeHtml(a.areaName)}</h4>
+                    <div style="font-size:12px;color:var(--text-muted);">${escapeHtml(a.camp||'PRO 1 Camp')}</div>
+                    <div style="margin-top:10px;font-size:13px;"><strong>${a.personnel.length}</strong> personnel assigned</div>
+                    <div style="margin-top:6px;font-size:11px;color:var(--text-muted);">${canEditThisArea ? 'Drag your area cards to reorder &bull; ' : ''}Click to view personnel in-charge</div>
+                </div>`;
+            }).join('');
         }
         function areaCardDragStart(e, areaId) { areaDragId = String(areaId); e.currentTarget.classList.add('dragging'); try { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', areaId); } catch(err) {} }
         function areaCardDragOver(e) { e.preventDefault(); e.currentTarget.classList.add('drag-over'); try { e.dataTransfer.dropEffect = 'move'; } catch(err) {} }
@@ -5623,7 +5798,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                     <span>${escapeHtml(personnelFullName(p))}</span>
                 </div>`).join('');
             }
-            document.getElementById('areaEditBtn').style.display = canPersonnelAction('aor', 'edit') ? '' : 'none';
+            document.getElementById('areaEditBtn').style.display = (canPersonnelAction('aor', 'edit') && isCurrentUserRecordOwner(a.createdBy)) ? '' : 'none';
             document.getElementById('areaDeleteBtn').style.display = canPersonnelAction('aor', 'delete') ? '' : 'none';
             document.getElementById('areaEditBtn').setAttribute('data-area-id', areaId);
             document.getElementById('areaDeleteBtn').setAttribute('data-area-id', areaId);
@@ -5633,6 +5808,8 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         function editAreaFromDetails() {
             if (!canPersonnelAction('aor', 'edit')) return customAlert('You do not have permission to edit Area of Responsibilities entries.', 'Permission Denied');
             const id = document.getElementById('areaEditBtn').getAttribute('data-area-id');
+            const area = areas.find(a => String(a.areaId) === String(id));
+            if (!area || !isCurrentUserRecordOwner(area.createdBy)) return customAlert('You can edit only Area of Responsibility entries that you encoded.', 'Permission Denied');
             closeAreaDetailsModal();
             openAreaModal(id);
         }

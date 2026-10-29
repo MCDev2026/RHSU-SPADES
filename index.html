@@ -160,7 +160,7 @@
             
             <div style="flex-grow: 1;"></div>
             <div class="sidebar-version" aria-label="Application version and developer">
-                <div class="sidebar-version-number">v1.0.3</div>
+                <div class="sidebar-version-number">v1.0.4</div>
                 <div class="sidebar-developer">@ MC GANDIA</div>
                 <div class="sidebar-rights">All rights reserved to RHSU PRO 1</div>
                 <div class="flaticon-attribution"><a href="https://www.flaticon.com/uicons" target="_blank" rel="noopener noreferrer">Uicons by Flaticon</a></div>
@@ -184,9 +184,9 @@
                             <span class="exec-pill" id="execDashUpdated">Data not loaded</span>
                         </div>
                         <div class="exec-hero-actions">
-                            <button class="rhsu-dashboard-action-btn" onclick="dashboardAddMemo()" aria-label="Add Memo" title="Add Memo"><span class="dashboard-action-icon" aria-hidden="true"><i class="fi fi-rr-plus"></i></span><span class="dashboard-action-label">Add Memo</span></button>
-                            <button class="rhsu-dashboard-action-btn" onclick="switchTab('personnel')" aria-label="Personnel" title="Personnel"><span class="dashboard-action-icon" aria-hidden="true"><i class="fi fi-rr-users"></i></span><span class="dashboard-action-label">Personnel</span></button>
-                            <button class="rhsu-dashboard-action-btn" onclick="switchTab('activityManagement')" aria-label="Add Activity" title="Add Activity"><span class="dashboard-action-icon" aria-hidden="true"><i class="fi fi-rr-calendar"></i></span><span class="dashboard-action-label">Add Activity</span></button>
+                            <button class="rhsu-dashboard-action-btn" data-tooltip="Add Memo" onclick="dashboardAddMemo()" aria-label="Add Memo" title="Add Memo"><span class="dashboard-action-icon" aria-hidden="true"><i class="fi fi-rr-plus"></i></span><span class="dashboard-action-label">Add Memo</span></button>
+                            <button class="rhsu-dashboard-action-btn" data-tooltip="Personnel" onclick="switchTab('personnel')" aria-label="Personnel" title="Personnel"><span class="dashboard-action-icon" aria-hidden="true"><i class="fi fi-rr-users"></i></span><span class="dashboard-action-label">Personnel</span></button>
+                            <button class="rhsu-dashboard-action-btn" data-tooltip="Add Activity" onclick="switchTab('activityManagement')" aria-label="Add Activity" title="Add Activity"><span class="dashboard-action-icon" aria-hidden="true"><i class="fi fi-rr-calendar"></i></span><span class="dashboard-action-label">Add Activity</span></button>
                         </div>
                     </div>
                 </section>
@@ -205,17 +205,17 @@
                     <div class="exec-card">
                         <h3>Memo Recap by Section</h3>
                         <div class="subhead">Current loaded memo database</div>
-                        <div id="execMemoCategories" class="exec-list"></div>
+                        <div id="execMemoCategories" class="exec-list" tabindex="0" aria-label="Memo recap by section; scroll to view all sections"></div>
                     </div>
                     <div class="exec-card">
                         <h3>Memo Recap by Encoder</h3>
                         <div class="subhead">Users who encoded memo records</div>
-                        <div id="execMemoEncoders" class="exec-list"></div>
+                        <div id="execMemoEncoders" class="exec-list" tabindex="0" aria-label="Memo recap by encoder; scroll to view all encoders"></div>
                     </div>
                     <div class="exec-card">
                         <h3>Personnel Recap</h3>
                         <div class="subhead">Organic, Detached Service, and rank-group totals</div>
-                        <div id="execPersonnelGroups" class="exec-list"></div>
+                        <div id="execPersonnelGroups" class="exec-list" tabindex="0" aria-label="Personnel recap; scroll to view all categories"></div>
                     </div>
                     <div class="exec-card">
                         <h3>Activity Venues</h3>
@@ -354,8 +354,8 @@
                     <button class="action-btn" onclick="populateProfileData()">Refresh Profile</button>
                 </div>
 
-                <input type="file" id="avatarPhotoInput" accept="image/*" style="display:none;" onchange="uploadProfilePhoto('profile', this)">
-                <input type="file" id="coverPhotoInput" accept="image/*" style="display:none;" onchange="uploadProfilePhoto('cover', this)">
+                <input type="file" id="avatarPhotoInput" accept="image/jpeg,image/png,image/webp" style="display:none;" onchange="uploadProfilePhoto('profile', this)">
+                <input type="file" id="coverPhotoInput" accept="image/jpeg,image/png,image/webp" style="display:none;" onchange="uploadProfilePhoto('cover', this)">
                 <span id="profileAvatar" style="display:none;"></span>
 
                 <!-- PROFILE HERO: cover photo + avatar + name + stats -->
@@ -520,7 +520,7 @@
                     <div style="padding:0 24px 24px 24px;">
                         <div style="display:flex;align-items:flex-end;gap:16px;margin-top:-44px;flex-wrap:wrap;">
                             <div class="pf-avatar-wrap" style="position:relative;margin:0;">
-                                <img id="viewAvatarImg" class="pf-avatar-img" style="width:88px;height:88px;border-width:4px;" src="" alt="Profile" onerror="this.style.display='none'; const fb=document.getElementById('profileAvatarFallback'); if(fb) fb.style.display='flex';">
+                                <img id="viewAvatarImg" class="pf-avatar-img" style="width:88px;height:88px;border-width:4px;" src="" alt="Profile">
                                 <span class="pf-avatar-fallback" id="viewAvatarFallback" style="width:88px;height:88px;font-size:34px;">U</span>
                             </div>
                             <div style="flex:1;min-width:180px;padding-bottom:6px;">
