@@ -4460,17 +4460,41 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         }
 
         /* ---------- BMI Monitoring ---------- */
+        function classifyBmiNumber(bmiValue) {
+            if (bmiValue == null || String(bmiValue).trim() === '') return '';
+            const bmi = Number(bmiValue);
+            if (!Number.isFinite(bmi)) return '';
+            if (bmi < 18.5) return 'Underweight (UW)';
+            // SPADES rule: BMI results strictly above 25.00 are Overweight (OW).
+            if (bmi > 25.0) return 'Overweight (OW)';
+            return 'Normal (N)';
+        }
         function computeBmiClient(heightCm, weightKg, age) {
-            // BMI = weight (kg) / height (m)^2. Classification rule requested for SPADES:
-            // any displayed BMI result greater than 25.00 is Overweight (OW).
+            // BMI = weight (kg) / height (m)^2. Classification uses the rounded
+            // result shown in the BMI Result column so both columns stay consistent.
             const h = Number(heightCm), w = Number(weightKg);
             if (!h || !w || h <= 0 || w <= 0) return {bmi:'', classification:''};
             const bmi = Math.round((w / ((h/100)*(h/100))) * 100) / 100;
-            let cls = '';
-            if (bmi < 18.5) cls = 'Underweight (UW)';
-            else if (bmi > 25.0) cls = 'Overweight (OW)';
-            else cls = 'Normal (N)';
-            return {bmi:bmi, classification:cls};
+            return {bmi:bmi, classification:classifyBmiNumber(bmi)};
+        }
+        function normalizeBmiRecordForDisplay(record) {
+            const rec = record || {};
+            const computed = computeBmiClient(rec.height, rec.weight, rec.age);
+            if (computed.bmi !== '') {
+                return Object.assign({}, rec, {
+                    bmiResult: computed.bmi,
+                    bmiClassification: computed.classification
+                });
+            }
+            // Fallback for legacy rows that contain a BMI Result but lack usable
+            // height/weight values. Prefer recalculating the classification from
+            // that displayed numeric result instead of an obsolete saved label.
+            const rawBmi = String(rec.bmiResult == null ? '' : rec.bmiResult).replace(/[^0-9.+-]/g, '');
+            const bmiValue = rawBmi ? Number(rawBmi) : NaN;
+            const classification = Number.isFinite(bmiValue)
+                ? classifyBmiNumber(bmiValue)
+                : String(rec.bmiClassification || '');
+            return Object.assign({}, rec, {bmiClassification: classification});
         }
         function bmiClassColor(cls) {
             if (!cls) return 'var(--text-muted)';
@@ -4487,7 +4511,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             try {
                 const res = await fetch(API_URL + "?action=get_bmi_records&_ts=" + Date.now(), {cache:'no-store'});
                 const data = await res.json();
-                bmiRecords = (data.success && Array.isArray(data.records)) ? data.records : [];
+                bmiRecords = (data.success && Array.isArray(data.records)) ? data.records.map(normalizeBmiRecordForDisplay) : [];
             } catch (e) { bmiRecords = []; }
             populateBmiPeriods();
             renderBmiTable();
@@ -4556,7 +4580,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             });
 
             const classCounts = {};
-            recordMap.forEach(r => { const c = r.bmiClassification || 'Unclassified'; classCounts[c] = (classCounts[c] || 0) + 1; });
+            recordMap.forEach(r => { const normalized = normalizeBmiRecordForDisplay(r); const c = normalized.bmiClassification || 'Unclassified'; classCounts[c] = (classCounts[c] || 0) + 1; });
             const periodLabel = period ? (() => {
                 if (mode === 'yearly') return period;
                 const [yy, mm] = period.split('-');
@@ -4595,7 +4619,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                     const rank = String(p.rank || 'Unspecified').trim() || 'Unspecified';
                     const key = [p.rank, p.lastName, p.firstName, p.middleName, p.qualifiers].map(s => String(s || '').trim()).join('|');
                     const rec = recordMap.get(key) || null;
-                    const cls = rec ? (rec.bmiClassification || 'Not encoded') : 'Not encoded';
+                    const cls = rec ? (normalizeBmiRecordForDisplay(rec).bmiClassification || 'Not encoded') : 'Not encoded';
                     if (!rankMatrix[rank]) rankMatrix[rank] = {};
                     rankMatrix[rank][cls] = (rankMatrix[rank][cls] || 0) + 1;
                 });
@@ -4647,7 +4671,8 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 sections.get(sec).forEach(x => {
                     const p = x.p;
                     const key = [p.rank, p.lastName, p.firstName, p.middleName, p.qualifiers].map(s => String(s || '').trim()).join('|');
-                    const rec = recordMap.get(key) || null;
+                    const storedRec = recordMap.get(key) || null;
+                    const rec = storedRec ? normalizeBmiRecordForDisplay(storedRec) : null;
                     const fullName = personnelFullName(p);
                     const nameCell = (rec ? canPersonnelAction('bmi', 'edit') : canPersonnelAction('bmi', 'add'))
                         ? `<td><span class="bmi-name-link" onclick="openBmiModalForPersonnel(${x.origIdx})" title="Click to encode / edit BMI record">${escapeHtml(fullName)}</span></td>`
@@ -4721,7 +4746,8 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 csv += `${escCsv(sec + ' — ' + group.length + ' personnel')},,,,,,,,,,\n`;
                 group.forEach(p => {
                     const key = [p.rank, p.lastName, p.firstName, p.middleName, p.qualifiers].map(s => String(s || '').trim()).join('|');
-                    const rec = recordMap.get(key) || null;
+                    const storedRec = recordMap.get(key) || null;
+                    const rec = storedRec ? normalizeBmiRecordForDisplay(storedRec) : null;
                     csv += `${rowNo},${escCsv(p.section||'')},${escCsv(personnelFullName(p))},${rec?rec.age:''},${rec?rec.height:''},${rec?rec.weight:''},${rec?rec.waist:''},${rec?rec.hip:''},${rec?rec.wrist:''},${rec?rec.bmiResult:''},${escCsv(rec?rec.bmiClassification:'')}\n`;
                     rowNo++;
                 });

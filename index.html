@@ -160,7 +160,7 @@
             
             <div style="flex-grow: 1;"></div>
             <div class="sidebar-version" aria-label="Application version and developer">
-                <div class="sidebar-version-number">v2.0.0</div>
+                <div class="sidebar-version-number">v1.0.3</div>
                 <div class="sidebar-developer">@ MC GANDIA</div>
                 <div class="sidebar-rights">All rights reserved to RHSU PRO 1</div>
                 <div class="flaticon-attribution"><a href="https://www.flaticon.com/uicons" target="_blank" rel="noopener noreferrer">Uicons by Flaticon</a></div>
@@ -361,7 +361,11 @@
                 <!-- PROFILE HERO: cover photo + avatar + name + stats -->
                 <div class="pf-hero glass-panel">
                     <div class="pf-cover" id="profileCoverBanner" aria-label="SPADES static cover banner">
-                        <div class="pf-cover-actions"><span class="pf-cover-label">SPADES PROFILE</span><div class="pf-cover-action-buttons pf-profile-quick-actions"><button type="button" class="pf-cover-change-btn" onclick="document.getElementById('coverPhotoInput').click()">Change Cover</button><button type="button" onclick="openProfileModal('securitySettingsModal')">Security &amp; Authentication</button><button type="button" onclick="openProfileModal('profileSettingsModal')">Profile Settings</button></div></div>
+                        <div class="pf-cover-actions" aria-label="Profile cover actions"><div class="pf-cover-action-buttons pf-profile-quick-actions">
+                            <button type="button" class="pf-cover-change-btn" onclick="document.getElementById('coverPhotoInput').click()" aria-label="Change Cover Page" title="Change Cover Page"><i class="fi fi-rr-camera" aria-hidden="true"></i><span class="sr-only">Change Cover Page</span></button>
+                            <button type="button" onclick="openProfileModal('securitySettingsModal')" aria-label="Security &amp; Authentication" title="Security &amp; Authentication"><i class="fi fi-rr-lock" aria-hidden="true"></i><span class="sr-only">Security &amp; Authentication</span></button>
+                            <button type="button" onclick="openProfileModal('profileSettingsModal')" aria-label="Profile Settings" title="Profile Settings"><i class="fi fi-rr-settings" aria-hidden="true"></i><span class="sr-only">Profile Settings</span></button>
+                        </div></div>
                     </div>
                     <div class="pf-hero-body">
                         <div class="pf-avatar-wrap">
