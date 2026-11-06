@@ -1743,7 +1743,67 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             const fbMine = document.getElementById('profileAvatarFallback'); if (fbMine) fbMine.innerText = String((nameParts.join(' ') || currentUser).trim().charAt(0) || 'U').toUpperCase();
         }
 
-        function switchTab(tabName) {
+        const SPADES_PAGE_ROUTES = {
+            dashboard: { hash: '#dashboard', label: 'Dashboard' },
+            home: { hash: '#memo-database', label: 'Memo Database' },
+            personnel: { hash: '#personnel-management/personnel-list', label: 'Personnel Management' },
+            adminMgmt: { hash: '#user-management', label: 'User Management' },
+            activityManagement: { hash: '#activity-management', label: 'Activity Management' },
+            settings: { hash: '#settings', label: 'Settings' },
+            profile: { hash: '#my-profile', label: 'My Profile' }
+        };
+        const SPADES_PERSONNEL_ROUTE_LABELS = {
+            list: 'Personnel List', duty: 'Duty Office', bmi: 'BMI Monitoring',
+            squad: 'Squadding', leave: 'Leave Management', aor: 'Area of Responsibilities'
+        };
+        const SPADES_PERSONNEL_ROUTE_SLUGS = {
+            list: 'personnel-list', duty: 'duty-office', bmi: 'bmi-monitoring',
+            squad: 'squadding', leave: 'leave-management', aor: 'area-of-responsibilities'
+        };
+
+        function updateSpadesAddressBar(tabName, options = {}) {
+            const route = SPADES_PAGE_ROUTES[tabName] || SPADES_PAGE_ROUTES.dashboard;
+            let hash = route.hash;
+            let pageLabel = route.label;
+            if (tabName === 'personnel') {
+                const sub = Object.prototype.hasOwnProperty.call(SPADES_PERSONNEL_ROUTE_SLUGS, currentPersonnelSubPage)
+                    ? currentPersonnelSubPage : 'list';
+                hash = `#personnel-management/${SPADES_PERSONNEL_ROUTE_SLUGS[sub]}`;
+                pageLabel = `${route.label} · ${SPADES_PERSONNEL_ROUTE_LABELS[sub]}`;
+            }
+            const nextUrl = `${window.location.pathname}${window.location.search}${hash}`;
+            if (window.location.hash !== hash) {
+                const method = options.replace ? 'replaceState' : 'pushState';
+                window.history[method]({ spadesPage: tabName, spadesHash: hash }, '', nextUrl);
+            }
+            document.title = `${pageLabel} | SPADES`;
+            const pageLabelEl = document.getElementById('activePageLabel');
+            if (pageLabelEl) pageLabelEl.textContent = pageLabel;
+        }
+
+        function navigateToSpadesAddress() {
+            if (!localStorage.getItem('loggedInUser')) return;
+            const rawHash = String(window.location.hash || '').replace(/^#/, '');
+            const [pageSlug, subSlug] = rawHash.split('/');
+            const routeMap = {
+                'dashboard': 'dashboard', 'memo-database': 'home',
+                'personnel-management': 'personnel', 'user-management': 'adminMgmt',
+                'activity-management': 'activityManagement', 'settings': 'settings',
+                'my-profile': 'profile'
+            };
+            const tabName = routeMap[pageSlug] || 'dashboard';
+            if (tabName === 'personnel') {
+                const subMap = Object.fromEntries(Object.entries(SPADES_PERSONNEL_ROUTE_SLUGS).map(([key, slug]) => [slug, key]));
+                switchTab('personnel', { skipAddressUpdate: true });
+                switchPersonnelSubPage(subMap[subSlug] || 'list', { skipAddressUpdate: true });
+            } else {
+                switchTab(tabName, { skipAddressUpdate: true });
+            }
+        }
+
+        window.addEventListener('popstate', navigateToSpadesAddress);
+
+        function switchTab(tabName, options = {}) {
             const activeUsername = localStorage.getItem('loggedInUser') || '';
             const accessControlledTab = ['dashboard', 'home', 'personnel', 'activityManagement', 'settings'].includes(tabName);
             if (activeUsername && accessControlledTab &&
@@ -1804,10 +1864,11 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 document.getElementById('tabPersonnel').classList.remove('hidden');
                 document.getElementById('btnPersonnel').classList.add('active');
                 updatePersonnelPermissions();
-                loadPersonnel();
+                loadAllPersonnelManagementData();
             }
             if (window.innerWidth <= 992) document.getElementById('navSidebar').classList.remove('open');
             sessionStorage.setItem('activeTab', tabName);
+            if (tabName !== 'adminMgmt') updateSpadesAddressBar(tabName, { replace: !!options.skipAddressUpdate });
         }
 
         function showAdminMgmtTab() {
@@ -1818,6 +1879,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             document.getElementById('tabAdminMgmt').classList.remove('hidden');
             loadAdminUsers();
             sessionStorage.setItem('activeTab', 'adminMgmt');
+            updateSpadesAddressBar('adminMgmt');
         }
 
         function closeAdminMgmtSubPage() {
@@ -1827,6 +1889,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             document.getElementById('tabSettings').classList.remove('hidden');
             document.getElementById('btnSettings').classList.add('active');
             sessionStorage.setItem('activeTab', 'settings');
+            updateSpadesAddressBar('settings');
         }
 
         async function fetchSystemAnnouncement() {
@@ -1870,7 +1933,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                     return;
                 }
                 if (tabName === 'home') await loadData();
-                else if (tabName === 'personnel') await loadPersonnel();
+                else if (tabName === 'personnel') await loadAllPersonnelManagementData(true);
                 else if (tabName === 'activityManagement') await loadActivities();
                 else if (tabName === 'profile') await populateProfileData();
                 else if (tabName === 'adminMgmt' && isAlphaAdmin() && sessionAdminPass) await loadAdminUsers();
@@ -2542,13 +2605,15 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 // Defer the potentially heavier table DOM rendering until the browser has
                 // painted the Personnel page. This keeps the page responsive with larger sheets.
                 requestAnimationFrame(() => { filterPersonnel(); if (!document.getElementById('tabDashboard').classList.contains('hidden')) renderExecutiveDashboard(); });
+                return true;
             } catch (err) {
-                console.error(err);
+                console.error('Personnel data load failed:', err);
                 const container = document.getElementById('personnelTablesContainer');
                 if (container) {
                     container.innerHTML = `<div style="text-align:center;color:var(--danger);padding:20px;">Unable to load personnel records.</div>`;
                 }
                 customAlert("Unable to load the Personnel sheet.", "Error");
+                return false;
             }
         }
 
@@ -3042,6 +3107,8 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             const header = document.getElementById('activityActionHeader');
             if (addBtn) addBtn.classList.toggle('hidden', !can);
             if (header) header.style.display = can ? '' : 'none';
+            const table = document.getElementById('activityTable');
+            if (table) table.classList.toggle('activity-readonly', !can);
         }
 
         function localDateKey(dateObj) {
@@ -3541,10 +3608,9 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                     <td>${escapeHtml(a.concernedOffice)}</td>
                     <td>${escapeHtml(formatActivityTime(a.time))}</td>
                     <td><span class="activity-status ${statusClass}">${escapeHtml(status)}</span></td>
-                    ${can ? `<td class="activity-action-cell">
-                        ${canEditThisActivity ? `<button class="action-btn" onclick="editActivity('${escapeAttr(a.id)}')">Edit</button>` : ''}
-                        <button class="action-btn delete-btn" style="color:white;" onclick="deleteActivity('${escapeAttr(a.id)}')">Delete</button>
-                    </td>` : ''}
+                    <td class="activity-action-cell">
+                        ${can ? `${canEditThisActivity ? `<button class="action-btn" onclick="editActivity('${escapeAttr(a.id)}')">Edit</button>` : ''}<button class="action-btn delete-btn" style="color:white;" onclick="deleteActivity('${escapeAttr(a.id)}')">Delete</button>` : ''}
+                    </td>
                 </tr>`;
             }).join('') : `<tr><td colspan="${can ? 8 : 7}" style="text-align:center;padding:20px;">No activities found.</td></tr>`;
 
@@ -3757,9 +3823,9 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         }
 
         async function loadExecutiveDashboard() {
-            // Reuse the original loaders so authentication, backend requests, and existing
-            // business logic remain unchanged. The dashboard only reads their in-memory results.
-            try { await Promise.allSettled([loadData(), loadPersonnel(), loadActivities(), fetchActivityLogs()]); }
+            // Preload the complete Personnel Management data set even when the user stays
+            // on the Dashboard. Operational summaries must not depend on opening each tab.
+            try { await Promise.allSettled([loadData(), loadAllPersonnelManagementData(true), loadActivities(), fetchActivityLogs()]); }
             catch (e) {}
             renderExecutiveDashboard();
         }
@@ -4193,6 +4259,8 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         let execActivityPage = 1;
         const EXEC_ACTIVITY_PAGE_SIZE = 5;
         let currentPersonnelSubPage = 'list';
+        let personnelManagementDataLoaded = false;
+        let personnelManagementDataPromise = null;
         let dutySequence = [];
         let dutyCalendarDate = new Date();
         let bmiRecords = [];
@@ -4288,8 +4356,9 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         }
 
         /* ---------- Personnel Sub-Page Navigation ---------- */
-        function switchPersonnelSubPage(sub) {
-            currentPersonnelSubPage = sub;
+        function switchPersonnelSubPage(sub, options = {}) {
+            currentPersonnelSubPage = Object.prototype.hasOwnProperty.call(SPADES_PERSONNEL_ROUTE_LABELS, sub) ? sub : 'list';
+            sub = currentPersonnelSubPage;
             const map = {
                 'list':'subPersonnelList', 'duty':'subDutyOffice', 'bmi':'subBmiMonitoring',
                 'squad':'subSquadding', 'leave':'subLeaveManagement', 'aor':'subAreaOfResponsibility'
@@ -4304,45 +4373,63 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 btn.classList.toggle('active', btn.getAttribute('data-sub') === sub);
             });
             updatePersonnelPermissions();
-            if (sub === 'duty') {
-                const btn = document.getElementById('dutyEditSeqBtn');
-                if (btn) btn.style.display = canPersonnelAction('duty', 'edit') ? '' : 'none';
-                loadDutySequence();
-            } else if (sub === 'bmi') {
-                const btn = document.getElementById('bmiAddBtn');
-                if (btn) btn.style.display = canPersonnelAction('bmi', 'add') ? '' : 'none';
-                const hdr = document.getElementById('bmiActionHeader');
-                if (hdr) hdr.style.display = (canPersonnelAction('bmi', 'edit') || canPersonnelAction('bmi', 'delete')) ? '' : 'none';
-                loadBmiRecords();
-            } else if (sub === 'squad') {
-                const btn = document.getElementById('squadAddBtn');
-                if (btn) btn.style.display = canPersonnelAction('squad', 'add') ? '' : 'none';
-                loadSquads();
-            } else if (sub === 'leave') {
-                const btn = document.getElementById('leaveAddBtn');
-                if (btn) btn.style.display = canPersonnelAction('leave', 'add') ? '' : 'none';
-                const hdr = document.getElementById('leaveActionHeader');
-                if (hdr) hdr.style.display = canPersonnelAction('leave', 'delete') ? '' : 'none';
-                loadLeaveEntries();
-            } else if (sub === 'aor') {
-                const btn = document.getElementById('areaAddBtn');
-                if (btn) btn.style.display = canPersonnelAction('aor', 'add') ? '' : 'none';
-                loadAreas();
-            }
+            // Keep every Personnel Management sub-page dataset warm in memory. The data
+            // is also preloaded from the Dashboard, so summaries never depend on a visit.
+            updateSpadesAddressBar('personnel', { replace: !!options.skipAddressUpdate });
+            loadAllPersonnelManagementData();
         }
 
+        async function loadAllPersonnelManagementData(forceRefresh = false) {
+            if (personnelManagementDataLoaded && !forceRefresh) return true;
+            if (personnelManagementDataPromise) return personnelManagementDataPromise;
+
+            personnelManagementDataPromise = (async () => {
+                const personnelLoaded = await loadPersonnel();
+                const moduleResults = await Promise.allSettled([
+                    loadDutySequence(),
+                    loadBmiRecords(),
+                    loadLeaveEntries(),
+                    loadAreas()
+                ]);
+                // Squads are filtered against the archived personnel list, so load them
+                // after the Personnel sheet has been read.
+                const squadsLoaded = await loadSquads();
+                const modulesLoaded = moduleResults.every(result =>
+                    result.status === 'fulfilled' && result.value !== false
+                );
+                personnelManagementDataLoaded = personnelLoaded !== false && modulesLoaded && squadsLoaded !== false;
+                if (!personnelManagementDataLoaded) {
+                    console.warn('One or more Personnel Management datasets did not load. They will be retried on the next refresh or page visit.');
+                }
+                return personnelManagementDataLoaded;
+            })();
+
+            try {
+                return await personnelManagementDataPromise;
+            } finally {
+                personnelManagementDataPromise = null;
+            }
+        }
         /* ---------- Duty Office ---------- */
         async function loadDutySequence() {
+            let loaded = true;
             try {
                 const res = await fetch(API_URL + "?action=get_duty_sequence&_ts=" + Date.now(), {cache:'no-store'});
+                if (!res.ok) throw new Error(`Request failed (${res.status})`);
                 const data = await res.json();
                 if (data.success && Array.isArray(data.sequence)) dutySequence = data.sequence;
-                else dutySequence = ['PMSg Siobal','PCMS Tayab','PMSg Graycochea','PMSg Oligo','PCpl Gandia','Pat Bao-anen','Pat Benitez','Pat Obra'];
+                else {
+                    loaded = false;
+                    dutySequence = ['PMSg Siobal','PCMS Tayab','PMSg Graycochea','PMSg Oligo','PCpl Gandia','Pat Bao-anen','Pat Benitez','Pat Obra'];
+                }
             } catch (e) {
+                loaded = false;
+                console.warn('Duty Office sequence could not be loaded:', e);
                 dutySequence = ['PMSg Siobal','PCMS Tayab','PMSg Graycochea','PMSg Oligo','PCpl Gandia','Pat Bao-anen','Pat Benitez','Pat Obra'];
             }
             renderDutyCalendar();
             renderDutyTable();
+            return loaded;
         }
         function getDutyAssignment(dateObj, seq) {
             const day = dateObj.getDay(); // 0=Sun ... 6=Sat
@@ -4632,13 +4719,21 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             return 'var(--text-muted)';
         }
         async function loadBmiRecords() {
+            let loaded = true;
             try {
                 const res = await fetch(API_URL + "?action=get_bmi_records&_ts=" + Date.now(), {cache:'no-store'});
+                if (!res.ok) throw new Error(`Request failed (${res.status})`);
                 const data = await res.json();
-                bmiRecords = (data.success && Array.isArray(data.records)) ? data.records.map(normalizeBmiRecordForDisplay) : [];
-            } catch (e) { bmiRecords = []; }
+                if (!data || data.success !== true || !Array.isArray(data.records)) throw new Error((data && data.error) || 'Invalid BMI response');
+                bmiRecords = data.records.map(normalizeBmiRecordForDisplay);
+            } catch (e) {
+                loaded = false;
+                console.warn('BMI records could not be loaded:', e);
+                bmiRecords = [];
+            }
             populateBmiPeriods();
             renderBmiTable();
+            return loaded;
         }
         function populateBmiPeriods() {
             const sel = document.getElementById('bmiPeriodSelect');
@@ -5088,10 +5183,13 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         }
         /* ---------- Squadding ---------- */
         async function loadSquads() {
+            let loaded = true;
             try {
                 const res = await fetch(API_URL + "?action=get_squads&_ts=" + Date.now(), {cache:'no-store'});
+                if (!res.ok) throw new Error(`Request failed (${res.status})`);
                 const data = await res.json();
-                squads = (data.success && Array.isArray(data.squads)) ? data.squads : [];
+                if (!data || data.success !== true || !Array.isArray(data.squads)) throw new Error((data && data.error) || 'Invalid Squadding response');
+                squads = data.squads;
                 // Defensive UI filter: archived personnel should never remain visible in a squad.
                 const key = value => String(value || '').toLocaleLowerCase().replace(/\s+/g, ' ').trim();
                 const archivedFull = new Set((archivedPersonnel || []).map(p => key(personnelFullName(p))));
@@ -5100,8 +5198,13 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                     squadLeader: archivedShort.has(key(s.squadLeader)) ? '' : s.squadLeader,
                     members: (Array.isArray(s.members) ? s.members : []).filter(m => !archivedFull.has(key(personnelFullName(m))))
                 }));
-            } catch (e) { squads = []; }
+            } catch (e) {
+                loaded = false;
+                console.warn('Squad data could not be loaded:', e);
+                squads = [];
+            }
             renderSquadCarousel();
+            return loaded;
         }
         function renderSquadCarousel() {
             const container = document.getElementById('squadCarousel');
@@ -5330,13 +5433,21 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
 
         /* ---------- Leave Management ---------- */
         async function loadLeaveEntries() {
+            let loaded = true;
             try {
                 const res = await fetch(API_URL + "?action=get_leave_entries&_ts=" + Date.now(), {cache:'no-store'});
+                if (!res.ok) throw new Error(`Request failed (${res.status})`);
                 const data = await res.json();
-                leaveEntries = (data.success && Array.isArray(data.entries)) ? data.entries : [];
-            } catch (e) { leaveEntries = []; }
+                if (!data || data.success !== true || !Array.isArray(data.entries)) throw new Error((data && data.error) || 'Invalid Leave Management response');
+                leaveEntries = data.entries;
+            } catch (e) {
+                loaded = false;
+                console.warn('Leave entries could not be loaded:', e);
+                leaveEntries = [];
+            }
             renderLeaveCalendar();
             renderLeaveTable();
+            return loaded;
         }
         const MAX_LEAVE_PER_DATE = 5;
         function leaveDateCount(dateStr) {
@@ -5400,46 +5511,86 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         function renderLeaveTypeRecap() {
             const wrap = document.getElementById('leaveTypeRecap');
             if (!wrap) return;
+
             const counts = new Map();
             let totalDays = 0;
-            leaveEntries.forEach(e => {
-                const rawType = String(e.leaveType || 'Unspecified').trim() || 'Unspecified';
-                const label = rawType === 'Others' && e.otherType ? `Others (${e.otherType})` : rawType;
+            (leaveEntries || []).forEach(entry => {
+                const rawType = String(entry.leaveType || 'Unspecified').trim() || 'Unspecified';
+                const label = rawType === 'Others' && entry.otherType ? `Others (${entry.otherType})` : rawType;
                 const key = label.toLocaleLowerCase();
-                const dates = Array.isArray(e.dates) ? e.dates : [];
-                const days = new Set(dates.map(d => String(d || '').trim()).filter(Boolean)).size;
+                const dates = Array.isArray(entry.dates) ? entry.dates : [];
+                const days = new Set(dates.map(date => String(date || '').trim()).filter(Boolean)).size;
                 totalDays += days;
                 if (!counts.has(key)) counts.set(key, { label, entries: 0, days: 0, personnel: new Set() });
                 const item = counts.get(key);
                 item.entries += 1;
                 item.days += days;
-                if (e.personnelName) item.personnel.add(String(e.personnelName).trim());
+                if (entry.personnelName) item.personnel.add(String(entry.personnelName).trim());
             });
-            const items = [...counts.values()].sort((a,b) => b.entries-a.entries || a.label.localeCompare(b.label));
-            const maxEntries = Math.max(1, ...items.map(x => x.entries));
-            const totalPeople = new Set(leaveEntries.map(e => String(e.personnelName || '').trim()).filter(Boolean)).size;
-            wrap.classList.add('leave-type-recap-panel');
-            if (!items.length) {
-                wrap.innerHTML = `<div class="leave-recap-heading"><div><strong>Leave Recap by Type</strong><span>Overview of encoded leave entries</span></div></div><div class="leave-recap-empty">No leave entries recorded yet.</div>`;
-                return;
-            }
-            wrap.innerHTML = `<div class="leave-recap-heading">
-                    <div><strong>Leave Recap by Type</strong><span>Distribution of encoded leave entries</span></div>
-                    <div class="leave-recap-total"><strong>${leaveEntries.length}</strong><span>entries</span></div>
+
+            const items = [...counts.values()].sort((a, b) => b.days - a.days || b.entries - a.entries || a.label.localeCompare(b.label));
+            const totalEntries = Array.isArray(leaveEntries) ? leaveEntries.length : 0;
+            const totalPeople = new Set((leaveEntries || []).map(entry => String(entry.personnelName || '').trim()).filter(Boolean)).size;
+            const topType = items.length ? items[0].label : '—';
+
+            wrap.classList.add('leave-analytics-panel');
+            wrap.innerHTML = `
+                <div class="leave-analytics-head">
+                    <div class="leave-analytics-title-group">
+                        <div class="leave-analytics-icon" aria-hidden="true">▤</div>
+                        <div>
+                            <span class="leave-analytics-eyebrow">PERSONNEL MANAGEMENT · RECAP</span>
+                            <h4>Leave Overview</h4>
+                            <p>A consolidated view of all recorded personnel leave entries.</p>
+                        </div>
+                    </div>
+                    <span class="leave-analytics-scope">ALL RECORDED DATA</span>
                 </div>
-                <div class="leave-recap-overview">
-                    <div class="leave-recap-overview-item"><span>Total Leave Days</span><strong>${totalDays}</strong></div>
-                    <div class="leave-recap-overview-item"><span>Personnel Covered</span><strong>${totalPeople}</strong></div>
-                    <div class="leave-recap-overview-item"><span>Leave Types</span><strong>${items.length}</strong></div>
+                <div class="leave-analytics-kpis">
+                    <article class="leave-analytics-kpi leave-kpi-primary">
+                        <span class="leave-kpi-label">Leave Entries</span>
+                        <strong>${totalEntries.toLocaleString()}</strong>
+                        <small>Encoded records</small>
+                    </article>
+                    <article class="leave-analytics-kpi">
+                        <span class="leave-kpi-label">Total Leave Days</span>
+                        <strong>${totalDays.toLocaleString()}</strong>
+                        <small>Days recorded</small>
+                    </article>
+                    <article class="leave-analytics-kpi">
+                        <span class="leave-kpi-label">Personnel Covered</span>
+                        <strong>${totalPeople.toLocaleString()}</strong>
+                        <small>Unique personnel</small>
+                    </article>
+                    <article class="leave-analytics-kpi">
+                        <span class="leave-kpi-label">Leave Categories</span>
+                        <strong>${items.length.toLocaleString()}</strong>
+                        <small>Distinct leave types</small>
+                    </article>
                 </div>
-                <div class="leave-type-recap-grid">${items.map(item => {
-                    const percent = Math.max(5, Math.round((item.entries / maxEntries) * 100));
-                    return `<div class="leave-type-recap-card">
-                        <div class="leave-type-recap-card-top"><strong title="${escapeAttr(item.label)}">${escapeHtml(item.label)}</strong><span class="leave-type-recap-count">${item.entries}</span></div>
-                        <div class="leave-type-recap-bar"><i style="width:${percent}%"></i></div>
-                        <div class="leave-type-recap-details"><span>${item.days} day${item.days === 1 ? '' : 's'}</span><span>${item.personnel.size} personnel</span></div>
-                    </div>`;
-                }).join('')}</div>`;
+                <div class="leave-analytics-breakdown">
+                    <div class="leave-analytics-section-head">
+                        <div><h5>Leave Type Breakdown</h5><p>Distribution based on the total number of leave days.</p></div>
+                        ${items.length ? `<span class="leave-analytics-category-badge">${items.length} ${items.length === 1 ? 'category' : 'categories'}</span>` : ''}
+                    </div>
+                    ${items.length ? `<div class="leave-analytics-list">${items.map((item, index) => {
+                        const share = totalDays > 0
+                            ? Math.round((item.days / totalDays) * 100)
+                            : Math.round((item.entries / Math.max(1, totalEntries)) * 100);
+                        const width = Math.max(item.days || item.entries ? 3 : 0, share);
+                        return `<article class="leave-analytics-type">
+                            <div class="leave-analytics-type-top">
+                                <div class="leave-analytics-type-name">
+                                    <span class="leave-analytics-type-index">${String(index + 1).padStart(2, '0')}</span>
+                                    <div><strong title="${escapeAttr(item.label)}">${escapeHtml(item.label)}</strong><small>${item.entries} ${item.entries === 1 ? 'entry' : 'entries'} · ${item.personnel.size} ${item.personnel.size === 1 ? 'personnel member' : 'personnel members'}</small></div>
+                                </div>
+                                <div class="leave-analytics-type-value"><strong>${item.days.toLocaleString()}</strong><span>${item.days === 1 ? 'day' : 'days'} · ${share}%</span></div>
+                            </div>
+                            <div class="leave-analytics-track" role="progressbar" aria-label="${escapeAttr(item.label)} share of leave days" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${share}"><i style="width:${width}%"></i></div>
+                        </article>`;
+                    }).join('')}</div>` : `<div class="leave-analytics-empty"><span aria-hidden="true">▤</span><strong>No leave records yet</strong><small>Leave entries will be summarized here as soon as they are encoded.</small></div>`}
+                    ${items.length ? `<div class="leave-analytics-insight"><span class="leave-analytics-insight-mark" aria-hidden="true">✦</span><span><strong>Most recorded leave type:</strong> ${escapeHtml(topType)}</span></div>` : ''}
+                </div>`;
         }
         function formatLeaveDates(datesArr) {
             // Group dates by month+year and render as (Month, D1, D2, ..., YYYY).
@@ -5465,6 +5616,8 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             const tbody = document.getElementById('leaveTableBody');
             if (!tbody) return;
             renderLeaveTypeRecap();
+            const countBadge = document.getElementById('leaveEntriesCount');
+            if (countBadge) countBadge.textContent = `${leaveEntries.length.toLocaleString()} ${leaveEntries.length === 1 ? 'record' : 'records'}`;
             const can = canPersonnelAction('leave', 'delete');
             if (!leaveEntries.length) {
                 tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:20px;">No leave entries recorded.</td></tr>`;
@@ -5616,12 +5769,20 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
 
         /* ---------- Area of Responsibilities ---------- */
         async function loadAreas() {
+            let loaded = true;
             try {
                 const res = await fetch(API_URL + "?action=get_areas&_ts=" + Date.now(), {cache:'no-store'});
+                if (!res.ok) throw new Error(`Request failed (${res.status})`);
                 const data = await res.json();
-                areas = (data.success && Array.isArray(data.areas)) ? data.areas : [];
-            } catch (e) { areas = []; }
+                if (!data || data.success !== true || !Array.isArray(data.areas)) throw new Error((data && data.error) || 'Invalid Areas response');
+                areas = data.areas;
+            } catch (e) {
+                loaded = false;
+                console.warn('Area of Responsibilities data could not be loaded:', e);
+                areas = [];
+            }
             renderAreaCards();
+            return loaded;
         }
         let areaDragId = null;
         function renderAreaCards() {
