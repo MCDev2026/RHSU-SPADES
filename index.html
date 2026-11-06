@@ -18,6 +18,7 @@
                 <i class="fi fi-rr-menu-burger spades-ui-icon" aria-hidden="true"></i>
             </button>
             <span id="appBrand">REGIONAL HEADQUARTERS SUPPORT UNIT</span>
+            <span id="activePageLabel" class="active-page-label" aria-live="polite">Dashboard</span>
         </div>
         <div class="top-bar-right">
             <button type="button" id="pageRefreshBtn" class="profile-btn header-icon-btn" onclick="window.location.reload()" title="Refresh entire page" aria-label="Refresh entire page" style="font-size:20px;line-height:1;">↻</button>
@@ -161,7 +162,7 @@
             <div style="flex-grow: 1;"></div>
             <div class="sidebar-version" aria-label="Application version and developer">
                 <div class="sidebar-version-number">v2.0.0</div>
-                <div class="sidebar-developer">Developer: MC GANDIA</div>
+                <div class="sidebar-developer">Develop by: MC GANDIA</div>
                 <div class="sidebar-rights">All rights reserved to RHSU PRO 1</div>
                 <div class="flaticon-attribution"><a href="https://www.flaticon.com/uicons" target="_blank" rel="noopener noreferrer">Uicons by Flaticon</a></div>
             </div>
@@ -710,9 +711,15 @@
                         </div>
                         <div id="leaveCalendarGrid" class="duty-calendar-grid"></div>
                     </div>
-                    <div class="table-wrapper" style="margin-top:20px;">
-                        <div id="leaveTypeRecap" class="bmi-classification-summary" style="margin-bottom:12px;"></div>
-                        <h4 style="margin:0 0 10px;color:var(--primary);">Leave Entries</h4>
+                    <section id="leaveTypeRecap" class="leave-analytics-panel glass-panel" aria-live="polite" aria-label="Leave management recap"></section>
+                    <div class="table-wrapper leave-entries-table" style="margin-top:16px;">
+                        <div class="leave-entries-heading">
+                            <div>
+                                <h4 style="margin:0;color:var(--primary);">Leave Entries</h4>
+                                <p>Recorded leave schedules and encoder details</p>
+                            </div>
+                            <span class="leave-entries-count" id="leaveEntriesCount">0 records</span>
+                        </div>
                         <table class="data-table">
                             <thead><tr><th>Personnel Name</th><th>Leave Type</th><th>Dates</th><th>Encoded By</th><th id="leaveActionHeader" style="display:none;">Actions</th></tr></thead>
                             <tbody id="leaveTableBody"></tbody>
@@ -1204,7 +1211,13 @@
         <div class="modal-content glass-panel activity-data-modal">
             <div class="activity-data-modal-head"><div><span class="activity-data-kicker">ACTIVITY MANAGEMENT</span><h2 id="activityDataModalTitle">Activity Records</h2><p>Search, review, and manage scheduled activities.</p></div><button type="button" class="action-btn activity-data-close" onclick="closeActivityDataModal()" aria-label="Close activity records">×</button></div>
             <div class="activity-toolbar activity-toolbar-redesigned"><input id="activitySearch" class="activity-search" type="text" placeholder="Search activities..." oninput="filterActivities()" aria-label="Search activities"></div>
-            <div class="table-wrapper activity-data-table-wrap"><table id="activityTable"><thead><tr><th>Date</th><th>Activity Title</th><th>Assigned Venue</th><th>Requesting Office</th><th>Concerned Office</th><th>Time</th><th>Status</th><th id="activityActionHeader">Actions</th></tr></thead><tbody id="activityTableBody"></tbody></table></div>
+            <div class="table-wrapper activity-data-table-wrap"><table id="activityTable" aria-label="Activity records">
+                <colgroup>
+                    <col class="activity-col-date"><col class="activity-col-title"><col class="activity-col-venue"><col class="activity-col-requesting"><col class="activity-col-concerned"><col class="activity-col-time"><col class="activity-col-status"><col class="activity-col-actions">
+                </colgroup>
+                <thead><tr><th scope="col">Date</th><th scope="col">Activity Title</th><th scope="col">Assigned Venue</th><th scope="col">Requesting Office</th><th scope="col">Concerned Office</th><th scope="col">Time</th><th scope="col">Status</th><th id="activityActionHeader" scope="col">Actions</th></tr></thead>
+                <tbody id="activityTableBody"></tbody>
+            </table></div>
             <div id="activityPagination" class="pagination-container hidden"><span id="activityPageInfo" style="font-weight:bold;">Page 1 of 1</span><div class="pagination-buttons"><button id="prevActivityBtn" class="page-btn" onclick="changeActivityPage(-1)">Prev</button><button id="nextActivityBtn" class="page-btn" onclick="changeActivityPage(1)">Next</button></div></div>
         </div>
     </div>
