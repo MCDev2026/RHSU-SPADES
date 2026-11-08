@@ -3485,7 +3485,10 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             document.getElementById('activityDetailsTitle').textContent = activity.activityTitle || 'Activity Details';
             const fields = [['Date / Schedule', activity.date], ['Activity Title', activity.activityTitle], ['Assigned Venue', activity.assignedVenue], ['Requesting Office', activity.requestingOffice], ['Concerned Office', activity.concernedOffice], ['Time', formatActivityTime(activity.time)], ['Frequency', activity.frequency], ['Status', activity.status]];
             document.getElementById('activityDetailsContent').innerHTML = fields.map(([label,value]) => `<div class="activity-detail-field"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value || '—')}</strong></div>`).join('');
-            document.getElementById('activityDetailsEditBtn').classList.toggle('hidden', !canManageActivities() || !(allActivities || []).some(a => String(a.id) === String(id)));
+            const canEditActivity = canManageActivities() && (allActivities || []).some(a => String(a.id) === String(id));
+            document.getElementById('activityDetailsEditBtn').classList.toggle('hidden', !canEditActivity);
+            const detailsFooter = document.getElementById('activityDetailsFooter');
+            if (detailsFooter) detailsFooter.classList.toggle('hidden', !canEditActivity);
             document.getElementById('activityDetailsModal').classList.remove('hidden');
         }
         function closeActivityDetails() { document.getElementById('activityDetailsModal').classList.add('hidden'); selectedActivityDetailsId = null; }
