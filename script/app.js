@@ -2113,21 +2113,34 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             const currentUser = localStorage.getItem('loggedInUser');
             persistUserSettings(currentUser);
             if (!force) logActivity("logged out of the system.");
-            localStorage.removeItem('loggedInUser');
-            localStorage.removeItem('loggedCred');
-            localStorage.removeItem('userRole');
-            localStorage.removeItem('canEdit');
-            sessionAdminPass = "";
+
+            // End the authenticated session and remove the page route. The route is
+            // intentionally retained during refresh, but must never survive logout.
+            ['loggedInUser', 'loggedCred', 'userRole', 'canEdit'].forEach(key => localStorage.removeItem(key));
+            try {
+                const cleanUrl = `${window.location.pathname}${window.location.search}`;
+                window.history.replaceState({}, '', cleanUrl);
+            } catch (error) { window.location.hash = ''; }
+
+            // Close every open dialog before showing the login screen.
+            document.querySelectorAll('.modal-overlay, .profile-settings-overlay').forEach(modal => {
+                modal.classList.add('hidden');
+                modal.setAttribute('aria-hidden', 'true');
+                modal.removeAttribute('aria-modal');
+            });
+            document.body.classList.remove('profile-modal-open', 'spades-modal-stack-open');
+            if (window.SPADESModalStack?.refresh) window.SPADESModalStack.refresh();
+
+            sessionAdminPass = '';
             pendingAdminAction = null;
+            pendingAction = null;
             liveActivityLogs = [];
             lastLogCount = 0;
-            if (activityLogRefreshTimer) {
-                clearInterval(activityLogRefreshTimer);
-                activityLogRefreshTimer = null;
-            }
+            if (activityLogRefreshTimer) { clearInterval(activityLogRefreshTimer); activityLogRefreshTimer = null; }
+            if (activityRefreshTimer) { clearInterval(activityRefreshTimer); activityRefreshTimer = null; }
+            if (activityReminderTimer) { clearInterval(activityReminderTimer); activityReminderTimer = null; }
+            if (autoLogoutTimer) { clearTimeout(autoLogoutTimer); autoLogoutTimer = null; }
             sessionStorage.removeItem('systemAnnouncementSeen');
-            if (activityRefreshTimer) clearInterval(activityRefreshTimer);
-            if (autoLogoutTimer) clearTimeout(autoLogoutTimer);
             stopChatNotificationMonitor();
             const incomingChatContainer = document.getElementById('incomingChatContainer');
             if (incomingChatContainer) incomingChatContainer.innerHTML = '';

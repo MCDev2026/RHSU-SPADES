@@ -5632,3 +5632,27 @@ body.dark-mode [style*="background: white"], body.dark-mode [style*="background:
 #activityModal .activity-form-grid { min-height:0; overflow-y:auto; overscroll-behavior:contain; padding:2px 5px 12px 0; }
 #activityModal > .activity-edit-modal > div:last-child { flex:0 0 auto; padding-top:14px; margin-top:8px !important; border-top:1px solid var(--border-color); }
 @media(max-width:700px) { #activityModal { padding:8px; align-items:flex-start; } #activityModal .activity-edit-modal { max-height:calc(100dvh - 16px); width:100% !important; } }
+
+/* My Profile dialogs: keep the entire form reachable on short screens and
+   when optional sections expand. The dialog itself scrolls independently. */
+#securitySettingsModal,
+#profileSettingsModal,
+#userProfileViewModal {
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  overscroll-behavior: contain;
+  align-items: flex-start !important;
+  padding: clamp(10px, 2vh, 22px) clamp(10px, 2vw, 22px) !important;
+}
+#securitySettingsModal .security-settings-modal,
+#profileSettingsModal .profile-edit-modal,
+#userProfileViewModal .pf-view-modal {
+  max-height: calc(100vh - 2 * clamp(10px, 2vh, 22px));
+  max-height: calc(100dvh - 2 * clamp(10px, 2vh, 22px));
+  min-height: 0;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  -webkit-overflow-scrolling: touch;
+}
