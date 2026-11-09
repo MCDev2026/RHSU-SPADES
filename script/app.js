@@ -2832,6 +2832,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                         <td>${escapeHtml(p.firstName)}</td>
                         <td>${escapeHtml(p.middleName)}</td>
                         <td>${escapeHtml(p.qualifiers)}</td>
+                        <td>${escapeHtml(p.badgeNumber || '')}</td>
                         <td>${escapeHtml(p.designation)}</td>
                         <td>${escapeHtml(p.section)}</td>
                         <td><span style="font-weight:600;color:${archived ? 'var(--danger)' : 'var(--success)'};">${escapeHtml(p.status || (archived ? 'Archived' : 'Active'))}</span></td>
@@ -2849,7 +2850,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                     <table class="personnel-data-table${archived ? ' archived-personnel-table' : ''}">
                         <thead><tr>
                             <th>No.</th><th>Rank</th><th>Last Name</th><th>First Name</th><th>Middle Name</th>
-                            <th>Qualifiers</th><th>Designation</th><th>Section</th><th>Status</th><th>Contact No.</th>
+                            <th>Qualifiers</th><th>Badge Number</th><th>Designation</th><th>Section</th><th>Status</th><th>Contact No.</th>
                             ${extraHeader}
                         </tr></thead>
                         <tbody>${bodyHtml}</tbody>
@@ -2950,7 +2951,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             if(!canPersonnelAction('list', 'add')) return customAlert("You do not have permission to add Personnel List entries.","Permission Denied");
             personnelEditNo=null;
             document.getElementById('personnelModalTitle').innerText='Add Personnel';
-            ['pLastName','pFirstName','pMiddleName','pQualifiers','pDesignation','pContactNo'].forEach(id=>document.getElementById(id).value='');
+            ['pLastName','pFirstName','pMiddleName','pQualifiers','pBadgeNumber','pDesignation','pContactNo'].forEach(id=>document.getElementById(id).value='');
             document.getElementById('pRank').value='';
             document.getElementById('pSection').value='';
             document.getElementById('pStatus').value='Active';
@@ -2972,6 +2973,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             document.getElementById('pFirstName').value=p.firstName||'';
             document.getElementById('pMiddleName').value=p.middleName||'';
             document.getElementById('pQualifiers').value=p.qualifiers||'';
+            document.getElementById('pBadgeNumber').value=p.badgeNumber||'';
             document.getElementById('pDesignation').value=p.designation||'';
             document.getElementById('pSection').value=p.section||'';
             document.getElementById('pStatus').value=p.status||'Active';
@@ -3014,6 +3016,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 firstName:document.getElementById('pFirstName').value.trim(),
                 middleName:document.getElementById('pMiddleName').value.trim(),
                 qualifiers:document.getElementById('pQualifiers').value.trim(),
+                badgeNumber:document.getElementById('pBadgeNumber').value.trim(),
                 designation:document.getElementById('pDesignation').value.trim(),
                 section:document.getElementById('pSection').value.trim(),
                 status:document.getElementById('pStatus').value || 'Active',
