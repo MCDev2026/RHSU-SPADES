@@ -5600,3 +5600,35 @@ body.dark-mode [style*="background: white"], body.dark-mode [style*="background:
 @media (prefers-reduced-motion: reduce) {
   .main-content > *, .modal-overlay, .modal-content { animation: none !important; }
 }
+/* Activity Add/Edit form: fixed header with independently scrollable content. */
+#activityModal { padding:16px; overflow-y:auto; align-items:center; }
+#activityModal .activity-edit-modal {
+  display:flex; flex-direction:column; max-height:calc(100dvh - 32px);
+  overflow:hidden; padding:clamp(18px,2.5vw,28px); text-align:left;
+}
+#activityModal .activity-edit-modal-head {
+  display:flex; align-items:center; justify-content:space-between; gap:14px;
+  flex:0 0 auto; padding:0 0 15px; margin-bottom:16px;
+  border-bottom:1px solid var(--border-color);
+}
+#activityModal .activity-edit-modal-head h2 { min-width:0; font-size:clamp(20px,2.5vw,26px); }
+#activityModal .activity-edit-close {
+  flex:0 0 38px; width:38px; height:38px; padding:0; border-radius:10px;
+  font-size:25px; line-height:1; display:grid; place-items:center;
+}
+#activityModal .activity-form-grid { min-height:0; overflow-y:auto; overscroll-behavior:contain; padding:2px 5px 12px 0; }
+#activityModal > .activity-edit-modal > div:last-child { flex:0 0 auto; padding-top:14px; margin-top:8px !important; border-top:1px solid var(--border-color); }
+@media(max-width:700px) {
+  #activityModal { padding:8px; align-items:flex-start; }
+  #activityModal .activity-edit-modal { max-height:calc(100dvh - 16px); width:100% !important; }
+}
+
+/* Activity Add/Edit form: fixed header with independently scrollable content. */
+#activityModal { padding:16px; overflow-y:auto; align-items:center; }
+#activityModal .activity-edit-modal { display:flex; flex-direction:column; max-height:calc(100dvh - 32px); overflow:hidden; padding:clamp(18px,2.5vw,28px); text-align:left; }
+#activityModal .activity-edit-modal-head { display:flex; align-items:center; justify-content:space-between; gap:14px; flex:0 0 auto; padding:0 0 15px; margin-bottom:16px; border-bottom:1px solid var(--border-color); }
+#activityModal .activity-edit-modal-head h2 { min-width:0; font-size:clamp(20px,2.5vw,26px); }
+#activityModal .activity-edit-close { flex:0 0 38px; width:38px; height:38px; padding:0; border-radius:10px; font-size:25px; line-height:1; display:grid; place-items:center; }
+#activityModal .activity-form-grid { min-height:0; overflow-y:auto; overscroll-behavior:contain; padding:2px 5px 12px 0; }
+#activityModal > .activity-edit-modal > div:last-child { flex:0 0 auto; padding-top:14px; margin-top:8px !important; border-top:1px solid var(--border-color); }
+@media(max-width:700px) { #activityModal { padding:8px; align-items:flex-start; } #activityModal .activity-edit-modal { max-height:calc(100dvh - 16px); width:100% !important; } }
