@@ -1977,11 +1977,12 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 loadSettings();
                 if (userSettings.autoOpenChatbot && userSettings.showChatbot) document.getElementById('chatbot-window').classList.remove('hidden'); else document.getElementById('chatbot-window').classList.add('hidden');
                 
-                // Authentication survives browser refresh through localStorage.
-                // Every successful login/session restoration starts on the Dashboard,
-                // regardless of the tab that was open before the refresh.
-                sessionStorage.setItem('activeTab', 'dashboard');
-                switchTab('dashboard');
+                // Restore the exact page from the URL hash after authentication.
+                // Page navigation updates the hash (including Personnel sub-pages),
+                // so a browser refresh keeps the user's current view instead of
+                // forcing a redirect to the Dashboard. Empty/unknown hashes safely
+                // fall back to the Dashboard through navigateToSpadesAddress().
+                navigateToSpadesAddress();
                 
                 // Apply per-user allowed-access restrictions to navigation after login/restore.
                 loadUserAccessMap().then(() => applyAccessRestrictions()).catch(() => {});
