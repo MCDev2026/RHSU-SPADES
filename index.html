@@ -986,7 +986,7 @@
                 <div id="usersChatInput" class="users-chat-input" contenteditable="true" role="textbox" aria-multiline="true" data-placeholder="Write a message..." onkeydown="handleUsersChatKeydown(event)" oninput="updateChatFormatState()"></div>
                 <button class="users-chat-send" onclick="sendUsersChatMessage()">Send</button>
             </div>
-            <div class="users-chat-note" style="margin:4px 2px 0;">Attachments are stored in the backend and automatically moved to Trash after 7 days. Maximum file size: 10 MB.</div>
+            <div class="users-chat-note" style="margin:4px 2px 0;">Attachments are stored in Dropbox and automatically deleted after 7 days. Maximum file size: 10 MB.</div>
         </div>
     </div>
 
@@ -1173,7 +1173,6 @@
                 </select>
                 <select id="pStatus" onchange="togglePersonnelRemarksFields()">
                     <option value="Active">Active</option>
-                    <option value="Retired">Retired</option>    
                     <option value="Resigned">Resigned</option>
                     <option value="Deceased">Deceased</option>
                     <option value="Dismissed">Dismissed</option>
