@@ -1160,6 +1160,7 @@
                 <input id="pFirstName" type="text" placeholder="First Name">
                 <input id="pMiddleName" type="text" placeholder="Middle Name">
                 <input id="pQualifiers" type="text" placeholder="Qualifiers">
+                <input id="pBadgeNumber" type="text" placeholder="Badge Number">
                 <input id="pDesignation" type="text" placeholder="Designation">
                 <select id="pSection">
                     <option value="">Select Section...</option>
@@ -1221,9 +1222,9 @@
         </div>
     </div>
 
-    <div id="activityModal" class="modal-overlay hidden">
-        <div class="modal-content glass-panel modal-large" style="font-family:inherit;max-width:820px;width:calc(100% - 30px);">
-            <h2 id="activityModalTitle" style="margin-top:0;color:var(--primary);font-family:inherit;">Add Activity</h2>
+    <div id="activityModal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="activityModalTitle" onclick="if(event.target===this)closeActivityModal()">
+        <div class="modal-content glass-panel modal-large activity-edit-modal" style="font-family:inherit;max-width:820px;width:calc(100% - 30px);">
+            <div class="activity-edit-modal-head"><h2 id="activityModalTitle" style="margin:0;color:var(--primary);font-family:inherit;">Add Activity</h2><button type="button" class="action-btn activity-edit-close" onclick="closeActivityModal()" aria-label="Close activity form" title="Close">×</button></div>
 
             <div class="activity-form-grid">
                 <div class="full-width activity-form-field">
