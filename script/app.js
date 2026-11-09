@@ -1597,7 +1597,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             if (!cover) return;
             const fallback = 'url("images/SPADES%20Banner.jpg")';
             const selected = String(coverUrl || '').trim();
-            // Keep the banner visible if a saved Drive image is missing or blocked.
+            // Keep the banner visible if a saved cloud-storage image is missing or blocked.
             cover.style.backgroundImage = selected
                 ? `linear-gradient(90deg, rgba(5,18,48,.12), rgba(5,18,48,.08)), url("${selected.replace(/[\"\\]/g, '')}")`
                 : fallback;
