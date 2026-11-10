@@ -647,16 +647,13 @@
                     <div class="subpage-controls">
                         <div>
                             <h3 style="margin:0;color:var(--primary);">BMI Monitoring</h3>
-                            <div style="font-size:12px;color:var(--text-muted);margin-top:4px;">Current-month BMI records of all personnel</div>
+                            <div style="font-size:12px;color:var(--text-muted);margin-top:4px;">View current and historical monthly BMI records</div>
                         </div>
                         <div class="personnel-actions" style="align-items:center;gap:8px;">
-                            <select id="bmiPeriodSelect" onchange="renderBmiTable()" style="margin:0;padding:8px 10px;font-size:13px;border-radius:var(--radius-sm);border:1px solid var(--border-color);height:36px;max-width:140px;">
-                                <option value="">Current Month</option>
+                            <select id="bmiPeriodSelect" aria-label="Select BMI month" onchange="renderBmiTable()" style="margin:0;padding:8px 10px;font-size:13px;border-radius:var(--radius-sm);border:1px solid var(--border-color);height:36px;min-width:160px;max-width:190px;">
+                                <option value="">Loading months...</option>
                             </select>
-                            <select id="bmiViewMode" onchange="renderBmiTable()" style="margin:0;padding:8px 10px;font-size:13px;border-radius:var(--radius-sm);border:1px solid var(--border-color);height:36px;max-width:110px;">
-                                <option value="monthly">Monthly</option>
-                                <option value="yearly">Yearly</option>
-                            </select>
+                            <select id="bmiViewMode" style="display:none;" aria-hidden="true"><option value="monthly">Monthly</option></select>
                             <input type="text" id="bmiSearchInput" list="bmiSearchSuggestions" placeholder="Search personnel..." oninput="renderBmiTable()" style="margin:0;padding:8px 12px;font-size:13px;border-radius:var(--radius-sm);border:1px solid var(--border-color);width:200px;height:36px;box-sizing:border-box;">
                             <datalist id="bmiSearchSuggestions"></datalist>
                             <button class="action-btn approve-btn" id="bmiAddBtn" onclick="openBmiModal()" style="color:white;font-weight:bold;display:none;margin:0;height:36px;padding:0 14px;font-size:13px;box-sizing:border-box;">＋ Add BMI Record</button>
@@ -1383,8 +1380,9 @@
                     <div id="bmiPersonnelList" class="bmi-personnel-list"></div>
                 </div>
                 <div>
-                    <label style="font-size:13px;font-weight:600;">Period (Month)</label>
-                    <input type="month" id="bmiPeriodInput" style="width:100%;">
+                    <label style="font-size:13px;font-weight:600;">Entry Month</label>
+                    <input type="month" id="bmiPeriodInput" style="width:100%;" readonly>
+                    <small style="display:block;margin-top:5px;color:var(--text-muted);">Entries saved today are recorded under the current month. Previous-month records remain unchanged and accessible.</small>
                 </div>
                 <div>
                     <label style="font-size:13px;font-weight:600;">Age</label>
