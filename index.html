@@ -1617,11 +1617,35 @@
             <div class="profile-card-section-title"><span>Personnel Information</span><span class="profile-card-section-line"></span></div>
             <div class="profile-card-body" id="profileCardBody"></div>
             <div style="padding:0 24px 20px 24px;display:flex;gap:10px;">
-                <button class="action-btn approve-btn" id="profileCardEditBtn" style="flex:1 1 120px;margin:0;color:white;display:none;" onclick="editDetailsFromProfile()">Edit Details</button>
-                <button class="action-btn delete-btn" id="profileCardArchiveBtn" style="flex:1 1 140px;margin:0;display:none;" onclick="archiveDetailsFromProfile()">Archive Personnel</button>
-                <button class="action-btn" style="flex:1 1 90px;margin:0;" onclick="closePersonnelProfile()">Close</button>
+                <button type="button" class="action-btn browse-folder-btn" id="profileCardBrowseBtn" style="flex:1 1 100px;margin:0;background:#059669;color:#fff;border:none;" onclick="openPersonnelFolderBrowser()">&#128065; Browse</button>
+                <button class="action-btn approve-btn" id="profileCardEditBtn" style="flex:1 1 105px;margin:0;color:white;display:none;" onclick="editDetailsFromProfile()">Edit Details</button>
+                <button class="action-btn delete-btn" id="profileCardArchiveBtn" style="flex:1 1 120px;margin:0;display:none;" onclick="archiveDetailsFromProfile()">Archive Personnel</button>
+                <button class="action-btn" style="flex:1 1 80px;margin:0;" onclick="closePersonnelProfile()">Close</button>
+            </div>
+        </div>
+    </div>
+    <!-- PERSONNEL FOLDER BROWSER MODAL -->
+    <div id="personnelFolderBrowserModal" class="modal-overlay hidden" style="z-index:2300;" role="dialog" aria-modal="true" onclick="if(event.target===this)closePersonnelFolderBrowser()">
+        <div class="modal-content glass-panel profile-card-modal" style="max-width:640px;">
+            <div class="profile-card-banner"><span class="profile-card-banner-label" id="folderBrowserTitle">Personnel Folder</span><button type="button" class="profile-card-close" onclick="closePersonnelFolderBrowser()" aria-label="Close folder browser">×</button></div>
+            <div id="folderBrowserList" style="padding:16px 24px;min-height:200px;max-height:400px;overflow-y:auto;"></div>
+            <div style="padding:0 24px 20px 24px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+                <input type="file" id="personnelFolderFileInput" multiple style="display:none;" onchange="document.getElementById('folderBrowserStatus').textContent = this.files.length + ' file(s) selected';">
+                <button type="button" class="action-btn" style="flex:0 0 auto;margin:0;background:#2563eb;color:#fff;border:none;" onclick="document.getElementById('personnelFolderFileInput').click()">Choose Files</button>
+                <button type="button" class="action-btn" id="personnelFolderUploadBtn" style="flex:0 0 auto;margin:0;background:#059669;color:#fff;border:none;" onclick="uploadFilesToPersonnelFolder()">Upload</button>
+                <span id="folderBrowserStatus" style="flex:1;min-width:0;font-size:12px;color:var(--text-muted,#888);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>
+            </div>
+        </div>
+    </div>
+    <!-- FILE PREVIEW MODAL -->
+    <div id="filePreviewModal" class="modal-overlay hidden" style="z-index:2400;" role="dialog" aria-modal="true" onclick="if(event.target===this)closeFilePreview()">
+        <div class="modal-content glass-panel profile-card-modal" style="max-width:820px;">
+            <div class="profile-card-banner"><span class="profile-card-banner-label" id="previewFileName">File</span><button type="button" class="profile-card-download" id="previewDownloadBtn" onclick="downloadPreviewFile()" title="Download file" aria-label="Download file"><i class="fi fi-rr-download" aria-hidden="true"></i></button><button type="button" class="profile-card-close" onclick="closeFilePreview()" aria-label="Close preview">×</button></div>
+            <div id="previewContent" style="padding:16px 24px;min-height:300px;max-height:75vh;overflow:auto;text-align:center;display:flex;align-items:center;justify-content:center;"></div>
+            <div style="padding:0 24px 20px 24px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+                <span id="previewMeta" style="flex:1;min-width:0;font-size:12px;color:var(--text-muted,#888);"></span>
             </div>
         </div>
     </div>
 </body>
-</html> v
+</html>

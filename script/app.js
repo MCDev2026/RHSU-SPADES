@@ -988,7 +988,15 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 const auth = chatCredentialPayload();
                 let attachment = null;
                 if (chatAttachmentFile) {
-                    const base64 = await readChatFileAsBase64(chatAttachmentFile);
+                    let base64;
+                    try {
+                        base64 = await readChatFileAsBase64(chatAttachmentFile);
+                    } catch (readErr) {
+                        // The file could not be read — clear the bad attachment so the UI
+                        // does not keep showing it, then rethrow so the outer catch alerts the user.
+                        clearChatAttachment();
+                        throw readErr;
+                    }
                     attachment = {
                         name: chatAttachmentFile.name,
                         mimeType: chatAttachmentFile.type || 'application/octet-stream',
@@ -1576,15 +1584,32 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             const typeKey = String(photoType || 'profile').trim().toLowerCase() === 'cover' ? 'cover' : 'profile';
             return 'spades.savedPhoto.' + typeKey + '.' + encodeURIComponent(userKey);
         }
+        // Temp photo links (e.g. signed/shared URLs) can expire. Bound the cache lifetime
+        // so a stale entry is dropped and a fresh URL is fetched from the server instead.
+        const PROFILE_PHOTO_CACHE_TTL_MS = 12 * 60 * 60 * 1000; // 12 hours
         function getCachedProfilePhotoUrl(username, photoType) {
-            try { return localStorage.getItem(profilePhotoCacheKey(username, photoType)) || ''; }
-            catch (_) { return ''; }
+            try {
+                const raw = localStorage.getItem(profilePhotoCacheKey(username, photoType));
+                if (!raw) return '';
+                const sep = raw.indexOf('|');
+                if (sep < 0) {
+                    // Old cache entry without a timestamp — treat as stale and force a fresh fetch.
+                    try { localStorage.removeItem(profilePhotoCacheKey(username, photoType)); } catch (_) {}
+                    return '';
+                }
+                const ts = Number(raw.slice(0, sep));
+                if (!ts || (Date.now() - ts) > PROFILE_PHOTO_CACHE_TTL_MS) {
+                    try { localStorage.removeItem(profilePhotoCacheKey(username, photoType)); } catch (_) {}
+                    return '';
+                }
+                return raw.slice(sep + 1);
+            } catch (_) { return ''; }
         }
         function rememberProfilePhotoUrl(username, photoType, url) {
             const safeUrl = String(url || '').trim();
             if (!username || !safeUrl) return;
-            try { localStorage.setItem(profilePhotoCacheKey(username, photoType), safeUrl); }
-            catch (_) { /* Backend Drive storage remains the source of truth if browser storage is full/disabled. */ }
+            try { localStorage.setItem(profilePhotoCacheKey(username, photoType), Date.now() + '|' + safeUrl); }
+            catch (_) { /* Backend cloud storage remains the source of truth if browser storage is full/disabled. */ }
         }
         function applyProfilePhotos(profileUrl) {
             const av = document.getElementById('profileAvatarImg');
@@ -1613,8 +1638,19 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             if (file.type && !['image/jpeg', 'image/jpg', 'image/png', 'image/webp'].includes(file.type.toLowerCase())) {
                 customAlert('Please select a JPG, PNG, or WebP image.', 'Validation'); inputEl.value=''; return;
             }
+            // Loading/disabled state: disable the hidden input and its visible trigger button
+            // so a double-selection cannot fire while an upload is in flight.
+            const triggerBtn = document.querySelector(type === 'cover' ? '.pf-cover-change-btn' : '.pf-avatar-upload');
+            inputEl.disabled = true;
+            if (triggerBtn) { triggerBtn.disabled = true; triggerBtn.style.opacity = '0.5'; triggerBtn.style.pointerEvents = 'none'; }
+            const restoreUploadUI = function () {
+                inputEl.disabled = false;
+                inputEl.value = '';
+                if (triggerBtn) { triggerBtn.disabled = false; triggerBtn.style.opacity = ''; triggerBtn.style.pointerEvents = ''; }
+            };
             const reader = new FileReader();
-            reader.onerror = function () { customAlert('The selected image could not be read. Please try another image.', 'Error'); inputEl.value = ''; };
+            reader.onerror = function () { customAlert('The selected image could not be read. Please try another image.', 'Error'); restoreUploadUI(); };
+            reader.onabort = function () { customAlert('Image reading was cancelled. Please try again.', 'Upload Cancelled'); restoreUploadUI(); };
             reader.onload = async function(e) {
                 const payload = {
                     action: 'upload_photo',
@@ -1626,24 +1662,47 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 };
                 try {
                     const res = await fetch(API_URL, { method:'POST', mode:'cors', headers:{'Content-Type':'text/plain'}, body: JSON.stringify(payload) });
-                    const data = await res.json();
+                    let data;
+                    try {
+                        data = await res.json();
+                    } catch (parseErr) {
+                        // Non-JSON response: surface the raw server body if it looks like an error message.
+                        let detail = '';
+                        try { detail = (await res.text()).trim(); } catch (_) {}
+                        if (detail && detail.length > 300) detail = detail.slice(0, 300) + '…';
+                        throw new Error(detail ? ('Server returned an error: ' + detail) : 'The server returned an invalid response. Please try again later.');
+                    }
                     if (data && data.success && data.url) {
                         const photoOwner = localStorage.getItem('loggedInUser') || '';
                         rememberProfilePhotoUrl(photoOwner, type === 'cover' ? 'cover' : 'profile', data.url);
                         if (type === 'cover') {
                             applyProfileCover(data.url);
-                            customAlert('Cover photo updated successfully.', 'Success');
+                            customAlert(data.cleanupWarning
+                                ? 'Cover photo updated successfully. ' + data.cleanupWarning
+                                : 'Cover photo updated successfully.', data.cleanupWarning ? 'Updated with Warning' : 'Success');
                         } else {
                             applyProfilePhotos(data.url);
-                            customAlert('Profile photo updated successfully.', 'Success');
+                            customAlert(data.cleanupWarning
+                                ? 'Profile photo updated successfully. ' + data.cleanupWarning
+                                : 'Profile photo updated successfully.', data.cleanupWarning ? 'Updated with Warning' : 'Success');
                         }
                     } else {
                         customAlert((data && data.error) ? data.error : 'Photo upload failed. Please try again.', 'Error');
                     }
-                } catch (err) { customAlert('Photo upload failed. Please try again.', 'Error'); }
-                inputEl.value = '';
+                } catch (err) {
+                    const msg = (err && err.message && !/fetch|network|load failed/i.test(err.message))
+                        ? err.message
+                        : 'Photo upload failed. Please check your connection and try again.';
+                    customAlert(msg, 'Error');
+                }
+                restoreUploadUI();
             };
-            reader.readAsDataURL(file);
+            try {
+                reader.readAsDataURL(file);
+            } catch (readErr) {
+                customAlert((readErr && readErr.message) || 'The selected image could not be read. Please try another image.', 'Error');
+                restoreUploadUI();
+            }
         }
         function renderProfileRecentMemos(username) {
             const box = document.getElementById('profileRecentMemos');
@@ -6050,14 +6109,27 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                     return `<td><label class="um-permission-cell" aria-label="${escapeAttr(subpage.label)} ${escapeAttr(action.label)}"><input type="checkbox" class="user-personnel-perm-cb" data-subpage="${escapeAttr(subpage.key)}" data-action="${escapeAttr(action.key)}" ${checked ? 'checked' : ''}><span>${escapeHtml(action.label)}</span></label></td>`;
                 }).join('')}</tr>`;
             }).join('');
-            document.getElementById('userAccessModal').classList.remove('hidden');
+            const modal = document.getElementById('userAccessModal');
+            if (!modal) return;
+            modal.classList.remove('hidden');
+            modal.setAttribute('aria-hidden', 'false');
+            modal.setAttribute('aria-modal', 'true');
             document.body.classList.add('profile-modal-open');
+            // Promote the dialog immediately; MutationObserver remains a fallback
+            // for other legacy modals opened only by toggling the hidden class.
+            window.SPADESModalStack?.bringToFront(modal);
         }
         function closeUserAccessModal() {
             const modal = document.getElementById('userAccessModal');
-            if (modal) modal.classList.add('hidden');
+            if (modal) {
+                modal.classList.add('hidden');
+                modal.setAttribute('aria-hidden', 'true');
+                modal.removeAttribute('aria-modal');
+            }
             document.body.classList.remove('profile-modal-open');
             currentAccessUsername = null;
+            // Recalculate scroll locking and stacking without waiting for the observer.
+            window.SPADESModalStack?.refresh();
         }
         async function saveUserAccess() {
             if (!isAlphaAdmin()) return customAlert('Only the Alpha Admin can configure account permissions.', 'Permission Denied');
@@ -6238,6 +6310,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             if (meta) meta.innerHTML = `<span class="profile-card-status ${String(p.status || 'Active').toLowerCase().replace(/[^a-z]/g,'-')}"><i aria-hidden="true"></i>${escapeHtml(p.status || 'Active')}</span><span class="profile-card-number">Personnel No. ${escapeHtml(String(p.no || '—'))}</span>`;
             const body = document.getElementById('profileCardBody');
             const rows = [
+                ['Badge Number', p.badgeNumber || '—'],
                 ['Rank', p.rank || '—'],
                 ['Full Name', [p.firstName, p.middleName, p.lastName, p.qualifiers].filter(Boolean).join(' ') || '—'],
                 ['Designation', p.designation || '—'],
@@ -6245,11 +6318,13 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 ['Contact Number', p.contactNo || '—'],
                 ['Remarks', p.remarks || '—']
             ];
-            body.innerHTML = rows.map(([label, value], i) => `<div class="profile-card-row"><span class="profile-card-row-icon" aria-hidden="true">${['♙','▤','▧','⌂','☎','≡'][i]}</span><span class="profile-card-row-label">${label}</span><strong>${escapeHtml(String(value))}</strong></div>`).join('');
+            body.innerHTML = rows.map(([label, value], i) => `<div class="profile-card-row"><span class="profile-card-row-icon" aria-hidden="true">${['▣','♙','▤','▧','⌂','☎','≡'][i]}</span><span class="profile-card-row-label">${label}</span><strong>${escapeHtml(String(value))}</strong></div>`).join('');
             const editButton = document.getElementById('profileCardEditBtn');
             const archiveButton = document.getElementById('profileCardArchiveBtn');
+            const browseButton = document.getElementById('profileCardBrowseBtn');
             if (editButton) editButton.style.display = canPersonnelAction('list', 'edit') ? '' : 'none';
             if (archiveButton) archiveButton.style.display = canPersonnelAction('list', 'delete') ? '' : 'none';
+            if (browseButton) browseButton.style.display = '';
             document.getElementById('personnelProfileModal').classList.remove('hidden');
         }
         function closePersonnelProfile() { document.getElementById('personnelProfileModal').classList.add('hidden'); profileCardPersonnelNo = null; }
@@ -6262,4 +6337,384 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             const no = profileCardPersonnelNo;
             closePersonnelProfile();
             if (no != null) archivePersonnel(no);
+        }
+        /* ---------- Personnel Folder Browser ---------- */
+        let currentFolderEntries = [];
+        let currentPreviewEntry = null;
+        let currentPreviewObjectUrl = null;
+        let previewRequestSequence = 0;
+        function formatFolderBytes(n) {
+            const num = Number(n) || 0;
+            if (num <= 0) return '0 B';
+            const units = ['B', 'KB', 'MB', 'GB'];
+            const i = Math.min(Math.floor(Math.log(num) / Math.log(1024)), units.length - 1);
+            return (num / Math.pow(1024, i)).toFixed(i ? 1 : 0) + ' ' + units[i];
+        }
+
+        async function fetchPersonnelFolderListing(no) {
+            const res = await fetch(API_URL, {
+                method:'POST', mode:'cors',
+                headers:{'Content-Type':'text/plain;charset=utf-8'},
+                body: JSON.stringify({
+                    action:'list_personnel_folder',
+                    username: localStorage.getItem('loggedInUser') || '',
+                    credential: localStorage.getItem('loggedCred') || '',
+                    personnelNo: no
+                })
+            });
+            let data;
+            try {
+                data = await res.json();
+            } catch (parseErr) {
+                throw new Error('The server returned an invalid response. Please try again later.');
+            }
+            return data;
+        }
+
+        function renderFolderBrowserEntries(entries) {
+            const list = document.getElementById('folderBrowserList');
+            if (!list) return;
+            currentFolderEntries = Array.isArray(entries) ? entries.slice() : [];
+            if (!currentFolderEntries.length) {
+                list.innerHTML = '<div style="padding:30px;text-align:center;color:var(--text-muted,#888);">No files in this folder yet. Use Upload below.</div>';
+                return;
+            }
+
+            list.innerHTML = currentFolderEntries.map(function (e, i) {
+                const name = String((e && e.name) || '');
+                const isFolder = !!(e && e.isFolder);
+                const size = isFolder ? '\u2014' : formatFolderBytes(e && e.size);
+                const modRaw = (e && (e.server_modified || e.client_modified)) || '';
+                let modified = '\u2014';
+                if (modRaw) {
+                    const parsed = new Date(modRaw);
+                    modified = Number.isNaN(parsed.getTime()) ? String(modRaw) : parsed.toLocaleString();
+                }
+                const icon = isFolder ? '\uD83D\uDCC1' : '\uD83D\uDCC4';
+                const secondary = size + ' \u00B7 ' + modified;
+                const clickHandler = isFolder ? '' : ' onclick="openFilePreview(currentFolderEntries[' + i + '])"';
+                const hoverHandlers = isFolder ? ''
+                    : ' onmouseover="this.style.background=\'rgba(37,99,235,0.07)\'" onmouseout="this.style.background=\'\'"';
+                const deleteButton = isFolder ? ''
+                    : '<button type="button" class="folder-entry-delete" data-folder-delete="' + i + '" '
+                        + 'onclick="event.stopPropagation();deletePersonnelFolderFile(' + i + ')" '
+                        + 'title="Delete file" aria-label="Delete ' + escapeAttr(name) + '">' 
+                        + '<i class="fi fi-rr-trash" aria-hidden="true"></i></button>';
+
+                return '<div class="profile-card-row folder-entry-row" data-idx="' + i + '" style="display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:8px;margin-bottom:6px;transition:background .15s;"' + hoverHandlers + '>'
+                    + '<button type="button" class="folder-entry-main"' + clickHandler + (isFolder ? ' disabled aria-disabled="true"' : '') + '>'
+                    + '<span class="folder-entry-name">' + icon + ' ' + escapeHtml(name) + '</span>'
+                    + '<span class="folder-entry-meta">' + escapeHtml(secondary) + '</span>'
+                    + '</button>' + deleteButton
+                    + '</div>';
+            }).join('');
+        }
+
+        function deletePersonnelFolderFile(index) {
+            const entry = currentFolderEntries[index];
+            const personnelNo = profileCardPersonnelNo;
+            if (!entry || entry.isFolder || !entry.path_lower) {
+                customAlert('Select a valid file to delete.', 'Delete File');
+                return;
+            }
+            if (personnelNo == null) {
+                customAlert('No personnel record is selected.', 'Delete File');
+                return;
+            }
+
+            const fileName = String(entry.name || 'this file');
+            const filePath = String(entry.path_lower);
+            customConfirm('Permanently delete "' + fileName + '" from this personnel folder? This action cannot be undone.', async confirmed => {
+                if (!confirmed) return;
+                const status = document.getElementById('folderBrowserStatus');
+                const deleteButton = document.querySelector('[data-folder-delete="' + index + '"]');
+                if (deleteButton) deleteButton.disabled = true;
+                if (status) status.textContent = 'Deleting ' + fileName + '\u2026';
+
+                try {
+                    const res = await fetch(API_URL, {
+                        method:'POST', mode:'cors',
+                        headers:{'Content-Type':'text/plain;charset=utf-8'},
+                        body: JSON.stringify({
+                            action:'delete_personnel_folder_file',
+                            username: localStorage.getItem('loggedInUser') || '',
+                            credential: localStorage.getItem('loggedCred') || '',
+                            personnelNo: personnelNo,
+                            path: filePath
+                        })
+                    });
+                    const data = await res.json();
+                    if (!data || !data.success) {
+                        throw new Error((data && data.error) || 'The file could not be deleted.');
+                    }
+
+                    if (currentPreviewEntry && currentPreviewEntry.path_lower === filePath) closeFilePreview();
+                    currentFolderEntries = currentFolderEntries.filter(item => String(item && item.path_lower || '') !== filePath);
+                    renderFolderBrowserEntries(currentFolderEntries);
+                    if (status) status.textContent = 'Deleted: ' + fileName;
+
+                    // Refresh from Dropbox to ensure the displayed list matches the backend.
+                    try {
+                        const refreshed = await fetchPersonnelFolderListing(personnelNo);
+                        if (refreshed && refreshed.success) renderFolderBrowserEntries(refreshed.entries || []);
+                    } catch (refreshErr) {
+                        console.warn('Personnel folder list refresh failed after file deletion:', refreshErr);
+                    }
+                    customAlert('The file "' + fileName + '" was deleted successfully.', 'Delete Complete');
+                } catch (err) {
+                    if (deleteButton && deleteButton.isConnected) deleteButton.disabled = false;
+                    if (status) status.textContent = 'Delete failed: ' + ((err && err.message) || 'Please try again.');
+                    customAlert((err && err.message) || 'The file could not be deleted. Please try again.', 'Delete Error');
+                }
+            });
+        }
+
+        async function openPersonnelFolderBrowser() {
+            const no = profileCardPersonnelNo;
+            if (no == null) return customAlert('No personnel selected.', 'Error');
+            const modal = document.getElementById('personnelFolderBrowserModal');
+            const list = document.getElementById('folderBrowserList');
+            const title = document.getElementById('folderBrowserTitle');
+            const uploadBtn = document.getElementById('personnelFolderUploadBtn');
+            const status = document.getElementById('folderBrowserStatus');
+            const p = allPersonnel.find(function (x) { return String(x.no) === String(no); });
+            if (title) title.textContent = (p ? personnelFullName(p) : 'Personnel') + ' \u2014 Folder';
+            if (list) list.innerHTML = '<div style="padding:30px;text-align:center;color:var(--text-muted,#888);">Loading\u2026</div>';
+            if (status) status.textContent = '';
+            if (uploadBtn) uploadBtn.disabled = true;
+            if (modal) modal.classList.remove('hidden');
+            try {
+                const data = await fetchPersonnelFolderListing(no);
+                if (data && data.success) {
+                    renderFolderBrowserEntries(data.entries || []);
+                    if (status && data.path) status.textContent = 'Path: ' + data.path;
+                } else {
+                    customAlert((data && data.error) ? data.error : 'Could not load folder.', 'Error');
+                    closePersonnelFolderBrowser();
+                }
+            } catch (err) {
+                const msg = (err && err.message && !/fetch|network|load failed/i.test(err.message))
+                    ? err.message
+                    : 'Could not reach the server. Please check your connection and try again.';
+                customAlert(msg, 'Error');
+                closePersonnelFolderBrowser();
+            } finally {
+                if (uploadBtn) uploadBtn.disabled = false;
+            }
+        }
+
+        async function uploadFilesToPersonnelFolder() {
+            const input = document.getElementById('personnelFolderFileInput');
+            const files = (input && input.files) ? Array.from(input.files) : [];
+            if (!files.length) return customAlert('Choose files first.', 'Upload');
+            const no = profileCardPersonnelNo;
+            if (no == null) return customAlert('No personnel selected.', 'Error');
+            const status = document.getElementById('folderBrowserStatus');
+            const uploadBtn = document.getElementById('personnelFolderUploadBtn');
+            if (uploadBtn) uploadBtn.disabled = true;
+            let okCount = 0;
+            const failures = [];
+            for (let i = 0; i < files.length; i++) {
+                const file = files[i];
+                if (status) status.textContent = 'Uploading ' + file.name + ' (' + (i + 1) + '/' + files.length + ')\u2026';
+                try {
+                    const rawBase64 = await readChatFileAsBase64(file); // strips data: prefix, returns raw base64
+                    const res = await fetch(API_URL, {
+                        method:'POST', mode:'cors',
+                        headers:{'Content-Type':'text/plain;charset=utf-8'},
+                        body: JSON.stringify({
+                            action:'upload_to_personnel_folder',
+                            username: localStorage.getItem('loggedInUser') || '',
+                            credential: localStorage.getItem('loggedCred') || '',
+                            personnelNo: no,
+                            fileName: file.name,
+                            mimeType: file.type || 'application/octet-stream',
+                            base64: rawBase64
+                        })
+                    });
+                    let data;
+                    try {
+                        data = await res.json();
+                    } catch (parseErr) {
+                        throw new Error('The server returned an invalid response.');
+                    }
+                    if (data && data.success) {
+                        okCount++;
+                    } else {
+                        failures.push(file.name + ': ' + ((data && data.error) ? data.error : 'upload failed'));
+                    }
+                } catch (err) {
+                    failures.push(file.name + ': ' + ((err && err.message) ? err.message : 'read failed'));
+                }
+            }
+            if (input) input.value = '';
+            const summary = okCount + ' uploaded' + (failures.length ? ', ' + failures.length + ' failed.' : '.');
+            if (status) status.textContent = summary;
+            customAlert(summary + (failures.length ? ('\n\nFailed:\n' + failures.join('\n')) : ''), 'Upload Result');
+            // Re-fetch listing so newly uploaded files appear immediately.
+            try {
+                const data = await fetchPersonnelFolderListing(no);
+                if (data && data.success) renderFolderBrowserEntries(data.entries || []);
+            } catch (_) { /* keep current list */ }
+            if (uploadBtn) uploadBtn.disabled = false;
+        }
+
+        function closePersonnelFolderBrowser() {
+            const modal = document.getElementById('personnelFolderBrowserModal');
+            if (modal) modal.classList.add('hidden');
+            const list = document.getElementById('folderBrowserList');
+            if (list) list.innerHTML = '';
+            const status = document.getElementById('folderBrowserStatus');
+            if (status) status.textContent = '';
+            const input = document.getElementById('personnelFolderFileInput');
+            if (input) input.value = '';
+        }
+
+        /* ---------- File Preview (inline, zero auto-download) ---------- */
+        const PREVIEWABLE_IMAGE_EXTS = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
+
+        function entryExtension(entry) {
+            const name = String((entry && entry.name) || '').toLowerCase();
+            const dot = name.lastIndexOf('.');
+            return (dot >= 0) ? name.slice(dot + 1) : '';
+        }
+
+        function entryModifiedLabel(entry) {
+            const modRaw = (entry && (entry.server_modified || entry.client_modified)) || '';
+            if (!modRaw) return '\u2014';
+            try { return new Date(modRaw).toLocaleString(); } catch (_) { return String(modRaw); }
+        }
+
+        function revokePreviewObjectUrl() {
+            if (currentPreviewObjectUrl) {
+                try { URL.revokeObjectURL(currentPreviewObjectUrl); } catch (_) {}
+                currentPreviewObjectUrl = null;
+            }
+        }
+
+        async function fetchFileTempLink(path) {
+            const res = await fetch(API_URL, {
+                method:'POST', mode:'cors',
+                headers:{'Content-Type':'text/plain;charset=utf-8'},
+                body: JSON.stringify({
+                    action:'get_file_temp_link',
+                    username: localStorage.getItem('loggedInUser') || '',
+                    credential: localStorage.getItem('loggedCred') || '',
+                    path: path || ''
+                })
+            });
+            let data;
+            try { data = await res.json(); }
+            catch (parseErr) { throw new Error('The server returned an invalid response.'); }
+            if (data && data.success && data.url) return data.url;
+            throw new Error((data && data.error) ? data.error : 'Could not retrieve a temporary link for this file.');
+        }
+
+        function renderPreviewInfoBlock(entry, message) {
+            const size = (entry && entry.isFolder) ? '\u2014' : formatFolderBytes(entry && entry.size);
+            return '<div style="text-align:left;max-width:480px;margin:0 auto;">'
+                + '<div style="font-weight:700;font-size:16px;margin-bottom:12px;word-break:break-all;">' + escapeHtml(String((entry && entry.name) || '')) + '</div>'
+                + '<div style="font-size:13px;color:var(--text-muted,#888);margin-bottom:6px;">Size: ' + escapeHtml(size) + '</div>'
+                + '<div style="font-size:13px;color:var(--text-muted,#888);margin-bottom:16px;">Modified: ' + escapeHtml(entryModifiedLabel(entry)) + '</div>'
+                + '<div style="font-size:13px;color:var(--text,#333);background:rgba(37,99,235,0.06);padding:12px;border-radius:6px;line-height:1.5;">' + escapeHtml(message) + '</div>'
+                + '</div>';
+        }
+
+        async function openFilePreview(entry) {
+            if (!entry) return;
+            const requestSequence = ++previewRequestSequence;
+            currentPreviewEntry = entry;
+            revokePreviewObjectUrl();
+            const modal = document.getElementById('filePreviewModal');
+            const nameEl = document.getElementById('previewFileName');
+            const metaEl = document.getElementById('previewMeta');
+            const content = document.getElementById('previewContent');
+            const downloadBtn = document.getElementById('previewDownloadBtn');
+            if (downloadBtn) downloadBtn.disabled = !!entry.isFolder;
+            const name = String(entry.name || '');
+            if (nameEl) nameEl.textContent = name;
+            if (metaEl) metaEl.textContent = (entry.isFolder ? '\u2014' : formatFolderBytes(entry.size)) + ' \u00B7 ' + entryModifiedLabel(entry);
+            if (content) content.innerHTML = '<div style="color:var(--text-muted,#888);">Loading preview\u2026</div>';
+            if (modal) modal.classList.remove('hidden');
+            const ext = entryExtension(entry);
+            const isImage = PREVIEWABLE_IMAGE_EXTS.indexOf(ext) >= 0;
+            const isPdf = ext === 'pdf';
+            if (entry.isFolder || (!isImage && !isPdf)) {
+                const msg = entry.isFolder
+                    ? 'This is a folder. Files inside it are listed in the browser.'
+                    : 'This file type cannot be previewed inline. Use the download icon above to save it to your device.';
+                if (content) content.innerHTML = renderPreviewInfoBlock(entry, msg);
+                return;
+            }
+            let url = String(entry.url || '').trim();
+            if (!url) {
+                try {
+                    url = await fetchFileTempLink(entry.path_lower);
+                } catch (err) {
+                    if (requestSequence !== previewRequestSequence || currentPreviewEntry !== entry) return;
+                    if (content) content.innerHTML = renderPreviewInfoBlock(entry, 'Preview unavailable: ' + ((err && err.message) ? err.message : 'could not fetch a temporary link.'));
+                    return;
+                }
+            }
+            if (requestSequence !== previewRequestSequence || currentPreviewEntry !== entry) return;
+            if (isImage) {
+                if (content) content.innerHTML = '<img src="' + escapeAttr(url) + '" style="max-width:100%;max-height:70vh;object-fit:contain;" alt="' + escapeAttr(name) + '">';
+                return;
+            }
+            // PDF: fetch as blob and render via same-origin object URL in an iframe.
+            try {
+                const res = await fetch(url);
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                const blob = await res.blob();
+                const objUrl = URL.createObjectURL(blob);
+                if (requestSequence !== previewRequestSequence || currentPreviewEntry !== entry) {
+                    URL.revokeObjectURL(objUrl);
+                    return;
+                }
+                currentPreviewObjectUrl = objUrl;
+                if (content) content.innerHTML = '<iframe src="' + escapeAttr(objUrl) + '" style="width:100%;height:70vh;border:none;background:#fff;" title="' + escapeAttr(name) + '"></iframe>';
+            } catch (err) {
+                if (requestSequence !== previewRequestSequence || currentPreviewEntry !== entry) return;
+                if (content) content.innerHTML = renderPreviewInfoBlock(entry, 'Preview unavailable for this PDF (' + ((err && err.message) ? err.message : 'fetch failed') + '). Use the download icon above.');
+            }
+        }
+
+        async function downloadPreviewFile() {
+            const entry = currentPreviewEntry;
+            if (!entry) return customAlert('No file selected.', 'Error');
+            if (entry.isFolder) return customAlert('Select a file rather than a folder to download.', 'Download');
+            const btn = document.getElementById('previewDownloadBtn');
+            if (btn) { btn.disabled = true; btn.setAttribute('aria-busy', 'true'); }
+            let objUrl = null;
+            try {
+                let url = String(entry.url || '').trim();
+                if (!url) url = await fetchFileTempLink(entry.path_lower);
+                const res = await fetch(url);
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                const blob = await res.blob();
+                objUrl = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = objUrl;
+                a.download = String(entry.name || 'download');
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+            } catch (err) {
+                customAlert((err && err.message) ? err.message : 'Download failed. Please try again.', 'Download Error');
+            } finally {
+                if (objUrl) setTimeout(function () { try { URL.revokeObjectURL(objUrl); } catch (_) {} }, 2000);
+                if (btn) { btn.disabled = false; btn.removeAttribute('aria-busy'); }
+            }
+        }
+
+        function closeFilePreview() {
+            previewRequestSequence++;
+            const modal = document.getElementById('filePreviewModal');
+            if (modal) modal.classList.add('hidden');
+            revokePreviewObjectUrl();
+            const content = document.getElementById('previewContent');
+            if (content) content.innerHTML = '';
+            const meta = document.getElementById('previewMeta');
+            if (meta) meta.textContent = '';
+            currentPreviewEntry = null;
         }

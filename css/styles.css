@@ -5656,3 +5656,664 @@ body.dark-mode [style*="background: white"], body.dark-mode [style*="background:
   scrollbar-gutter: stable;
   -webkit-overflow-scrolling: touch;
 }
+
+
+/* Personnel folder actions and preview-header download control */
+button.folder-entry-main {
+    display:flex !important;
+    flex:1 1 auto;
+    min-width:0;
+    flex-direction:column;
+    align-items:flex-start;
+    gap:4px;
+    padding:0 !important;
+    border:0 !important;
+    background:transparent !important;
+    box-shadow:none !important;
+    border-radius:0 !important;
+    color:inherit;
+    text-align:left;
+    cursor:pointer;
+}
+.folder-entry-main:disabled {
+    cursor:default;
+    opacity:1 !important;
+}
+button.folder-entry-main:hover:not(:disabled),
+button.folder-entry-main:active:not(:disabled) {
+    background:transparent !important;
+    box-shadow:none !important;
+    transform:none !important;
+}
+.folder-entry-name {
+    display:block;
+    max-width:100%;
+    overflow-wrap:anywhere;
+    color:var(--text,#111);
+    font-size:14px;
+    font-weight:700;
+    line-height:1.35;
+}
+.folder-entry-meta {
+    display:block;
+    color:var(--text-muted,#888);
+    font-size:12px;
+}
+.folder-entry-delete {
+    display:inline-grid;
+    flex:0 0 36px;
+    width:36px;
+    height:36px;
+    place-items:center;
+    border:1px solid rgba(220,38,38,.22);
+    border-radius:9px;
+    background:rgba(220,38,38,.07);
+    color:#dc2626;
+    cursor:pointer;
+    transition:background .16s ease,border-color .16s ease,transform .16s ease;
+}
+.folder-entry-delete:hover:not(:disabled) {
+    border-color:rgba(220,38,38,.45);
+    background:rgba(220,38,38,.14);
+    transform:translateY(-1px);
+}
+.folder-entry-delete:disabled {
+    cursor:wait;
+    opacity:.55;
+}
+.profile-card-download {
+    position:absolute;
+    top:12px;
+    right:56px;
+    z-index:2;
+    display:grid;
+    width:34px;
+    height:34px;
+    place-items:center;
+    border:1px solid rgba(255,255,255,.35);
+    border-radius:11px;
+    background:rgba(15,23,42,.18);
+    color:#fff;
+    font-size:16px;
+    cursor:pointer;
+    transition:background .18s,transform .18s,opacity .18s;
+}
+.profile-card-download:hover:not(:disabled) {
+    background:rgba(15,23,42,.35);
+    transform:translateY(-1px);
+}
+.profile-card-download:disabled {
+    cursor:not-allowed;
+    opacity:.45;
+}
+@media (max-width:520px) {
+    .folder-entry-delete { flex-basis:34px; width:34px; height:34px; }
+    #previewContent { padding-left:12px !important; padding-right:12px !important; }
+}
+
+/* ========================================================================
+   SPADES RESPONSIVE MODAL, CONTAINER AND TABLE SYSTEM
+   Final layout layer: resolves legacy per-modal overflow rules consistently.
+   ======================================================================== */
+:root {
+  --sp-modal-gutter: clamp(8px, 2.2vw, 22px);
+  --sp-panel-radius: 16px;
+  --sp-table-head: #edf3fa;
+  --sp-table-row-alt: rgba(241, 246, 252, .54);
+  --sp-table-hover: rgba(37, 99, 235, .075);
+}
+body.dark-mode {
+  --sp-table-head: #1b2b42;
+  --sp-table-row-alt: rgba(255, 255, 255, .025);
+  --sp-table-hover: rgba(112, 167, 255, .10);
+}
+
+/* Keep flex/grid descendants shrinkable so content scrolls in its own region. */
+#appLayout,
+#appLayout .main-content,
+#appLayout .tab-content,
+#appLayout .page-section,
+#appLayout .personnel-subpage,
+#appLayout .personnel-content,
+#appLayout .personnel-table-content,
+#appLayout .personnel-content-layout,
+#appLayout .content-area,
+#appLayout .content-card,
+#appLayout .glass-panel,
+#appLayout .dashboard-card,
+#appLayout .settings-section,
+#appLayout .table-container,
+#appLayout .um-panel,
+#appLayout .exec-card,
+#appLayout .activity-data-modal,
+#appLayout .um-table-scroll {
+  min-width: 0;
+  max-width: 100%;
+}
+#appLayout .main-content {
+  flex: 1 1 0%;
+  width: auto;
+  overflow-x: clip;
+}
+#appLayout .table-wrapper,
+#appLayout .um-table-scroll,
+#appLayout .activity-data-table-wrap,
+#appLayout .um-access-matrix-scroll {
+  max-width: 100%;
+  min-width: 0;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-gutter: stable;
+}
+
+/* Modal backdrop: align large dialogs from the top safely, while margin:auto
+   centers dialogs that fit. Both the backdrop and the dialog remain scrollable. */
+.modal-overlay:not(.hidden),
+.profile-settings-overlay:not(.hidden) {
+  position: fixed !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100vh !important;
+  height: 100dvh !important;
+  min-height: 0 !important;
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: flex-start !important;
+  justify-content: center !important;
+  gap: 0 !important;
+  padding: var(--sp-modal-gutter) !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-gutter: stable;
+  background: rgba(7, 17, 34, .62) !important;
+  -webkit-backdrop-filter: blur(9px) saturate(118%);
+  backdrop-filter: blur(9px) saturate(118%);
+}
+.modal-overlay > .modal-content,
+.profile-settings-overlay > .modal-content {
+  flex: 0 0 auto;
+  min-width: 0;
+  min-height: 0;
+  max-height: calc(100vh - (2 * var(--sp-modal-gutter))) !important;
+  max-height: calc(100dvh - (2 * var(--sp-modal-gutter))) !important;
+  margin: auto;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-gutter: stable;
+  background: var(--ui-surface, #fff) !important;
+  color: var(--text-main, #172033);
+  border: 1px solid var(--ui-outline, #dbe4ef) !important;
+  border-radius: 20px !important;
+  box-shadow: 0 26px 76px rgba(2, 12, 28, .30), 0 5px 18px rgba(2, 12, 28, .10) !important;
+  text-align: left;
+}
+.modal-overlay > .modal-content > * {
+  min-width: 0;
+  max-width: 100%;
+}
+.modal-content :where(h1, h2, h3, h4, p, label, small, strong, span) {
+  overflow-wrap: anywhere;
+}
+.modal-content :where(input, select, textarea, button) {
+  max-width: 100%;
+}
+.modal-content :where(input:not([type="checkbox"]):not([type="radio"]), select, textarea) {
+  min-width: 0;
+}
+.modal-content :where(img, video, iframe, canvas) {
+  max-width: 100%;
+}
+
+/* Long-list dialogs keep their list/table scroll areas separate from the form. */
+.modal-content .table-wrapper,
+.modal-content .um-table-scroll,
+.modal-content .um-access-matrix-scroll,
+.modal-content .activity-data-table-wrap,
+.modal-content .leave-personnel-table,
+.modal-content .personnel-table-content {
+  min-width: 0;
+  max-width: 100%;
+  overflow: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-gutter: stable;
+  border-radius: 13px;
+}
+.modal-content .table-wrapper {
+  max-height: min(58vh, 620px);
+  max-height: min(58dvh, 620px);
+}
+.modal-content .activity-data-table-wrap {
+  flex: 1 1 auto;
+  min-height: 120px;
+  max-height: none;
+}
+#activityModal .activity-edit-modal {
+  max-height: calc(100vh - (2 * var(--sp-modal-gutter))) !important;
+  max-height: calc(100dvh - (2 * var(--sp-modal-gutter))) !important;
+}
+#activityModal .activity-form-grid {
+  min-height: 0;
+  max-height: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+#userAccessModal .um-access-modal {
+  max-height: calc(100vh - (2 * var(--sp-modal-gutter))) !important;
+  max-height: calc(100dvh - (2 * var(--sp-modal-gutter))) !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+}
+#userAccessModal .um-access-matrix-scroll {
+  max-height: min(42vh, 390px);
+  max-height: min(42dvh, 390px);
+  overflow: auto;
+}
+#userAccessModal .um-access-modal-actions {
+  position: sticky;
+  bottom: -1px;
+  z-index: 4;
+  padding: 13px 0 2px;
+  background: var(--ui-surface, #fff);
+}
+#securitySettingsModal .modal-content,
+#profileSettingsModal .modal-content,
+#userProfileViewModal .modal-content,
+#personnelProfileModal .modal-content,
+#personnelFolderBrowserModal .modal-content,
+#filePreviewModal .modal-content {
+  max-height: calc(100vh - (2 * var(--sp-modal-gutter))) !important;
+  max-height: calc(100dvh - (2 * var(--sp-modal-gutter))) !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+}
+#userProfileViewModal .pf-view-modal {
+  max-height: calc(100vh - (2 * var(--sp-modal-gutter))) !important;
+  max-height: calc(100dvh - (2 * var(--sp-modal-gutter))) !important;
+  overflow-y: auto !important;
+}
+
+/* Consistent modal heading, close controls and action areas. */
+.modal-content :where(.spades-modal-heading, .profile-modal-heading,
+  .activity-data-modal-head, .activity-edit-modal-head,
+  .activity-details-heading, .um-access-modal-header) {
+  min-width: 0;
+  gap: 14px;
+}
+.modal-content :where(.spades-modal-heading, .profile-modal-heading,
+  .activity-data-modal-head, .activity-edit-modal-head,
+  .activity-details-heading, .um-access-modal-header) > :first-child {
+  min-width: 0;
+}
+.modal-content :where(.spades-modal-close, .profile-modal-close,
+  .activity-data-close, .activity-edit-close, .activity-details-close,
+  .profile-card-close) {
+  flex: 0 0 auto;
+}
+.modal-content :where(.profile-modal-footer, .profile-modal-actions,
+  .um-access-modal-actions, .activity-details-footer) {
+  flex-wrap: wrap;
+  gap: 9px;
+}
+.modal-content :where(.profile-modal-footer, .profile-modal-actions,
+  .um-access-modal-actions, .activity-details-footer) > button {
+  min-width: 0;
+}
+.modal-content .spades-modal-heading,
+.modal-content .activity-data-modal-head,
+.modal-content .profile-modal-heading,
+.modal-content .um-access-modal-header,
+.modal-content .activity-edit-modal-head,
+.modal-content .activity-details-heading {
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--ui-outline, var(--border-color));
+}
+.modal-content .activity-edit-modal-head { margin-bottom: 12px; }
+
+/* Refined panel/container surfaces across the application. */
+#appLayout :where(.glass-panel, .content-card, .dashboard-card, .stat-card,
+  .settings-section, .table-container, .um-panel, .exec-card,
+  .personnel-card, .activity-card, .memo-card) {
+  border-color: var(--ui-outline, var(--border-color));
+  border-radius: var(--sp-panel-radius);
+}
+#appLayout :where(.content-card, .dashboard-card, .stat-card, .settings-section,
+  .table-container, .exec-card) {
+  box-shadow: var(--ui-shadow, 0 8px 24px rgba(15, 23, 42, .06));
+}
+#appLayout .main-content :where(.content-card, .dashboard-card, .settings-section,
+  .table-container, .exec-card, .table-wrapper) {
+  min-width: 0;
+}
+body.dark-mode #appLayout :where(.glass-panel, .content-card, .dashboard-card,
+  .stat-card, .settings-section, .table-container, .um-panel, .exec-card,
+  .personnel-card, .activity-card, .memo-card) {
+  border-color: var(--ui-outline, rgba(220, 232, 248, .12));
+  color: var(--text-main);
+}
+
+/* Tables use a framed, horizontal-scroll-safe container and clearer hierarchy. */
+.table-wrapper,
+.activity-data-table-wrap,
+.um-table-scroll,
+.um-access-matrix-scroll,
+.table-responsive,
+.table-scroll-container {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  border: 1px solid var(--ui-outline, var(--border-color));
+  border-radius: 14px;
+  background: var(--ui-surface, #fff);
+  box-shadow: 0 5px 18px rgba(20, 47, 82, .045);
+  overflow-x: auto;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-gutter: stable;
+}
+.table-wrapper {
+  max-height: min(68vh, 680px);
+  max-height: min(68dvh, 680px);
+}
+.activity-data-table-wrap {
+  max-height: none;
+  box-shadow: none;
+}
+.um-table-scroll { border-color: var(--ui-outline, var(--border-color)); }
+.um-access-matrix-scroll { box-shadow: none; }
+.table-wrapper > table,
+.activity-data-table-wrap > table,
+.um-table-scroll > table,
+.um-access-matrix-scroll > table,
+.table-responsive > table,
+.table-scroll-container > table {
+  width: 100%;
+  min-width: 680px;
+  border-collapse: separate;
+  border-spacing: 0;
+  border-radius: 0;
+  overflow: visible;
+  color: var(--text-main);
+}
+.table-wrapper table th,
+.activity-data-table-wrap table th,
+.um-table-scroll table th,
+.um-access-matrix-scroll table th,
+.table-responsive table th,
+.table-scroll-container table th {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  padding: 12px 14px;
+  background: var(--sp-table-head) !important;
+  color: var(--text-muted, #53657d) !important;
+  border-bottom: 1px solid var(--ui-outline, var(--border-color));
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1.35;
+  letter-spacing: .075em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.table-wrapper table td,
+.activity-data-table-wrap table td,
+.um-table-scroll table td,
+.um-access-matrix-scroll table td,
+.table-responsive table td,
+.table-scroll-container table td {
+  padding: 11px 14px;
+  color: var(--text-main);
+  border-bottom: 1px solid var(--ui-outline, var(--border-color));
+  font-size: 12px;
+  line-height: 1.45;
+  vertical-align: middle;
+  overflow-wrap: anywhere;
+}
+.table-wrapper table tbody tr:nth-child(even),
+.activity-data-table-wrap table tbody tr:nth-child(even),
+.um-table-scroll table tbody tr:nth-child(even),
+.um-access-matrix-scroll table tbody tr:nth-child(even),
+.table-responsive table tbody tr:nth-child(even),
+.table-scroll-container table tbody tr:nth-child(even) {
+  background: var(--sp-table-row-alt);
+}
+.table-wrapper table tbody tr:hover,
+.activity-data-table-wrap table tbody tr:hover,
+.um-table-scroll table tbody tr:hover,
+.um-access-matrix-scroll table tbody tr:hover,
+.table-responsive table tbody tr:hover,
+.table-scroll-container table tbody tr:hover {
+  background: var(--sp-table-hover) !important;
+}
+.table-wrapper table tbody tr:last-child td,
+.activity-data-table-wrap table tbody tr:last-child td,
+.um-table-scroll table tbody tr:last-child td,
+.um-access-matrix-scroll table tbody tr:last-child td,
+.table-responsive table tbody tr:last-child td,
+.table-scroll-container table tbody tr:last-child td {
+  border-bottom: 0;
+}
+/* Preserve purpose-built narrow and fixed-layout tables. */
+#activityTable { min-width: 1180px; }
+#tabAdminMgmt .um-table { min-width: 1040px; }
+.personnel-data-table { min-width: 1180px; }
+.data-table { min-width: 560px; }
+.exec-table { min-width: 480px; }
+
+body.dark-mode .table-wrapper,
+body.dark-mode .activity-data-table-wrap,
+body.dark-mode .um-table-scroll,
+body.dark-mode .um-access-matrix-scroll,
+body.dark-mode .table-responsive,
+body.dark-mode .table-scroll-container {
+  background: var(--ui-surface, #111d30);
+  border-color: var(--ui-outline, #29384d);
+  box-shadow: 0 5px 18px rgba(0, 0, 0, .12);
+}
+body.dark-mode .table-wrapper table th,
+body.dark-mode .activity-data-table-wrap table th,
+body.dark-mode .um-table-scroll table th,
+body.dark-mode .um-access-matrix-scroll table th,
+body.dark-mode .table-responsive table th,
+body.dark-mode .table-scroll-container table th {
+  background: var(--sp-table-head) !important;
+  color: #d2deef !important;
+  border-bottom-color: var(--ui-outline, #29384d);
+}
+body.dark-mode .table-wrapper table td,
+body.dark-mode .activity-data-table-wrap table td,
+body.dark-mode .um-table-scroll table td,
+body.dark-mode .um-access-matrix-scroll table td,
+body.dark-mode .table-responsive table td,
+body.dark-mode .table-scroll-container table td {
+  color: var(--text-main);
+  border-bottom-color: var(--ui-outline, #29384d);
+}
+
+/* Responsive behavior: dialogs become edge-to-edge cards and tables scroll
+   locally instead of forcing the page or modal wider than the viewport. */
+@media (max-width: 700px) {
+  .modal-overlay,
+  .profile-settings-overlay {
+    padding: 8px !important;
+  }
+  .modal-overlay > .modal-content,
+  .profile-settings-overlay > .modal-content {
+    width: 100% !important;
+    max-width: 100% !important;
+    max-height: calc(100vh - 16px) !important;
+    max-height: calc(100dvh - 16px) !important;
+    border-radius: 16px !important;
+    padding: 16px !important;
+  }
+  #userProfileViewModal > .modal-content,
+  #personnelProfileModal > .modal-content,
+  #personnelFolderBrowserModal > .modal-content,
+  #filePreviewModal > .modal-content {
+    padding: 0 !important;
+  }
+  .modal-content :where(.spades-modal-heading, .profile-modal-heading,
+    .activity-data-modal-head, .activity-edit-modal-head,
+    .activity-details-heading, .um-access-modal-header) {
+    align-items: flex-start;
+  }
+  .modal-content :where(.profile-modal-footer, .profile-modal-actions,
+    .um-access-modal-actions, .activity-details-footer) > button {
+    flex: 1 1 125px;
+  }
+  .modal-content .table-wrapper {
+    max-height: min(54vh, 480px);
+    max-height: min(54dvh, 480px);
+  }
+  .modal-content .activity-data-table-wrap { max-height: none; }
+  .table-wrapper table th,
+  .activity-data-table-wrap table th,
+  .um-table-scroll table th,
+  .um-access-matrix-scroll table th,
+  .table-responsive table th,
+  .table-scroll-container table th { padding: 10px 11px; font-size: 9px; }
+  .table-wrapper table td,
+  .activity-data-table-wrap table td,
+  .um-table-scroll table td,
+  .um-access-matrix-scroll table td,
+  .table-responsive table td,
+  .table-scroll-container table td { padding: 9px 11px; font-size: 11px; }
+  #activityModal .activity-edit-modal { max-height: calc(100dvh - 16px) !important; }
+  #userAccessModal .um-access-matrix-scroll { max-height: min(38dvh, 300px); }
+}
+@media (max-width: 420px) {
+  .modal-overlay,
+  .profile-settings-overlay { padding: 6px !important; }
+  .modal-overlay > .modal-content,
+  .profile-settings-overlay > .modal-content {
+    max-height: calc(100dvh - 12px) !important;
+    padding: 13px !important;
+    border-radius: 14px !important;
+  }
+  #userProfileViewModal > .modal-content,
+  #personnelProfileModal > .modal-content,
+  #personnelFolderBrowserModal > .modal-content,
+  #filePreviewModal > .modal-content { padding: 0 !important; }
+  .modal-content :where(.profile-modal-footer, .profile-modal-actions,
+    .um-access-modal-actions, .activity-details-footer) { gap: 7px; }
+  .modal-content :where(.profile-modal-footer, .profile-modal-actions,
+    .um-access-modal-actions, .activity-details-footer) > button { flex-basis: 100%; }
+  .table-wrapper > table,
+  .activity-data-table-wrap > table,
+  .um-table-scroll > table,
+  .um-access-matrix-scroll > table,
+  .table-responsive > table,
+  .table-scroll-container > table { min-width: 600px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .modal-overlay:not(.hidden),
+  .modal-overlay:not(.hidden) > .modal-content { animation: none !important; }
+}
+
+
+/* Scroll affordance: retain the narrow, subtle scrollbars hidden by legacy
+   global rules on dialogs and data regions only. */
+.modal-overlay, .modal-content,
+.table-wrapper, .activity-data-table-wrap, .um-table-scroll,
+.um-access-matrix-scroll, .table-responsive, .table-scroll-container,
+#folderBrowserList, #previewContent, #areaPersonnelList, #leavePersonnelTable {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(100, 116, 139, .48) transparent;
+  -ms-overflow-style: auto;
+}
+.modal-overlay::-webkit-scrollbar, .modal-content::-webkit-scrollbar,
+.table-wrapper::-webkit-scrollbar, .activity-data-table-wrap::-webkit-scrollbar,
+.um-table-scroll::-webkit-scrollbar, .um-access-matrix-scroll::-webkit-scrollbar,
+.table-responsive::-webkit-scrollbar, .table-scroll-container::-webkit-scrollbar,
+#folderBrowserList::-webkit-scrollbar, #previewContent::-webkit-scrollbar,
+#areaPersonnelList::-webkit-scrollbar, #leavePersonnelTable::-webkit-scrollbar {
+  display: block !important;
+  width: 8px !important;
+  height: 8px !important;
+}
+.modal-overlay::-webkit-scrollbar-thumb, .modal-content::-webkit-scrollbar-thumb,
+.table-wrapper::-webkit-scrollbar-thumb, .activity-data-table-wrap::-webkit-scrollbar-thumb,
+.um-table-scroll::-webkit-scrollbar-thumb, .um-access-matrix-scroll::-webkit-scrollbar-thumb,
+.table-responsive::-webkit-scrollbar-thumb, .table-scroll-container::-webkit-scrollbar-thumb,
+#folderBrowserList::-webkit-scrollbar-thumb, #previewContent::-webkit-scrollbar-thumb,
+#areaPersonnelList::-webkit-scrollbar-thumb, #leavePersonnelTable::-webkit-scrollbar-thumb {
+  border-radius: 99px;
+  background: rgba(100, 116, 139, .42);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+
+/* Critical visibility guard: closed dialogs must never be displayed by the
+   global flex layout above. Keep this final rule after all modal styling. */
+.modal-overlay.hidden,
+.profile-settings-overlay.hidden {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+
+/* SPADES visual refresh — cohesive institutional dashboard */
+:root {
+  --primary:#174ea6; --primary-hover:#123f88; --text-main:#172b4d; --text-muted:#64748b;
+  --border-color:#dbe4f0; --glass-bg:#ffffff; --radius-lg:18px; --radius-md:12px;
+  --radius-sm:8px; --surface:#ffffff; --surface-soft:#f4f7fb; --shadow-card:0 8px 28px rgba(22,48,84,.08);
+}
+body { background:#f3f6fb; color:var(--text-main); font-family:Inter,"Segoe UI",sans-serif; }
+body.dark-mode { --surface:#17243a; --surface-soft:#1d2e49; --glass-bg:#17243a; --border-color:#334762; --text-main:#edf4ff; background:#0c1728; }
+.top-bar { background:linear-gradient(110deg,#102b55,#174ea6 68%,#2362b5); height:66px; padding:10px 24px; box-shadow:0 5px 18px rgba(12,35,69,.18); }
+.sidebar { background:linear-gradient(180deg,#102b55 0%,#153b70 100%); width:268px; padding:20px 14px; gap:7px; border-right:1px solid rgba(255,255,255,.08); box-shadow:5px 0 22px rgba(15,39,75,.08); }
+.sidebar-header { padding:4px 12px 20px; border-bottom:1px solid rgba(255,255,255,.15); margin-bottom:12px; }
+.sidebar-header img { width:50px; height:50px; }
+.sidebar-header h1 { font-size:16px; letter-spacing:.04em; }
+.sidebar-btn { min-height:48px; padding:12px 15px; border-radius:12px; font-size:14px; letter-spacing:.01em; }
+.sidebar-btn.active { background:linear-gradient(100deg,rgba(92,161,255,.30),rgba(92,161,255,.12))!important; box-shadow:inset 3px 0 #8fc2ff; }
+/* Larger, clearer navigation icons */
+.sidebar-btn .nav-icon { width:27px!important; height:27px!important; min-width:27px; font-size:25px!important; line-height:1; margin-right:16px!important; opacity:1!important; }
+.sidebar.collapsed .sidebar-btn .nav-icon { margin-right:0!important; width:29px!important; height:29px!important; font-size:27px!important; }
+.main-content { max-width:none; padding:30px clamp(18px,2.5vw,42px); }
+.glass-panel,.modal-content,.settings-section,.users-chat-sidebar,.users-chat-main { background:var(--surface); border:1px solid var(--border-color); border-radius:16px; box-shadow:var(--shadow-card); backdrop-filter:none; }
+.glass-panel { padding:22px; }
+.main-content h2,.main-content h3 { color:var(--text-main); letter-spacing:-.02em; }
+.controls { gap:14px; margin-bottom:20px; }
+.action-btn { border-radius:9px; font-weight:600; padding:9px 14px; }
+button { border-radius:10px; }
+table { border-collapse:separate; border-spacing:0; background:var(--surface); border-radius:12px; overflow:hidden; }
+th { background:#eaf1fa; color:#17365f; font-weight:700; letter-spacing:.025em; }
+td,th { border-bottom:1px solid var(--border-color); }
+tbody tr:last-child td { border-bottom:0; }
+body.dark-mode th { background:#223653; color:#e7f0ff; }
+input[type="text"],input[type="password"],input[type="email"],input[type="date"],select,textarea { background:var(--surface-soft); border-color:var(--border-color); border-radius:10px; }
+.modal-overlay:not(.hidden) { padding:18px; }
+.modal-content { max-height:calc(100vh - 36px); overflow:auto; }
+@media(max-width:800px) { .top-bar{height:60px;padding:8px 14px}.sidebar{width:270px}.main-content{padding:16px 12px}.glass-panel{padding:15px}.sidebar-btn .nav-icon{width:26px!important;height:26px!important;font-size:24px!important} }
+
+
+/* Unified modal header treatment: consistent SPADES navy across dialogs. */
+.modal-content :is(.profile-card-banner, .spades-modal-heading, .activity-details-heading,
+  .um-access-modal-header, .profile-modal-heading, .alpha-credential-header,
+  .duty-calendar-header, .leave-entries-heading) {
+  background: linear-gradient(110deg, #102b55 0%, #174ea6 68%, #2362b5 100%) !important;
+  color: #fff !important;
+  border-color: rgba(255,255,255,.14) !important;
+}
+.modal-content :is(.profile-card-banner, .spades-modal-heading, .activity-details-heading,
+  .profile-modal-heading, .alpha-credential-header, .duty-calendar-header,
+  .leave-entries-heading) :is(h1,h2,h3,h4,p,span,label) { color: inherit; }
+.modal-content .um-access-modal-header h2,
+.modal-content .um-access-modal-header p { color: #fff !important; }
+.modal-content .profile-card-banner { background: linear-gradient(110deg, #102b55 0%, #174ea6 68%, #2362b5 100%) !important; }
+
+/* Navigation icon scale: slightly smaller while retaining clear alignment. */
+.sidebar-btn .nav-icon { width:22px!important; height:22px!important; min-width:22px!important; font-size:20px!important; margin-right:15px!important; }
+.sidebar.collapsed .sidebar-btn .nav-icon { width:23px!important; height:23px!important; min-width:23px!important; font-size:21px!important; margin-right:0!important; }
+@media(max-width:800px) { .sidebar-btn .nav-icon { width:22px!important; height:22px!important; min-width:22px!important; font-size:20px!important; } }
