@@ -4814,26 +4814,23 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             renderBmiTable();
             return loaded;
         }
+        function currentBmiPeriod() {
+            const now = new Date();
+            return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+        }
         function populateBmiPeriods() {
             const sel = document.getElementById('bmiPeriodSelect');
             if (!sel) return;
-            const periods = [...new Set(bmiRecords.map(r => String(r.period || '').trim()).filter(Boolean))].sort().reverse();
-            const years = [...new Set(periods.map(p => p.slice(0,4)))].sort().reverse();
+            const period = currentBmiPeriod();
+            const [year, month] = period.split('-');
+            const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+            // BMI Monitoring is intentionally locked to the current month; historical
+            // entries remain stored and are never overwritten by current-month edits.
+            sel.innerHTML = `<option value="${period}">${monthNames[Number(month)-1]} ${year}</option>`;
+            sel.value = period;
+            sel.disabled = true;
             const mode = document.getElementById('bmiViewMode');
-            const isYearly = mode && mode.value === 'yearly';
-            const current = sel.value;
-            if (isYearly) {
-                sel.innerHTML = '<option value="">All Years</option>' + years.map(y => `<option value="${y}">${y}</option>`).join('');
-            } else {
-                sel.innerHTML = '<option value="">All Months</option>' + periods.map(p => {
-                    const [y,m] = p.split('-');
-                    const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-                    const label = `${monthNames[Number(m)-1]} ${y}`;
-                    return `<option value="${p}">${label}</option>`;
-                }).join('');
-            }
-            if (current && (periods.includes(current) || years.includes(current))) sel.value = current;
-            else sel.value = '';
+            if (mode) { mode.value = 'monthly'; mode.disabled = true; mode.style.display = 'none'; }
         }
         function renderBmiTable() {
             const tbody = document.getElementById('bmiTableBody');
@@ -4857,8 +4854,8 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             })();
             const periodSel = document.getElementById('bmiPeriodSelect');
             const modeSel = document.getElementById('bmiViewMode');
-            const period = (periodSel ? periodSel.value : '').trim();
-            const mode = modeSel ? modeSel.value : 'monthly';
+            const period = currentBmiPeriod();
+            const mode = 'monthly';
 
             const can = canPersonnelAction('bmi', 'add') || canPersonnelAction('bmi', 'edit') || canPersonnelAction('bmi', 'delete');
             const dlBtn = document.getElementById('bmiDownloadBtn');
@@ -4884,7 +4881,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 const [yy, mm] = period.split('-');
                 const mN = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
                 return `${mN[Number(mm)-1] || period} ${yy}`;
-            })() : (mode === 'yearly' ? 'All Years' : 'All Months');
+            })() : (() => { const [yy, mm] = currentBmiPeriod().split('-'); return `${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][Number(mm)-1]} ${yy}`; })();
             if (summary) {
                 const chips = Object.keys(classCounts).sort().map(c =>
                     `<span class="bmi-class-chip" style="border-color:${bmiClassColor(c)};color:${bmiClassColor(c)};">${escapeHtml(c)}: <strong>${classCounts[c]}</strong></span>`
@@ -4972,9 +4969,10 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                     const storedRec = recordMap.get(key) || null;
                     const rec = storedRec ? normalizeBmiRecordForDisplay(storedRec) : null;
                     const fullName = personnelFullName(p);
-                    const canEditThisBmi = rec
-                        ? (canPersonnelAction('bmi', 'edit') && isCurrentUserRecordOwner(rec.encodedBy))
-                        : canPersonnelAction('bmi', 'add');
+                    const currentPeriodRecord = bmiRecords.find(r => personnelFullName(r) === fullName && String(r.period || '').trim() === currentBmiPeriod());
+                    const canEditThisBmi = currentPeriodRecord
+                        ? (canPersonnelAction('bmi', 'edit') && isCurrentUserRecordOwner(currentPeriodRecord.encodedBy))
+                        : (canPersonnelAction('bmi', 'add') || (rec && canPersonnelAction('bmi', 'edit') && isCurrentUserRecordOwner(rec.encodedBy)));
                     const nameCell = canEditThisBmi
                         ? `<td><span class="bmi-name-link" onclick="openBmiModalForPersonnel(${x.origIdx})" title="${rec ? 'Edit your BMI record' : 'Encode BMI record'}">${escapeHtml(fullName)}</span></td>`
                         : `<td>${escapeHtml(fullName)}</td>`;
@@ -5004,8 +5002,8 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         function downloadBmiExcel() {
             const periodSel = document.getElementById('bmiPeriodSelect');
             const modeSel = document.getElementById('bmiViewMode');
-            const period = (periodSel ? periodSel.value : '').trim();
-            const mode = modeSel ? modeSel.value : 'monthly';
+            const period = currentBmiPeriod();
+            const mode = 'monthly';
             let filteredRecords = bmiRecords.slice();
             if (period) {
                 if (mode === 'yearly') filteredRecords = filteredRecords.filter(r => String(r.period || '').trim().startsWith(period));
@@ -5067,53 +5065,40 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             if (!allPersonnel || !allPersonnel.length) { loadPersonnel(); customAlert("Personnel data is still loading. Please try again in a moment.", "Loading"); return; }
             const p = allPersonnel[Number(origIdx)];
             if (!p) return;
-
-            const periodSel = document.getElementById('bmiPeriodSelect');
-            const modeSel = document.getElementById('bmiViewMode');
-            const period = (periodSel ? periodSel.value : '').trim();
-            const mode = modeSel ? modeSel.value : 'monthly';
-
-            // Find the latest record for this person within the selected period.
+            const period = currentBmiPeriod();
             const pKey = personnelFullName(p);
-            let candidates = bmiRecords.filter(r => personnelFullName(r) === pKey);
-            if (period) {
-                if (mode === 'yearly') candidates = candidates.filter(r => String(r.period || '').trim().startsWith(period));
-                else candidates = candidates.filter(r => String(r.period || '').trim() === period);
-            }
-            candidates.sort((a, b) => String(b.period || '').localeCompare(String(a.period || '')));
-            const rec = candidates[0] || null;
-            const requiredOperation = rec ? 'edit' : 'add';
+            const candidates = bmiRecords.filter(r => personnelFullName(r) === pKey)
+                .sort((a, b) => String(b.period || '').localeCompare(String(a.period || '')));
+            // Edit only an existing record for the current month. If none exists,
+            // prefill from the latest historical record but create a NEW monthly row.
+            const currentRecord = candidates.find(r => String(r.period || '').trim() === period) || null;
+            const seedRecord = currentRecord || candidates[0] || null;
+            const requiredOperation = currentRecord ? 'edit' : 'add';
             if (!canPersonnelAction('bmi', requiredOperation)) {
                 customAlert(`You do not have permission to ${requiredOperation} BMI records.`, 'Permission Denied');
                 return;
             }
-
-            bmiEditingId = rec ? rec.id : null;
-            document.getElementById('bmiModalTitle').innerText = rec ? 'Edit BMI Record' : 'Add BMI Record';
+            if (currentRecord && !isCurrentUserRecordOwner(currentRecord.encodedBy)) {
+                customAlert('You can edit only BMI records that you encoded.', 'Permission Denied');
+                return;
+            }
+            bmiEditingId = currentRecord ? currentRecord.id : null;
+            document.getElementById('bmiModalTitle').innerText = currentRecord ? 'Edit Current Month BMI Record' : 'Encode Current Month BMI Record';
             const sel = document.getElementById('bmiPersonnelSelect');
             sel.innerHTML = '<option value="">Select personnel...</option>' + allPersonnel.map((pp, i) =>
                 `<option value="${i}">${escapeHtml(personnelFullName(pp))}</option>`).join('');
             sel.value = String(origIdx);
             const bmiLbl = document.getElementById('bmiPersonnelSelectedLabel');
-            if (bmiLbl && allPersonnel[Number(origIdx)]) { bmiLbl.style.display = 'block'; bmiLbl.innerText = 'Selected: ' + personnelFullName(allPersonnel[Number(origIdx)]); }
+            if (bmiLbl) { bmiLbl.style.display = 'block'; bmiLbl.innerText = 'Selected: ' + pKey; }
             const bmiSrch = document.getElementById('bmiPersonnelSearch'); if (bmiSrch) bmiSrch.value = '';
             const bmiFlt = document.getElementById('bmiPersonnelSectionFilter'); if (bmiFlt) bmiFlt.value = '';
             renderBmiPersonnelList();
-
-            ['bmiAge','bmiHeight','bmiWeight','bmiWaist','bmiHip','bmiWrist'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
-            const periodInput = document.getElementById('bmiPeriodInput');
-            if (rec) {
-                periodInput.value = rec.period || '';
-                document.getElementById('bmiAge').value = rec.age || '';
-                document.getElementById('bmiHeight').value = rec.height || '';
-                document.getElementById('bmiWeight').value = rec.weight || '';
-                document.getElementById('bmiWaist').value = rec.waist || '';
-                document.getElementById('bmiHip').value = rec.hip || '';
-                document.getElementById('bmiWrist').value = rec.wrist || '';
-            } else {
-                if (period && mode === 'monthly') periodInput.value = period;
-                else { const now = new Date(); periodInput.value = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`; }
-            }
+            ['bmiAge','bmiHeight','bmiWeight','bmiWaist','bmiHip','bmiWrist'].forEach(id => {
+                const el = document.getElementById(id); if (el) el.value = seedRecord ? (seedRecord[id.replace('bmi','').toLowerCase()] || '') : '';
+            });
+            // Explicitly pin the form to this month, never the historical seed period.
+            document.getElementById('bmiPeriodInput').value = period;
+            document.getElementById('bmiPeriodInput').readOnly = true;
             recalcBmi();
             document.getElementById('bmiRecordModal').classList.remove('hidden');
         }
