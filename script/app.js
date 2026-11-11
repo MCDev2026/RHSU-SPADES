@@ -171,6 +171,16 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 console.error('Unable to load Alpha Admin identity from backend.', error);
             }
         }
+
+        // Use a case-insensitive canonical identity check everywhere. The backend
+        // remains authoritative and verifies the credential for every write.
+        function isConfiguredAlphaUsername(username) {
+            const configured = String(ALPHA_ADMIN_NAME || '').trim();
+            return !!configured && String(username || '').trim().toLowerCase() === configured.toLowerCase();
+        }
+        function getSessionCredential() {
+            return String(sessionAdminPass || localStorage.getItem('loggedCred') || '');
+        }
         
         let allMemos = [];
         let filteredMemos = [];
@@ -628,7 +638,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
 
             // Do not even send Alpha Admin actions to the activity-log endpoint.
             // The backend repeats this check to keep the exclusion authoritative.
-            if (user === ALPHA_ADMIN_NAME) return;
+            if (isConfiguredAlphaUsername(user)) return;
 
             try {
                 await fetch(API_URL, {
@@ -1757,7 +1767,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             document.getElementById('profUsername').innerText = currentUser;
             
             let displayRole = "Regular User";
-            if (currentUser === ALPHA_ADMIN_NAME) {
+            if (isConfiguredAlphaUsername(currentUser)) {
                 displayRole = "Alpha Admin";
             } else {
                 displayRole = localStorage.getItem('userRole') || (localStorage.getItem('canEdit') === 'Yes' ? 'Admin' : 'Regular User');
@@ -1767,7 +1777,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             const profileDisplay = document.getElementById('profileDisplayName'); if (profileDisplay) profileDisplay.innerText = nameParts.join(' ') || currentUser;
             const avatar = document.getElementById('profileAvatar'); if (avatar) avatar.innerText = String((nameParts.join(' ') || currentUser).trim().charAt(0) || 'U').toUpperCase();
             const roleBadge = document.getElementById('profileRoleBadge'); if (roleBadge) roleBadge.innerText = displayRole;
-            const access = document.getElementById('profAccessLevel'); if (access) access.innerText = currentUser === ALPHA_ADMIN_NAME ? 'Full Administrative Access' : (localStorage.getItem('canEdit') === 'Yes' || localStorage.getItem('userRole') === 'Admin' ? 'Administrative Editing' : 'Standard User');
+            const access = document.getElementById('profAccessLevel'); if (access) access.innerText = isConfiguredAlphaUsername(currentUser) ? 'Full Administrative Access' : (localStorage.getItem('canEdit') === 'Yes' || localStorage.getItem('userRole') === 'Admin' ? 'Administrative Editing' : 'Standard User');
             loadProfilePreferences();
             // Display the last successfully saved image immediately while the backend profile loads.
             // The Drive-backed backend URL below remains authoritative and refreshes this cache.
@@ -1897,7 +1907,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 document.getElementById('tabSettings').classList.remove('hidden');
                 document.getElementById('btnSettings').classList.add('active');
             } else if (tabName === 'adminMgmt') {
-                if (!ALPHA_ADMIN_NAME || localStorage.getItem('loggedInUser') !== ALPHA_ADMIN_NAME) {
+                if (!ALPHA_ADMIN_NAME || !isConfiguredAlphaUsername(localStorage.getItem('loggedInUser'))) {
                     customAlert("Only the configured Alpha Admin can access User Management.", "Permission Denied"); return;
                 }
                 document.getElementById('tabSettings').classList.remove('hidden');
@@ -1962,7 +1972,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             const message = document.getElementById('adminAnnouncementText').value.trim();
             if (!message) return customAlert('Announcement message cannot be empty.', 'Error');
             try {
-                const response = await fetch(API_URL, {method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'save_announcement',message,password:sessionAdminPass,userName:localStorage.getItem('loggedInUser') || ''})});
+                const response = await fetch(API_URL, {method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'save_announcement',message,password:getSessionCredential(),userName:localStorage.getItem('loggedInUser') || ''})});
                 const result = await response.json();
                 if (!result.success) return customAlert(result.error || 'Could not publish the announcement.', 'Error');
                 customAlert('System announcement published.', 'Success'); logActivity('updated the global system announcement.');
@@ -1972,7 +1982,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             customConfirm('Remove the global system announcement?', async confirmed => {
                 if (!confirmed) return;
                 try {
-                    const response = await fetch(API_URL, {method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'delete_announcement',password:sessionAdminPass,userName:localStorage.getItem('loggedInUser') || ''})});
+                    const response = await fetch(API_URL, {method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'delete_announcement',password:getSessionCredential(),userName:localStorage.getItem('loggedInUser') || ''})});
                     const result = await response.json();
                     if (!result.success) return customAlert(result.error || 'Could not remove the announcement.', 'Error');
                     document.getElementById('adminAnnouncementText').value = '';
@@ -2031,7 +2041,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             if (user) {
                 document.getElementById('appBrand').innerText = 'REGIONAL HEADQUARTERS SUPPORT UNIT';
                 document.getElementById('loginPage').classList.add('hidden'); document.getElementById('registerPage').classList.add('hidden'); document.getElementById('appLayout').classList.remove('hidden'); document.getElementById('mainTopBar').classList.remove('hidden'); document.getElementById('btnAdminMgmt').classList.add('hidden');
-                document.getElementById('settingsUserMgmtBtn').classList.toggle('hidden', user !== ALPHA_ADMIN_NAME);
+                document.getElementById('settingsUserMgmtBtn').classList.toggle('hidden', !isConfiguredAlphaUsername(user));
                 document.getElementById('btnPersonnel').classList.remove('hidden');
                 loadSettings();
                 if (userSettings.autoOpenChatbot && userSettings.showChatbot) document.getElementById('chatbot-window').classList.remove('hidden'); else document.getElementById('chatbot-window').classList.add('hidden');
@@ -2048,7 +2058,9 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 // Force read-only if the current user is restricted by Alpha Admin.
                 loadUserRestrictions().then(() => {
                     const me = localStorage.getItem('loggedInUser');
-                    if (me && userRestrictedMap[me]) {
+                    // Alpha Admin is the immutable top-level administrator and is
+                    // never downgraded by a per-user restriction row.
+                    if (me && !isConfiguredAlphaUsername(me) && userRestrictedMap[me]) {
                         localStorage.setItem('canEdit', 'No');
                         localStorage.setItem('userRole', 'Regular User');
                         applyAccessRestrictions();
@@ -2228,7 +2240,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             if (id === 'profileSettingsModal') {
                 Promise.resolve(populateProfileData()).then(syncProfileModalIdentity).catch(() => {});
             } else if (id === 'securitySettingsModal') {
-                const isAlpha = !!ALPHA_ADMIN_NAME && localStorage.getItem('loggedInUser') === ALPHA_ADMIN_NAME;
+                const isAlpha = !!ALPHA_ADMIN_NAME && isConfiguredAlphaUsername(localStorage.getItem('loggedInUser'));
                 const usernameField = document.getElementById('usernameChangeField');
                 const alphaNotice = document.getElementById('alphaUsernameLockNotice');
                 if (usernameField) usernameField.classList.toggle('hidden', isAlpha);
@@ -2360,14 +2372,14 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             const toggle = document.getElementById('toggleCredentialVisibility');
             if (toggle) { toggle.textContent = 'Show'; toggle.setAttribute('aria-label', 'Show PIN or password'); toggle.setAttribute('aria-pressed', 'false'); }
             updateCredentialStrength();
-            if (!document.getElementById('securitySettingsModal')?.classList.contains('hidden')) { const currentUser = localStorage.getItem('loggedInUser'); (currentUser === ALPHA_ADMIN_NAME ? credential : username)?.focus({ preventScroll: true }); }
+            if (!document.getElementById('securitySettingsModal')?.classList.contains('hidden')) { const currentUser = localStorage.getItem('loggedInUser'); (isConfiguredAlphaUsername(currentUser) ? credential : username)?.focus({ preventScroll: true }); }
         }
         function refreshSessionProfile() { populateProfileData(); showNotification('Profile Refreshed','Your profile and session information are up to date.'); }
 
         async function updateProfile() {
             const newCred = document.getElementById('newCredential').value.trim();
             const oldUsername = localStorage.getItem('loggedInUser') || '';
-            const isAlpha = !!ALPHA_ADMIN_NAME && oldUsername === ALPHA_ADMIN_NAME;
+            const isAlpha = !!ALPHA_ADMIN_NAME && isConfiguredAlphaUsername(oldUsername);
             const newUsername = isAlpha ? '' : document.getElementById('newUsernameInput').value.trim();
             if (!newCred && !newUsername) return customAlert('Enter a new username or credential.', 'Error');
             if (newUsername && (newUsername.length < 3 || /[\u0000-\u001f]/.test(newUsername))) return customAlert('Choose a valid username with at least 3 characters.', 'Error');
@@ -2450,7 +2462,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             if (!pass.trim()) { input.focus(); return; }
             const activeUser = localStorage.getItem('loggedInUser') || '';
             if (!pass) return;
-            if (!ALPHA_ADMIN_NAME || activeUser !== ALPHA_ADMIN_NAME) return customAlert('Alpha Admin authentication is not available for this session.', 'Permission Denied');
+            if (!ALPHA_ADMIN_NAME || !isConfiguredAlphaUsername(activeUser)) return customAlert('Alpha Admin authentication is not available for this session.', 'Permission Denied');
             const verifyButton = document.getElementById('verifyAdminButton');
             input.disabled = true;
             if (verifyButton) { verifyButton.disabled = true; verifyButton.textContent = 'Verifying…'; }
@@ -2475,7 +2487,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             const userName = localStorage.getItem('loggedInUser') || '';
             try {
                 const [usersResponse, announcementResponse] = await Promise.all([
-                    fetch(API_URL, {method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'get_all_users',userName,password:sessionAdminPass})}),
+                    fetch(API_URL, {method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'get_all_users',userName,password:getSessionCredential()})}),
                     fetch(`${API_URL}?action=get_announcement&_ts=${Date.now()}`, {cache:'no-store'})
                 ]);
                 const data = await usersResponse.json();
@@ -2568,7 +2580,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             customConfirm(`Set role for ${username} to ${newRole === 'Admin' ? 'Admin' : 'Regular User'}?`, async confirmed => {
                 if (!confirmed) { loadAdminUsers(); return; }
                 try {
-                    const response = await fetch(API_URL, {method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'set_role',username,role:newRole,password:sessionAdminPass,userName:localStorage.getItem('loggedInUser') || ''})});
+                    const response = await fetch(API_URL, {method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'set_role',username,role:newRole,password:getSessionCredential(),userName:localStorage.getItem('loggedInUser') || ''})});
                     const result = await response.json();
                     if (!result.success) { customAlert(result.error || 'The role change was rejected.', 'Error'); loadAdminUsers(); return; }
                     customAlert(`Role updated for ${username}.`, 'Success'); logActivity(`changed role of user "${username}" to ${newRole}`); await loadAdminUsers();
@@ -2579,7 +2591,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             customConfirm(`Delete the account for ${username}? This action cannot be undone.`, async confirmed => {
                 if (!confirmed) return;
                 try {
-                    const response = await fetch(API_URL, {method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'delete_user_admin',username,password:sessionAdminPass,userName:localStorage.getItem('loggedInUser') || ''})});
+                    const response = await fetch(API_URL, {method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'delete_user_admin',username,password:getSessionCredential(),userName:localStorage.getItem('loggedInUser') || ''})});
                     const result = await response.json();
                     if (!result.success) { customAlert(result.error || 'Could not delete this account.', 'Error'); return; }
                     customAlert(`Account ${username} deleted.`, 'Success'); logActivity(`deleted user account: ${username}`); await loadAdminUsers();
@@ -2591,7 +2603,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             customConfirm(`Are you sure you want to ${verb} the account ${userIdentifier}?`, async confirmed => {
                 if (!confirmed) return;
                 try {
-                    const response = await fetch(API_URL, {method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:actionType,username:userIdentifier,userPin:userIdentifier,password:sessionAdminPass,userName:localStorage.getItem('loggedInUser') || ''})});
+                    const response = await fetch(API_URL, {method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:actionType,username:userIdentifier,userPin:userIdentifier,password:getSessionCredential(),userName:localStorage.getItem('loggedInUser') || ''})});
                     const result = await response.json();
                     if (!result.success) { customAlert(result.error || 'The account action was rejected.', 'Error'); return; }
                     customAlert(actionType === 'approve_user' ? `Account ${userIdentifier} approved.` : `Account ${userIdentifier} rejected and removed.`, 'Success');
@@ -2600,16 +2612,16 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             });
         }
         function isAlphaAdmin() {
-            const current = String(localStorage.getItem('loggedInUser') || '').trim().toLowerCase();
-            const configured = String(ALPHA_ADMIN_NAME || '').trim().toLowerCase();
-            return !!current && !!configured && current === configured;
+            return isConfiguredAlphaUsername(localStorage.getItem('loggedInUser') || '');
         }
 
         function canManagePersonnel() {
+            // Alpha Admin bypasses every user-level restriction and permission matrix.
+            if (isAlphaAdmin()) return true;
             const role = localStorage.getItem('userRole') || '';
             const username = localStorage.getItem('loggedInUser') || '';
             if (typeof userRestrictedMap !== 'undefined' && userRestrictedMap[username]) return false;
-            return isAlphaAdmin() || role === 'Admin' || localStorage.getItem('canEdit') === 'Yes';
+            return role === 'Admin' || localStorage.getItem('canEdit') === 'Yes';
         }
 
         function canPersonnelAction(subpage, operation) {
@@ -4021,7 +4033,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 const memoStatus = row[4] || "For Dispatched";
                 
                 const currentIsEncoder = isCurrentUserRecordOwner(row[3]);
-                const isAlphaAdmin = localStorage.getItem('loggedInUser') === ALPHA_ADMIN_NAME;
+                const isAlphaAdmin = isConfiguredAlphaUsername(localStorage.getItem('loggedInUser'));
                 const encoderArgument = JSON.stringify(String(row[3] || '')).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
                 const memoActionButtons = [
                     currentIsEncoder ? `<button class="action-btn icon-action-btn" title="Edit Memo" aria-label="Edit Memo" onclick="initiateEdit('${row[2]}', '${safeSubject}', '${safeDestination}', '${memoStatus}', ${encoderArgument})"><i class="fi fi-rr-edit" aria-hidden="true"></i></button>` : '',
@@ -4122,7 +4134,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         }
 
         function triggerDelete(controlNum) {
-            const isAlphaAdmin = localStorage.getItem('loggedInUser') === ALPHA_ADMIN_NAME; 
+            const isAlphaAdmin = isConfiguredAlphaUsername(localStorage.getItem('loggedInUser')); 
 
             if (!isAlphaAdmin) { 
                 return customAlert("Regular Users and Admins are unable to delete existing entries. Only Alpha Admin can delete records.", "Permission Denied"); 
@@ -4303,7 +4315,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         }
 
         function batchDelete() {
-            const isAlphaAdmin = localStorage.getItem('loggedInUser') === ALPHA_ADMIN_NAME; 
+            const isAlphaAdmin = isConfiguredAlphaUsername(localStorage.getItem('loggedInUser')); 
             if (!isAlphaAdmin) return customAlert("Permission Denied.", "Error");
 
             const checked = document.querySelectorAll('.row-checkbox:checked');
@@ -4328,7 +4340,42 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
 
         // Restore the authenticated session whenever the page is loaded or refreshed.
         // Authentication state is stored in localStorage and is not cleared by a refresh.
-        window.addEventListener('load', async () => { await loadAlphaAdminIdentity(); checkAuth(); });
+        const restoreSpadesSession = async () => {
+            await loadAlphaAdminIdentity();
+            const savedUsername = localStorage.getItem('loggedInUser') || '';
+            const savedCredential = localStorage.getItem('loggedCred') || '';
+            // A page refresh clears in-memory variables. Re-verify the saved Alpha
+            // Admin credential with the server before restoring privileged UI state.
+            if (isConfiguredAlphaUsername(savedUsername) && savedCredential) {
+                try {
+                    const response = await fetch(API_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                        body: JSON.stringify({ action: 'verify_admin', username: savedUsername, password: savedCredential })
+                    });
+                    const result = await response.json();
+                    sessionAdminPass = result && result.success ? savedCredential : '';
+                    if (!result || !result.success) {
+                        localStorage.removeItem('loggedInUser');
+                        localStorage.removeItem('loggedCred');
+                        localStorage.removeItem('userRole');
+                        localStorage.removeItem('canEdit');
+                    }
+                } catch (error) {
+                    sessionAdminPass = '';
+                    console.warn('Alpha Admin session could not be revalidated; privileged actions remain unavailable.', error);
+                }
+            }
+            checkAuth();
+        };
+        // page-loader may inject this runtime after the browser's load event.
+        if (document.readyState === 'complete') {
+            restoreSpadesSession().catch(error => console.error('Session restoration failed:', error));
+        } else {
+            window.addEventListener('load', () => {
+                restoreSpadesSession().catch(error => console.error('Session restoration failed:', error));
+            }, { once: true });
+        }
 
         /* ============================================================
            SPADES ENHANCEMENTS: Duty Office / BMI / Squadding / Leave /
@@ -6083,7 +6130,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             const requestedUser = localStorage.getItem('loggedInUser') || '';
             userAccessMapLoadedFor = '';
             try {
-                const res = await fetch(API_URL, {method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'get_user_access',userName:requestedUser,password:sessionAdminPass,credential:localStorage.getItem('loggedCred') || ''})});
+                const res = await fetch(API_URL, {method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'get_user_access',userName:requestedUser,password:getSessionCredential(),credential:localStorage.getItem('loggedCred') || ''})});
                 if (!res.ok) throw new Error(`Access map request failed (${res.status})`);
                 const data = await res.json();
                 if (data && data.success && data.accessMap && typeof data.accessMap === 'object') {
@@ -6160,7 +6207,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 });
             });
             try {
-                const response = await fetch(API_URL, {method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'set_user_access',username:targetUsername,access:selected,personnelPermissions,password:sessionAdminPass,userName:localStorage.getItem('loggedInUser') || ''})});
+                const response = await fetch(API_URL, {method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'set_user_access',username:targetUsername,access:selected,personnelPermissions,password:getSessionCredential(),userName:localStorage.getItem('loggedInUser') || ''})});
                 if (!response.ok) throw new Error(`Permission update failed (${response.status})`);
                 const result = await response.json();
                 if (!result.success) throw new Error(result.error || 'Access permission changes were rejected.');
@@ -6177,7 +6224,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         }
         function userHasAccess(pageKey) {
             const user = localStorage.getItem('loggedInUser') || '';
-            if (user === ALPHA_ADMIN_NAME) return true;
+            if (isConfiguredAlphaUsername(user)) return true;
             const allowed = userAccessMap[user];
             if (!Array.isArray(allowed) || !allowed.length) return true; // empty = full access
             return allowed.includes(pageKey);
@@ -6286,7 +6333,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         let userRestrictedMap = {};
         async function loadUserRestrictions() {
             try {
-                const res = await fetch(API_URL, {method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'get_user_restrictions',userName:localStorage.getItem('loggedInUser') || '',password:sessionAdminPass,credential:localStorage.getItem('loggedCred') || ''})});
+                const res = await fetch(API_URL, {method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'get_user_restrictions',userName:localStorage.getItem('loggedInUser') || '',password:getSessionCredential(),credential:localStorage.getItem('loggedCred') || ''})});
                 const data = await res.json();
                 userRestrictedMap = (data.success && data.restricted) ? data.restricted : {};
             } catch(e) { userRestrictedMap = {}; }
