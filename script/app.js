@@ -2959,9 +2959,18 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             const other = document.getElementById('pRemarksOther');
             if (!remarks || !leave || !schooling || !other) return;
 
-            leave.classList.toggle('hidden', remarks.value !== 'On-Leave');
-            schooling.classList.toggle('hidden', remarks.value !== 'Schooling/Seminar');
-            other.classList.toggle('hidden', remarks.value !== 'Others');
+            const showLeave = remarks.value === 'On-Leave';
+            const showSchooling = remarks.value === 'Schooling/Seminar';
+            const showOther = remarks.value === 'Others';
+            leave.classList.toggle('hidden', !showLeave);
+            schooling.classList.toggle('hidden', !showSchooling);
+            other.classList.toggle('hidden', !showOther);
+            const leaveWrap = document.getElementById('pLeaveTypeField');
+            const schoolingWrap = document.getElementById('pSchoolingField');
+            const otherWrap = document.getElementById('pRemarksOtherField');
+            if (leaveWrap) leaveWrap.classList.toggle('hidden', !showLeave);
+            if (schoolingWrap) schoolingWrap.classList.toggle('hidden', !showSchooling);
+            if (otherWrap) otherWrap.classList.toggle('hidden', !showOther);
             leave.required = remarks.value === 'On-Leave';
             schooling.required = remarks.value === 'Schooling/Seminar';
             other.required = remarks.value === 'Others';
@@ -3022,17 +3031,25 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
 
         function openPersonnelModal() {
             if(!canPersonnelAction('list', 'add')) return customAlert("You do not have permission to add Personnel List entries.","Permission Denied");
-            personnelEditNo=null;
-            document.getElementById('personnelModalTitle').innerText='Add Personnel';
-            ['pLastName','pFirstName','pMiddleName','pQualifiers','pBadgeNumber','pDesignation','pContactNo'].forEach(id=>document.getElementById(id).value='');
-            document.getElementById('pRank').value='';
-            document.getElementById('pSection').value='';
-            document.getElementById('pStatus').value='Active';
-            document.getElementById('pNo').value='Auto';
-            document.getElementById('personnelSaveBtn').innerText='Add Personnel';
+            personnelEditNo = null;
+            const modal = document.getElementById('personnelModal');
+            const saveBtn = document.getElementById('personnelSaveBtn');
+            if (!modal || !saveBtn) return customAlert('The Add Personnel form is unavailable. Please reload the page.', 'Form Error');
+
+            ['pLastName','pFirstName','pMiddleName','pQualifiers','pBadgeNumber','pDesignation','pContactNo','pSchooling','pRemarksOther','pLeaveType'].forEach(id => {
+                const field = document.getElementById(id); if (field) field.value = '';
+            });
+            ['pRank','pSection','pRemarks'].forEach(id => { const field=document.getElementById(id); if(field) field.value=''; });
+            document.getElementById('pStatus').value = 'Active';
+            document.getElementById('pNo').value = 'Auto';
+            document.getElementById('personnelModalTitle').innerText = 'Add Personnel';
+            document.getElementById('personnelModalDescription').innerText = "Enter the personnel\'s identity, assignment, and current status.";
+            saveBtn.disabled = false;
+            saveBtn.innerText = 'Add Personnel';
             populatePersonnelRemarks('');
-            document.getElementById('personnelModal').classList.remove('hidden');
-            focusPersonnelModalField();
+            modal.classList.remove('hidden');
+            document.body.classList.add('modal-open');
+            requestAnimationFrame(() => focusPersonnelModalField());
         }
 
         function editPersonnel(no) {
@@ -3040,6 +3057,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             const p=allPersonnel.find(x=>Number(x.no)===Number(no)); if(!p) return;
             personnelEditNo=Number(no);
             document.getElementById('personnelModalTitle').innerText='Edit Personnel';
+            document.getElementById('personnelModalDescription').innerText='Review and update this personnel record.';
             document.getElementById('pNo').value=p.no;
             document.getElementById('pRank').value=p.rank||'';
             document.getElementById('pLastName').value=p.lastName||'';
@@ -3052,12 +3070,20 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             document.getElementById('pStatus').value=p.status||'Active';
             document.getElementById('pContactNo').value=p.contactNo||'';
             populatePersonnelRemarks(p.remarks||'');
-            document.getElementById('personnelSaveBtn').innerText='Update Personnel';
+            const saveBtn = document.getElementById('personnelSaveBtn');
+            saveBtn.disabled = false;
+            saveBtn.innerText='Update Personnel';
             document.getElementById('personnelModal').classList.remove('hidden');
-            focusPersonnelModalField();
+            document.body.classList.add('modal-open');
+            requestAnimationFrame(() => focusPersonnelModalField());
         }
 
-        function closePersonnelModal(){ document.getElementById('personnelModal').classList.add('hidden'); personnelEditNo=null; }
+        function closePersonnelModal(){
+            const modal = document.getElementById('personnelModal');
+            if (modal) modal.classList.add('hidden');
+            document.body.classList.remove('modal-open');
+            personnelEditNo=null;
+        }
 
         // --- Personnel modal UX enhancements (additive; existing logic/payload unchanged) ---
         // Autofocus the Rank field when the modal opens.
@@ -3077,6 +3103,8 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         });
 
         async function savePersonnel() {
+            const saveButton = document.getElementById('personnelSaveBtn');
+            if (!saveButton || saveButton.disabled) return;
             const operation = personnelEditNo === null ? 'add' : 'edit';
             if(!canPersonnelAction('list', operation)) return customAlert(`You do not have permission to ${operation} Personnel List entries.`,"Permission Denied");
             const payload={
@@ -3101,7 +3129,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             if (document.getElementById('pRemarks').value === 'Schooling/Seminar' && !document.getElementById('pSchooling').value.trim()) return customAlert("Please specify the schooling/seminar.","Validation Error");
             if (document.getElementById('pRemarks').value === 'Others' && !document.getElementById('pRemarksOther').value.trim()) return customAlert("Please encode the remarks.","Validation Error");
 
-            const btn=document.getElementById('personnelSaveBtn'); btn.disabled=true; btn.innerText='Saving...';
+            const btn=saveButton; btn.disabled=true; btn.setAttribute('aria-busy','true'); btn.innerText='Saving...';
             try {
                 const res=await fetch(API_URL,{method:'POST',mode:'cors',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(payload)});
                 const data=await res.json();
@@ -3112,7 +3140,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 await loadPersonnel();
             } catch(e) {
                 customAlert(e.message||'Unable to save personnel record.','Error');
-            } finally { btn.disabled=false; btn.innerText=(payload.action==='add_personnel' ? 'Add Personnel' : 'Update Personnel'); }
+            } finally { btn.disabled=false; btn.removeAttribute('aria-busy'); btn.innerText=(payload.action==='add_personnel' ? 'Add Personnel' : 'Update Personnel'); }
         }
 
         function archivePersonnel(no) {

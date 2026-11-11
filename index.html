@@ -1170,61 +1170,86 @@
     </div>
 
 
-    <div id="personnelModal" class="modal-overlay hidden spades-form-modal" role="dialog" aria-modal="true" aria-labelledby="personnelModalTitle" onclick="if(event.target===this)closePersonnelModal()">
-        <div class="modal-content glass-panel modal-large spades-polished-modal">
-            <div class="spades-modal-heading"><span class="spades-modal-icon" aria-hidden="true">♙</span><div><span class="spades-modal-eyebrow">PERSONNEL MANAGEMENT</span><h2 id="personnelModalTitle" style="margin:0;color:var(--primary);">Add Personnel</h2><p>Maintain personnel information and assignment details.</p></div><button type="button" class="action-btn spades-modal-close" onclick="closePersonnelModal()" aria-label="Close" title="Close">×</button></div>
-            <div class="personnel-form-grid">
-                <input id="pNo" type="text" placeholder="No. (auto)" disabled>
-                <select id="pRank">
-                    <option value="">Select Rank...</option>
-                    <option>PBGEN</option><option>PCOL</option><option>PLTCOL</option><option>PMAJ</option><option>PCPT</option><option>PLT</option>
-                    <option>PEMS</option><option>PCMS</option><option>PSMS</option><option>PMSg</option><option>PSSg</option><option>PCpl</option><option>Pat</option><option>NUP</option>
-                </select>
-                <input id="pLastName" type="text" placeholder="Last Name">
-                <input id="pFirstName" type="text" placeholder="First Name">
-                <input id="pMiddleName" type="text" placeholder="Middle Name">
-                <input id="pQualifiers" type="text" placeholder="Qualifiers">
-                <input id="pBadgeNumber" type="text" placeholder="Badge Number">
-                <input id="pDesignation" type="text" placeholder="Designation">
-                <select id="pSection">
-                    <option value="">Select Section...</option>
-                    <option value="Admin Section">Admin Section</option>
-                    <option value="General Services Section">General Services Section</option>
-                    <option value="Special Services Band">Special Services Band</option>
-                    <option value="Base Police">Base Police</option>
-                    <option value="Detached Service">Detached Service</option>
-                    <option value="DS to Other Office/Unit">DS to Other Office/Unit</option>
-                </select>
-                <select id="pStatus" onchange="togglePersonnelRemarksFields()">
-                    <option value="Active">Active</option>
-                    <option value="Resigned">Resigned</option>
-                    <option value="Deceased">Deceased</option>
-                    <option value="Dismissed">Dismissed</option>
-                    <option value="Suspended">Suspended</option>
-                    <option value="Reassigned">Reassigned</option>
-                </select>
-                <input id="pContactNo" type="text" placeholder="Contact No.">
-                <select id="pRemarks" onchange="togglePersonnelRemarksFields()">
-                    <option value="">Select Remarks...</option>
-                    <option value="Off-Duty">Off-Duty</option>
-                    <option value="On-Leave">On-Leave</option>
-                    <option value="Schooling/Seminar">Schooling/Seminar</option>
-                    <option value="Others">Others</option>
-                </select>
-                <select id="pLeaveType" class="hidden" style="grid-column:1/-1;" onchange="togglePersonnelRemarksFields()">
-                    <option value="">Select Leave Type...</option>
-                    <option value="Mandatory Leave">Mandatory Leave</option>
-                    <option value="Sick Leave">Sick Leave</option>
-                    <option value="Special Privilege Leave">Special Privilege Leave</option>
-                    <option value="Service Leave">Service Leave</option>
-                    <option value="Wellness Leave">Wellness Leave</option>
-                </select>
-                <input id="pSchooling" type="text" class="hidden" style="grid-column:1/-1;" placeholder="Specify Schooling / Seminar">
-                <input id="pRemarksOther" type="text" class="hidden" style="grid-column:1/-1;" placeholder="Encode remarks manually">
+    <div id="personnelModal" class="modal-overlay hidden spades-form-modal personnel-modal" role="dialog" aria-modal="true" aria-labelledby="personnelModalTitle" aria-describedby="personnelModalDescription" onclick="if(event.target===this)closePersonnelModal()">
+        <div class="modal-content glass-panel modal-large spades-polished-modal personnel-modal-panel">
+            <div class="spades-modal-heading personnel-modal-heading">
+                <span class="spades-modal-icon" aria-hidden="true">♙</span>
+                <div class="personnel-modal-title-group">
+                    <span class="spades-modal-eyebrow">PERSONNEL MANAGEMENT</span>
+                    <h2 id="personnelModalTitle">Add Personnel</h2>
+                    <p id="personnelModalDescription">Enter the personnel's identity, assignment, and current status.</p>
+                </div>
+                <button type="button" class="action-btn spades-modal-close" onclick="closePersonnelModal()" aria-label="Close personnel form" title="Close">×</button>
             </div>
-            <div style="display:flex;gap:10px;margin-top:18px;">
-                <button id="personnelSaveBtn" class="approve-btn" style="flex:1;margin:0;color:white;" onclick="savePersonnel()">Save</button>
-                <button style="flex:1;margin:0;background:#e2e8f0;color:#475569;" onclick="closePersonnelModal()">Cancel</button>
+            <div class="personnel-form-scroll">
+                <div class="personnel-form-section-title">PERSONNEL INFORMATION</div>
+                <div class="personnel-form-grid">
+                    <label class="personnel-field" for="pNo"><span>Personnel No.</span><input id="pNo" type="text" placeholder="Auto-generated" readonly aria-readonly="true"></label>
+                    <label class="personnel-field" for="pRank"><span>Rank <b>*</b></span>
+                        <select id="pRank" required>
+                            <option value="">Select Rank...</option>
+                            <option>PBGEN</option><option>PCOL</option><option>PLTCOL</option><option>PMAJ</option><option>PCPT</option><option>PLT</option>
+                            <option>PEMS</option><option>PCMS</option><option>PSMS</option><option>PMSg</option><option>PSSg</option><option>PCpl</option><option>Pat</option><option>NUP</option>
+                        </select>
+                    </label>
+                    <label class="personnel-field" for="pLastName"><span>Last Name <b>*</b></span><input id="pLastName" type="text" placeholder="Enter last name" autocomplete="family-name" required></label>
+                    <label class="personnel-field" for="pFirstName"><span>First Name <b>*</b></span><input id="pFirstName" type="text" placeholder="Enter first name" autocomplete="given-name" required></label>
+                    <label class="personnel-field" for="pMiddleName"><span>Middle Name</span><input id="pMiddleName" type="text" placeholder="Enter middle name" autocomplete="additional-name"></label>
+                    <label class="personnel-field" for="pQualifiers"><span>Qualifiers</span><input id="pQualifiers" type="text" placeholder="e.g. RN, LLB"></label>
+                    <label class="personnel-field" for="pBadgeNumber"><span>Badge Number</span><input id="pBadgeNumber" type="text" placeholder="Enter badge number"></label>
+                    <label class="personnel-field" for="pDesignation"><span>Designation</span><input id="pDesignation" type="text" placeholder="Enter designation"></label>
+                </div>
+
+                <div class="personnel-form-section-title personnel-form-section-spaced">ASSIGNMENT AND CONTACT</div>
+                <div class="personnel-form-grid">
+                    <label class="personnel-field" for="pSection"><span>Section / Unit</span>
+                        <select id="pSection">
+                            <option value="">Select Section...</option>
+                            <option value="Admin Section">Admin Section</option>
+                            <option value="General Services Section">General Services Section</option>
+                            <option value="Special Services Band">Special Services Band</option>
+                            <option value="Base Police">Base Police</option>
+                            <option value="Detached Service">Detached Service</option>
+                            <option value="DS to Other Office/Unit">DS to Other Office/Unit</option>
+                        </select>
+                    </label>
+                    <label class="personnel-field" for="pStatus"><span>Personnel Status</span>
+                        <select id="pStatus" onchange="togglePersonnelRemarksFields()">
+                            <option value="Active">Active</option>
+                            <option value="Resigned">Resigned</option>
+                            <option value="Deceased">Deceased</option>
+                            <option value="Dismissed">Dismissed</option>
+                            <option value="Suspended">Suspended</option>
+                            <option value="Reassigned">Reassigned</option>
+                        </select>
+                    </label>
+                    <label class="personnel-field" for="pContactNo"><span>Contact Number</span><input id="pContactNo" type="tel" inputmode="tel" placeholder="Enter contact number" autocomplete="tel"></label>
+                    <label class="personnel-field" for="pRemarks"><span>Remarks</span>
+                        <select id="pRemarks" onchange="togglePersonnelRemarksFields()">
+                            <option value="">Select Remarks...</option>
+                            <option value="Off-Duty">Off-Duty</option>
+                            <option value="On-Leave">On-Leave</option>
+                            <option value="Schooling/Seminar">Schooling/Seminar</option>
+                            <option value="Others">Others</option>
+                        </select>
+                    </label>
+                    <label class="personnel-field personnel-dependent-field hidden" id="pLeaveTypeField" for="pLeaveType"><span>Leave Type <b>*</b></span>
+                        <select id="pLeaveType" onchange="togglePersonnelRemarksFields()">
+                            <option value="">Select Leave Type...</option>
+                            <option value="Mandatory Leave">Mandatory Leave</option>
+                            <option value="Sick Leave">Sick Leave</option>
+                            <option value="Special Privilege Leave">Special Privilege Leave</option>
+                            <option value="Service Leave">Service Leave</option>
+                            <option value="Wellness Leave">Wellness Leave</option>
+                        </select>
+                    </label>
+                    <label class="personnel-field personnel-dependent-field hidden" id="pSchoolingField" for="pSchooling"><span>Schooling / Seminar <b>*</b></span><input id="pSchooling" type="text" placeholder="Specify schooling or seminar"></label>
+                    <label class="personnel-field personnel-dependent-field hidden" id="pRemarksOtherField" for="pRemarksOther"><span>Other Remarks <b>*</b></span><input id="pRemarksOther" type="text" placeholder="Enter remarks"></label>
+                </div>
+            </div>
+            <div class="personnel-modal-actions">
+                <button id="personnelSaveBtn" type="button" class="approve-btn personnel-save-btn" onclick="savePersonnel()">Add Personnel</button>
+                <button type="button" class="personnel-cancel-btn" onclick="closePersonnelModal()">Cancel</button>
             </div>
         </div>
     </div>
