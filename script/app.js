@@ -3161,9 +3161,8 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         function escapeHtml(v){ return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
         function escapeAttr(v){ return escapeHtml(v); }
 
-        // Alpha Admin may edit any encoded entry. Other users may edit only
-        // entries whose original encoder/creator matches their signed-in account.
-        // These UI checks improve visibility; backend authorization is authoritative.
+        // Retained for compatibility with other screens. BMI permissions are
+        // controlled by the Alpha Admin-granted add/edit/delete permission matrix.
         function isCurrentUserRecordOwner(owner) {
             if (isAlphaAdmin()) return true;
             const current = String(localStorage.getItem('loggedInUser') || '').trim().toLowerCase();
@@ -4978,15 +4977,17 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                     const rec = storedRec ? normalizeBmiRecordForDisplay(storedRec) : null;
                     const fullName = personnelFullName(p);
                     const currentPeriodRecord = bmiRecords.find(r => personnelFullName(r) === fullName && String(r.period || '').trim() === currentBmiPeriod());
+                    // Alpha Admin-granted BMI permissions control access. Do not
+                    // restrict authorized editors to records they originally encoded.
                     const canEditThisBmi = currentPeriodRecord
-                        ? (canPersonnelAction('bmi', 'edit') && isCurrentUserRecordOwner(currentPeriodRecord.encodedBy))
-                        : (canPersonnelAction('bmi', 'add') || (rec && canPersonnelAction('bmi', 'edit') && isCurrentUserRecordOwner(rec.encodedBy)));
+                        ? canPersonnelAction('bmi', 'edit')
+                        : (canPersonnelAction('bmi', 'add') || (!!rec && canPersonnelAction('bmi', 'edit')));
                     const nameCell = canEditThisBmi
                         ? `<td><span class="bmi-name-link" onclick="openBmiModalForPersonnel(${x.origIdx})" title="${rec ? 'Edit your BMI record' : 'Encode BMI record'}">${escapeHtml(fullName)}</span></td>`
                         : `<td>${escapeHtml(fullName)}</td>`;
                     const actionCell = (canPersonnelAction('bmi', 'edit') || canPersonnelAction('bmi', 'delete'))
                         ? (rec
-                            ? `<td>${canPersonnelAction('bmi', 'delete') ? `<button class="action-btn delete-btn" style="margin:0;padding:4px 8px;font-size:11px;" onclick="event.stopPropagation();deleteBmiRecord('${escapeAttr(rec.id)}')">Del</button>` : '—'}</td>`
+                            ? `<td>${canPersonnelAction('bmi', 'delete') && String(rec.period || '').trim() === currentBmiPeriod() ? `<button class="action-btn delete-btn" style="margin:0;padding:4px 8px;font-size:11px;" onclick="event.stopPropagation();deleteBmiRecord('${escapeAttr(rec.id)}')">Del</button>` : '—'}</td>`
                             : `<td style="color:var(--text-muted);font-size:11px;">—</td>`)
                         : '';
                     htmlRows.push(`<tr>
@@ -5091,11 +5092,9 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 customAlert(`You do not have permission to ${requiredOperation} BMI records.`, 'Permission Denied');
                 return;
             }
-            if (permissionRecord && !isCurrentUserRecordOwner(permissionRecord.encodedBy)) {
-                customAlert('You can edit only BMI records that you encoded.', 'Permission Denied');
-                return;
-            }
-            bmiEditingId = currentRecord ? currentRecord.id : (permissionRecord ? permissionRecord.id : null);
+            // Only attach an ID when editing an existing current-month row. A historical
+            // record is a template for a new current-month entry and must remain untouched.
+            bmiEditingId = currentRecord ? currentRecord.id : null;
             document.getElementById('bmiModalTitle').innerText = currentRecord ? 'Edit Current Month BMI Record' : 'Create Current Month Entry from Selected Record';
             const sel = document.getElementById('bmiPersonnelSelect');
             sel.innerHTML = '<option value="">Select personnel...</option>' + allPersonnel.map((pp, i) =>
@@ -5107,7 +5106,9 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             const bmiFlt = document.getElementById('bmiPersonnelSectionFilter'); if (bmiFlt) bmiFlt.value = '';
             renderBmiPersonnelList();
             ['bmiAge','bmiHeight','bmiWeight','bmiWaist','bmiHip','bmiWrist'].forEach(id => {
-                const el = document.getElementById(id); if (el) el.value = seedRecord ? (seedRecord[id.replace('bmi','').toLowerCase()] || '') : '';
+                const el = document.getElementById(id);
+                const key = id.replace('bmi','').toLowerCase();
+                if (el) el.value = seedRecord && seedRecord[key] !== null && seedRecord[key] !== undefined ? String(seedRecord[key]) : '';
             });
             // Explicitly pin the form to this month, never the historical seed period.
             document.getElementById('bmiPeriodInput').value = period;
@@ -5127,19 +5128,22 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             if (cEl) { cEl.innerText = res.classification || '—'; cEl.style.color = bmiClassColor(res.classification); }
         }
         function openBmiModal(editId) {
-            const operation = editId ? 'edit' : 'add';
-            if (!canPersonnelAction('bmi', operation)) { customAlert(`You do not have permission to ${operation} BMI records.`, "Permission Denied"); return; }
-            if (editId) {
-                const existingRecord = bmiRecords.find(r => String(r.id) === String(editId));
-                if (!existingRecord || !isCurrentUserRecordOwner(existingRecord.encodedBy)) {
-                    customAlert('You can edit only BMI records that you encoded.', 'Permission Denied');
-                    return;
-                }
+            const selectedRecord = editId ? bmiRecords.find(r => String(r.id) === String(editId)) : null;
+            if (editId && !selectedRecord) {
+                customAlert('The selected BMI record could not be found. Please refresh the table.', 'Record Not Found');
+                return;
             }
+            const isCurrentMonthRecord = !!(selectedRecord && String(selectedRecord.period || '').trim() === currentBmiPeriod());
+            const operation = isCurrentMonthRecord ? 'edit' : 'add';
+            if (!canPersonnelAction('bmi', operation)) { customAlert(`You do not have permission to ${operation} BMI records.`, "Permission Denied"); return; }
             if (!allPersonnel || !allPersonnel.length) { loadPersonnel(); customAlert("Personnel data is still loading. Please try again in a moment.", "Loading"); return; }
 
-            bmiEditingId = editId || null;
-            document.getElementById('bmiModalTitle').innerText = editId ? 'Edit BMI Record' : 'Add BMI Record';
+            // Historical records are never overwritten. Opening one pre-fills the
+            // form, while saving creates a separate entry for the current month.
+            bmiEditingId = isCurrentMonthRecord ? selectedRecord.id : null;
+            document.getElementById('bmiModalTitle').innerText = isCurrentMonthRecord
+                ? 'Edit Current Month BMI Record'
+                : (selectedRecord ? 'Create Current Month Entry from Historical Record' : 'Add BMI Record');
             const sel = document.getElementById('bmiPersonnelSelect');
             sel.innerHTML = '<option value="">Select personnel...</option>' + allPersonnel.map((p, i) =>
                 `<option value="${i}">${escapeHtml(personnelFullName(p))}</option>`).join('');
@@ -5154,19 +5158,21 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             const now = new Date();
             const periodInput = document.getElementById('bmiPeriodInput');
             if (periodInput) periodInput.value = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
-            if (editId) {
-                const rec = bmiRecords.find(r => String(r.id) === String(editId));
-                if (rec) {
+            if (selectedRecord) {
+                const rec = selectedRecord;
+                {
                     const idx = allPersonnel.findIndex(p => personnelFullName(p) === personnelFullName(rec));
                     if (idx >= 0) sel.value = idx;
+                    const selectedLabel = document.getElementById('bmiPersonnelSelectedLabel');
+                    if (selectedLabel) { selectedLabel.style.display = 'block'; selectedLabel.innerText = 'Selected: ' + personnelFullName(rec); }
                     document.getElementById('bmiPeriodInput').value = currentBmiPeriod();
                     document.getElementById('bmiPeriodInput').readOnly = true;
-                    document.getElementById('bmiAge').value = rec.age || '';
-                    document.getElementById('bmiHeight').value = rec.height || '';
-                    document.getElementById('bmiWeight').value = rec.weight || '';
-                    document.getElementById('bmiWaist').value = rec.waist || '';
-                    document.getElementById('bmiHip').value = rec.hip || '';
-                    document.getElementById('bmiWrist').value = rec.wrist || '';
+                    document.getElementById('bmiAge').value = rec.age ?? '';
+                    document.getElementById('bmiHeight').value = rec.height ?? '';
+                    document.getElementById('bmiWeight').value = rec.weight ?? '';
+                    document.getElementById('bmiWaist').value = rec.waist ?? '';
+                    document.getElementById('bmiHip').value = rec.hip ?? '';
+                    document.getElementById('bmiWrist').value = rec.wrist ?? '';
                 }
             }
             recalcBmi();
@@ -5243,9 +5249,15 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             const saveButton = document.querySelector('#bmiRecordModal .approve-btn');
             if (saveButton) { saveButton.disabled = true; saveButton.textContent = 'Saving…'; }
             try {
-                await postPersonnelMutation(payload);
+                const saveResult = await postPersonnelMutation(payload);
                 closeBmiModal();
-                customAlert('BMI record saved. BMI result and classification were computed automatically.', 'Success');
+                // After an edit, show the current month so the updated in-place
+                // record is immediately visible in the BMI Monitoring table.
+                const periodSelect = document.getElementById('bmiPeriodSelect');
+                if (periodSelect) periodSelect.value = currentBmiPeriod();
+                customAlert(saveResult && saveResult.updated
+                    ? 'Current-month BMI record updated successfully. The existing record was replaced; no duplicate was created.'
+                    : 'BMI record saved. BMI result and classification were computed automatically.', 'Success');
                 await loadBmiRecords();
             } catch (e) { customAlert(e.message || 'Failed to save BMI record.', 'Error'); }
             finally { if (saveButton) { saveButton.disabled = false; saveButton.textContent = 'Save Record'; } }
