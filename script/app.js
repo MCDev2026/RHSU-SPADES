@@ -4326,9 +4326,68 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             passInput.placeholder = sessionAdminPass ? "Master Password" : "Enter Password";
         }
 
-        // Restore the authenticated session whenever the page is loaded or refreshed.
-        // Authentication state is stored in localStorage and is not cleared by a refresh.
-        window.addEventListener('load', async () => { await loadAlphaAdminIdentity(); checkAuth(); });
+        // Restore the authenticated session on refresh while keeping the login screen
+        // concealed behind the boot loader. No credentials are re-authenticated here;
+        // the existing stored session is restored through checkAuth().
+        (function initializeSpadesBootSequence() {
+            const startedAt = performance.now();
+            let dismissed = false;
+
+            function dismissBootLoader() {
+                if (dismissed) return;
+                dismissed = true;
+                const loader = document.getElementById('spadesBootLoader');
+                document.documentElement.classList.remove('spades-session-restore');
+                if (!loader) return;
+                loader.classList.add('is-leaving');
+                window.setTimeout(() => loader.remove(), 650);
+            }
+
+            window.addEventListener('load', async () => {
+                const caption = document.getElementById('spadesLoaderCaption');
+                const percent = document.getElementById('spadesLoaderPercent');
+                const stages = [
+                    ['ESTABLISHING SECURE CONNECTION', '24%'],
+                    ['RESTORING USER SESSION', '58%'],
+                    ['LOADING WORKSPACE MODULES', '86%'],
+                    ['WORKSPACE READY', '100%']
+                ];
+                let stage = 0;
+                const stageTimer = window.setInterval(() => {
+                    if (stage < stages.length) {
+                        if (caption) caption.textContent = stages[stage][0];
+                        if (percent) percent.textContent = stages[stage][1];
+                        stage++;
+                    } else {
+                        window.clearInterval(stageTimer);
+                    }
+                }, 260);
+
+                try {
+                    // Avoid leaving the loader indefinitely visible if the identity
+                    // endpoint is temporarily slow; normal session restoration can proceed.
+                    await Promise.race([
+                        loadAlphaAdminIdentity(),
+                        new Promise(resolve => window.setTimeout(resolve, 4500))
+                    ]);
+                } catch (error) {
+                    console.warn('Alpha Admin identity could not be loaded during startup.', error);
+                } finally {
+                    checkAuth();
+                    const minimumDisplay = 950;
+                    const remaining = Math.max(0, minimumDisplay - (performance.now() - startedAt));
+                    window.setTimeout(() => {
+                        window.clearInterval(stageTimer);
+                        if (caption) caption.textContent = 'WORKSPACE READY';
+                        if (percent) percent.textContent = '100%';
+                        dismissBootLoader();
+                    }, remaining);
+                }
+            }, { once: true });
+
+            // Safety release if an unexpected script error interrupts startup.
+            window.setTimeout(dismissBootLoader, 12000);
+        })();
 
         /* ============================================================
            SPADES ENHANCEMENTS: Duty Office / BMI / Squadding / Leave /

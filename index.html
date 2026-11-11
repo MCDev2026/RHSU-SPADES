@@ -8,10 +8,36 @@
     <link rel="icon" type="image/png" href="images/RHSU Spades.png">
     <link rel="apple-touch-icon" href="images/RHSU Spades.png">
     <link rel="stylesheet" href="https://cdn-uicons.flaticon.com/4.0.0/uicons-regular-rounded/css/uicons-regular-rounded.css">
+    <script>
+        // Prevent the login form from flashing during an authenticated page refresh.
+        // This only controls the initial visual state; app.js still restores the session.
+        try {
+            if (localStorage.getItem('loggedInUser')) {
+                document.documentElement.classList.add('spades-session-restore');
+            }
+        } catch (e) {}
+    </script>
     <link rel="stylesheet" href="css/styles.css">
 
 </head>
 <body>
+    <!-- Futuristic startup / refresh loader -->
+    <div id="spadesBootLoader" class="spades-boot-loader" role="status" aria-live="polite" aria-label="Loading SPADES">
+        <div class="spades-loader-grid" aria-hidden="true"></div>
+        <div class="spades-loader-orbit spades-loader-orbit-one" aria-hidden="true"></div>
+        <div class="spades-loader-orbit spades-loader-orbit-two" aria-hidden="true"></div>
+        <div class="spades-loader-core">
+            <div class="spades-loader-logo-wrap">
+                <img src="images/RHSU Spades.png" alt="" class="spades-loader-logo" onerror="this.style.display='none'">
+                <span class="spades-loader-pulse"></span>
+            </div>
+            <div class="spades-loader-brand">SPADES<span> / RHSU</span></div>
+            <div class="spades-loader-caption" id="spadesLoaderCaption">INITIALIZING SECURE WORKSPACE</div>
+            <div class="spades-loader-track"><span></span></div>
+            <div class="spades-loader-status"><span>SECURE SESSION</span><b id="spadesLoaderPercent">00%</b></div>
+        </div>
+        <div class="spades-loader-footer">POLICE REGIONAL OFFICE 1 <i></i> REGIONAL HEADQUARTERS SUPPORT UNIT</div>
+    </div>
     <div class="top-bar hidden" id="mainTopBar">
         <div class="top-bar-left">
             <button onclick="toggleNav()" style="background: transparent; border: none; cursor: pointer; padding: 5px;">

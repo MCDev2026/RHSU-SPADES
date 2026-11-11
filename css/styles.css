@@ -7610,3 +7610,192 @@ body.dark-mode #activityDetailsModal .activity-details-footer {
     transform: none !important;
   }
 }
+
+/* ==========================================================
+   SPADES FUTURISTIC BOOT / REFRESH LOADER
+   ========================================================== */
+html.spades-session-restore #loginPage,
+html.spades-session-restore #registerPage {
+    display: none !important;
+}
+.spades-boot-loader {
+    position: fixed;
+    inset: 0;
+    z-index: 999999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    color: #e7f7ff;
+    background:
+        radial-gradient(ellipse at 50% 42%, rgba(0, 190, 255, .16), transparent 36%),
+        radial-gradient(ellipse at 50% 100%, rgba(13, 91, 160, .22), transparent 48%),
+        #050b18;
+    opacity: 1;
+    visibility: visible;
+    transition: opacity .55s ease, visibility .55s ease;
+}
+.spades-boot-loader.is-leaving {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+}
+.spades-loader-grid {
+    position: absolute;
+    inset: -30%;
+    opacity: .22;
+    background-image:
+        linear-gradient(rgba(54, 190, 255, .16) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(54, 190, 255, .16) 1px, transparent 1px);
+    background-size: 54px 54px;
+    transform: perspective(550px) rotateX(62deg) scale(1.7) translateY(12%);
+    transform-origin: center bottom;
+    mask-image: linear-gradient(to bottom, transparent 2%, #000 40%, #000 85%, transparent);
+    animation: spadesGridDrift 12s linear infinite;
+}
+.spades-loader-core {
+    z-index: 2;
+    width: min(430px, calc(100vw - 42px));
+    padding: 34px 32px 28px;
+    text-align: center;
+    border: 1px solid rgba(91, 210, 255, .25);
+    border-radius: 22px;
+    background: linear-gradient(145deg, rgba(9, 27, 49, .82), rgba(5, 13, 29, .68));
+    box-shadow: 0 0 80px rgba(0, 160, 255, .12), inset 0 0 35px rgba(0, 162, 255, .045);
+    backdrop-filter: blur(16px);
+}
+.spades-loader-logo-wrap {
+    position: relative;
+    display: grid;
+    place-items: center;
+    width: 112px;
+    height: 112px;
+    margin: 0 auto 22px;
+    border: 1px solid rgba(87, 211, 255, .45);
+    border-radius: 50%;
+    box-shadow: 0 0 22px rgba(0, 183, 255, .25), inset 0 0 24px rgba(0, 183, 255, .12);
+}
+.spades-loader-logo-wrap::before,
+.spades-loader-logo-wrap::after {
+    content: "";
+    position: absolute;
+    inset: -9px;
+    border: 1px solid transparent;
+    border-top-color: #5be1ff;
+    border-right-color: rgba(91, 225, 255, .4);
+    border-radius: 50%;
+    animation: spadesOrbit 2.8s linear infinite;
+}
+.spades-loader-logo-wrap::after {
+    inset: -17px;
+    border-top-color: rgba(45, 135, 255, .9);
+    border-right-color: transparent;
+    animation-duration: 4.2s;
+    animation-direction: reverse;
+}
+.spades-loader-logo {
+    width: 76px;
+    height: 76px;
+    object-fit: contain;
+    filter: drop-shadow(0 0 12px rgba(72, 204, 255, .55));
+}
+.spades-loader-pulse {
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: rgba(0, 183, 255, .12);
+    animation: spadesPulse 2s ease-out infinite;
+}
+.spades-loader-orbit {
+    position: absolute;
+    width: min(68vw, 620px);
+    height: min(68vw, 620px);
+    border: 1px solid rgba(48, 170, 230, .12);
+    border-radius: 50%;
+    transform: rotateX(68deg);
+}
+.spades-loader-orbit-one { animation: spadesOrbit 18s linear infinite; }
+.spades-loader-orbit-two {
+    width: min(82vw, 760px);
+    height: min(82vw, 760px);
+    border-style: dashed;
+    border-color: rgba(65, 132, 255, .10);
+    animation: spadesOrbit 30s linear infinite reverse;
+}
+.spades-loader-brand {
+    color: #f4fbff;
+    font: 800 28px/1.2 Inter, Arial, sans-serif;
+    letter-spacing: .22em;
+}
+.spades-loader-brand span {
+    color: #55d8ff;
+    font-size: 14px;
+    letter-spacing: .16em;
+    vertical-align: 3px;
+}
+.spades-loader-caption {
+    margin-top: 12px;
+    color: #8fb8d2;
+    font: 600 10px/1.4 Inter, Arial, sans-serif;
+    letter-spacing: .2em;
+}
+.spades-loader-track {
+    height: 3px;
+    margin: 27px 0 12px;
+    overflow: hidden;
+    border-radius: 10px;
+    background: rgba(112, 183, 220, .16);
+}
+.spades-loader-track span {
+    display: block;
+    width: 36%;
+    height: 100%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, #287cff, #50e4ff, #fff);
+    box-shadow: 0 0 14px #35cfff;
+    animation: spadesProgress 1.8s ease-in-out infinite;
+}
+.spades-loader-status {
+    display: flex;
+    justify-content: space-between;
+    color: #648da8;
+    font: 600 9px/1.2 Inter, Arial, sans-serif;
+    letter-spacing: .16em;
+}
+.spades-loader-status b { color: #66dfff; font-weight: 700; }
+.spades-loader-footer {
+    position: absolute;
+    bottom: 26px;
+    z-index: 2;
+    color: rgba(139, 183, 209, .58);
+    font: 600 9px/1.5 Inter, Arial, sans-serif;
+    letter-spacing: .16em;
+    text-align: center;
+    padding: 0 18px;
+}
+.spades-loader-footer i {
+    display: inline-block;
+    width: 4px;
+    height: 4px;
+    margin: 0 8px 2px;
+    border-radius: 50%;
+    background: #53dfff;
+    box-shadow: 0 0 8px #53dfff;
+}
+@keyframes spadesOrbit { to { transform: rotate(360deg); } }
+@keyframes spadesPulse { 0% { transform: scale(.7); opacity: .55; } 100% { transform: scale(1.65); opacity: 0; } }
+@keyframes spadesProgress { 0% { transform: translateX(-110%); } 100% { transform: translateX(310%); } }
+@keyframes spadesGridDrift { from { background-position: 0 0; } to { background-position: 0 108px; } }
+@media (prefers-reduced-motion: reduce) {
+    .spades-loader-grid, .spades-loader-orbit, .spades-loader-logo-wrap::before,
+    .spades-loader-logo-wrap::after, .spades-loader-pulse, .spades-loader-track span {
+        animation-duration: 8s !important;
+    }
+}
+@media (max-width: 520px) {
+    .spades-loader-core { padding: 28px 20px 23px; }
+    .spades-loader-logo-wrap { width: 94px; height: 94px; }
+    .spades-loader-logo { width: 64px; height: 64px; }
+    .spades-loader-brand { font-size: 23px; }
+    .spades-loader-footer { font-size: 8px; }
+}
