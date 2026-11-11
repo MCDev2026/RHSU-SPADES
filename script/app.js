@@ -3300,6 +3300,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             document.getElementById('activityVenueOther').value = '';
             document.getElementById('activityRequestingOffice').value = '';
             document.getElementById('activityConcernedOffice').value = '';
+            document.getElementById('activityRequestedServices').value = '';
             document.getElementById('activityTime').value = '';
             document.getElementById('activityFrequency').value = 'N/A';
             document.getElementById('activityStatus').value = 'Recurring';
@@ -3384,11 +3385,29 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             return '';
         }
 
+        function activityLegacyGroupSignature(activity) {
+            return [activity.activityTitle, activity.assignedVenue, activity.requestingOffice,
+                activity.concernedOffice, activity.time, activity.frequency, activity.encodedBy]
+                .map(value => String(value || '').trim().toLowerCase()).join('¦');
+        }
+
+        function getActivityGroupRecords(activity) {
+            if (!activity) return [];
+            if (activity.groupId) {
+                return (allActivities || []).filter(item => String(item.groupId || '') === String(activity.groupId));
+            }
+            // Compatibility for activities saved before group IDs were introduced.
+            const signature = activityLegacyGroupSignature(activity);
+            return (allActivities || []).filter(item => activityLegacyGroupSignature(item) === signature);
+        }
+
         function editActivity(id) {
             if (!canManageActivities()) return customAlert('Permission denied.', 'Error');
             const a = allActivities.find(x => String(x.id) === String(id));
             if (!a) return;
             if (!isCurrentUserRecordOwner(a.encodedBy)) return customAlert('You can edit only activities that you encoded.', 'Permission Denied');
+            const groupRecords = getActivityGroupRecords(a);
+            const groupDates = [...new Set(groupRecords.map(item => String(item.date || '').slice(0,10)).filter(d => /^\d{4}-\d{2}-\d{2}$/.test(d)))].sort();
             activityEditId = String(id);
             document.getElementById('activityModalTitle').innerText = 'Edit Activity';
             document.getElementById('activitySaveBtn').innerText = 'Update Activity';
@@ -3402,12 +3421,14 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             }
             document.getElementById('activityRequestingOffice').value = a.requestingOffice || '';
             document.getElementById('activityConcernedOffice').value = a.concernedOffice || '';
+            document.getElementById('activityRequestedServices').value = a.requestedServices || '';
             document.getElementById('activityTime').value = activityTimeForInput(a.time);
             document.getElementById('activityFrequency').value = a.frequency || 'N/A';
             document.getElementById('activityStatus').value = a.status || 'Recurring';
-            activityCalendarMonth = new Date(String(a.date || '').slice(0,10) + 'T00:00:00');
+            const firstDate = groupDates[0] || String(a.date || '').slice(0,10);
+            activityCalendarMonth = new Date(firstDate + 'T00:00:00');
             activityCalendarMonth = new Date(activityCalendarMonth.getFullYear(), activityCalendarMonth.getMonth(), 1);
-            renderSelectedActivityDates([String(a.date || '').slice(0,10)]);
+            renderSelectedActivityDates(groupDates.length ? groupDates : [firstDate]);
             renderActivityCalendar();
             toggleActivityVenueOther();
             document.getElementById('activityModal').classList.remove('hidden');
@@ -3427,6 +3448,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             const venue = venueSelect === 'Others' ? venueOther : venueSelect;
             const requestingOffice = document.getElementById('activityRequestingOffice').value.trim();
             const concernedOffice = document.getElementById('activityConcernedOffice').value.trim();
+            const requestedServices = document.getElementById('activityRequestedServices').value.trim();
             const time = document.getElementById('activityTime').value;
             const frequency = document.getElementById('activityFrequency').value || 'N/A';
             const dates = getSelectedActivityDates();
@@ -3434,17 +3456,13 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             if (!title || !venue || !requestingOffice || !concernedOffice || !time || !dates.length) {
                 return customAlert('Please complete all required fields and select at least one date.', 'Validation Error');
             }
-            if (activityEditId && dates.length !== 1) {
-                return customAlert('When editing an activity, select only its scheduled date.', 'Validation Error');
-            }
-
             const wasEditing = !!activityEditId;
             const payload = {
                 action: wasEditing ? 'update_activity' : 'add_activity',
                 id: activityEditId,
                 userName: localStorage.getItem('loggedInUser'),
                 credential: localStorage.getItem('loggedCred') || '',
-                activityTitle: title, assignedVenue: venue, requestingOffice, concernedOffice, time, frequency, dates
+                activityTitle: title, assignedVenue: venue, requestingOffice, concernedOffice, requestedServices, time, frequency, dates
             };
 
             const btn = document.getElementById('activitySaveBtn');
@@ -3535,7 +3553,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 const date = raw < 1 ? new Date(year, month - 1, previousCount + raw) : raw > count ? new Date(year, month + 1, raw - count) : new Date(year, month, raw);
                 const key = localDateKey(date), other = date.getMonth() !== month;
                 const matches = (allActivities || []).filter(a => activityOccursOnDate(a, date));
-                html += `<div class="activity-overview-day${other ? ' is-other-month' : ''}${key === today ? ' is-today' : ''}"><span class="activity-overview-day-number">${date.getDate()}</span><div class="activity-overview-events">${matches.slice(0,3).map(a => `<button type="button" class="activity-overview-event activity-event-${String(a.frequency || 'once').toLowerCase().replace(/[^a-z]/g,'')}" title="${escapeAttr((a.activityTitle || 'Activity') + (a.frequency && a.frequency !== 'N/A' ? ' · ' + a.frequency : ''))}" onclick="showActivityDetails('${escapeAttr(a.id)}')">${escapeHtml(a.activityTitle || 'Untitled activity')}</button>`).join('')}${matches.length > 3 ? `<span class="activity-overview-more">+${matches.length-3} more</span>` : ''}</div></div>`;
+                html += `<div class="activity-overview-day${other ? ' is-other-month' : ''}${key === today ? ' is-today' : ''}"><span class="activity-overview-day-number">${date.getDate()}</span><div class="activity-overview-events">${matches.slice(0,3).map(a => `<button type="button" class="activity-overview-event activity-event-${String(a.frequency || 'once').toLowerCase().replace(/[^a-z]/g,'')}" title="${escapeAttr((a.activityTitle || 'Activity') + (a.frequency && a.frequency !== 'N/A' ? ' · ' + a.frequency : '') + (a.requestedServices ? ' · Services: ' + a.requestedServices : ''))}" onclick="showActivityDetails('${escapeAttr(a.id)}')">${escapeHtml(a.activityTitle || 'Untitled activity')}</button>`).join('')}${matches.length > 3 ? `<span class="activity-overview-more">+${matches.length-3} more</span>` : ''}</div></div>`;
             }
             host.innerHTML = html;
         }
@@ -3558,7 +3576,9 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             if (!activity) return;
             selectedActivityDetailsId = String(activity.id);
             document.getElementById('activityDetailsTitle').textContent = activity.activityTitle || 'Activity Details';
-            const fields = [['Date / Schedule', activity.date], ['Activity Title', activity.activityTitle], ['Assigned Venue', activity.assignedVenue], ['Requesting Office', activity.requestingOffice], ['Concerned Office', activity.concernedOffice], ['Time', formatActivityTime(activity.time)], ['Frequency', activity.frequency], ['Status', activity.status]];
+            const relatedDates = [activity.date, ...getActivityGroupRecords(activity).map(item => String(item.date || '').slice(0,10))].filter(Boolean);
+            const scheduleText = relatedDates.length > 1 ? [...new Set(relatedDates)].sort().join(', ') : (activity.date || '');
+            const fields = [['Date / Schedule', scheduleText], ['Activity Title', activity.activityTitle], ['Assigned Venue', activity.assignedVenue], ['Requesting Office', activity.requestingOffice], ['Concerned Office', activity.concernedOffice], ['Requested Service/s', activity.requestedServices], ['Time', formatActivityTime(activity.time)], ['Frequency', activity.frequency], ['Status', activity.status]];
             document.getElementById('activityDetailsContent').innerHTML = fields.map(([label,value]) => `<div class="activity-detail-field"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value || '—')}</strong></div>`).join('');
             const canEditActivity = canManageActivities() && (allActivities || []).some(a => String(a.id) === String(id));
             document.getElementById('activityDetailsEditBtn').classList.toggle('hidden', !canEditActivity);
@@ -3649,7 +3669,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         function filterActivities() {
             const q = (document.getElementById('activitySearch').value || '').trim().toLowerCase();
             filteredActivities = allActivities.filter(a =>
-                [a.date,a.activityTitle,a.assignedVenue,a.requestingOffice,a.concernedOffice,a.time,a.frequency,a.status]
+                [a.date,a.activityTitle,a.assignedVenue,a.requestingOffice,a.concernedOffice,a.requestedServices,a.time,a.frequency,a.status]
                 .join(' ').toLowerCase().includes(q)
             );
             currentActivityPage = 1;
@@ -3684,13 +3704,14 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                     <td>${escapeHtml(a.assignedVenue)}</td>
                     <td>${escapeHtml(a.requestingOffice)}</td>
                     <td>${escapeHtml(a.concernedOffice)}</td>
+                    <td class="activity-services-cell">${escapeHtml(a.requestedServices || '—')}</td>
                     <td>${escapeHtml(formatActivityTime(a.time))}</td>
                     <td><span class="activity-status ${statusClass}">${escapeHtml(status)}</span></td>
                     <td class="activity-action-cell">
                         ${can ? `${canEditThisActivity ? `<button class="action-btn" onclick="editActivity('${escapeAttr(a.id)}')">Edit</button>` : ''}<button class="action-btn delete-btn" style="color:white;" onclick="deleteActivity('${escapeAttr(a.id)}')">Delete</button>` : ''}
                     </td>
                 </tr>`;
-            }).join('') : `<tr><td colspan="${can ? 8 : 7}" style="text-align:center;padding:20px;">No activities found.</td></tr>`;
+            }).join('') : `<tr><td colspan="${can ? 9 : 8}" style="text-align:center;padding:20px;">No activities found.</td></tr>`;
 
             const p = document.getElementById('activityPagination');
             if (filteredActivities.length > perPage) {
@@ -3718,9 +3739,10 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 <td>${escapeHtml(a.assignedVenue)}</td>
                 <td>${escapeHtml(a.requestingOffice)}</td>
                 <td>${escapeHtml(a.concernedOffice)}</td>
+                <td class="activity-services-cell">${escapeHtml(a.requestedServices || '—')}</td>
                 <td>${escapeHtml(formatActivityTime(a.time))}</td>
                 <td><span class="activity-status archive">Archive</span></td>
-            </tr>`).join('') : '<tr><td colspan="7" style="text-align:center;padding:20px;">No archived activities.</td></tr>';
+            </tr>`).join('') : '<tr><td colspan="8" style="text-align:center;padding:20px;">No archived activities.</td></tr>';
 
             const p = document.getElementById('archivedActivityPagination');
             if (archivedActivities.length > perPage) {

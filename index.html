@@ -797,6 +797,7 @@
                                         <th>Assigned Venue</th>
                                         <th>Requesting Office</th>
                                         <th>Concerned Office</th>
+                                        <th>Requested Service/s</th>
                                         <th>Time</th>
                                         <th>Status</th>
                                     </tr>
@@ -1236,9 +1237,9 @@
             <div class="activity-toolbar activity-toolbar-redesigned"><input id="activitySearch" class="activity-search" type="text" placeholder="Search activities..." oninput="filterActivities()" aria-label="Search activities"></div>
             <div class="table-wrapper activity-data-table-wrap"><table id="activityTable" aria-label="Activity records">
                 <colgroup>
-                    <col class="activity-col-date"><col class="activity-col-title"><col class="activity-col-venue"><col class="activity-col-requesting"><col class="activity-col-concerned"><col class="activity-col-time"><col class="activity-col-status"><col class="activity-col-actions">
+                    <col class="activity-col-date"><col class="activity-col-title"><col class="activity-col-venue"><col class="activity-col-requesting"><col class="activity-col-concerned"><col class="activity-col-services"><col class="activity-col-time"><col class="activity-col-status"><col class="activity-col-actions">
                 </colgroup>
-                <thead><tr><th scope="col">Date</th><th scope="col">Activity Title</th><th scope="col">Assigned Venue</th><th scope="col">Requesting Office</th><th scope="col">Concerned Office</th><th scope="col">Time</th><th scope="col">Status</th><th id="activityActionHeader" scope="col">Actions</th></tr></thead>
+                <thead><tr><th scope="col">Date</th><th scope="col">Activity Title</th><th scope="col">Assigned Venue</th><th scope="col">Requesting Office</th><th scope="col">Concerned Office</th><th scope="col">Requested Service/s</th><th scope="col">Time</th><th scope="col">Status</th><th id="activityActionHeader" scope="col">Actions</th></tr></thead>
                 <tbody id="activityTableBody"></tbody>
             </table></div>
             <div id="activityPagination" class="pagination-container hidden"><span id="activityPageInfo" style="font-weight:bold;">Page 1 of 1</span><div class="pagination-buttons"><button id="prevActivityBtn" class="page-btn" onclick="changeActivityPage(-1)">Prev</button><button id="nextActivityBtn" class="page-btn" onclick="changeActivityPage(1)">Next</button></div></div>
@@ -1293,6 +1294,12 @@
                 <div class="activity-form-field">
                     <label for="activityConcernedOffice">Concerned Office</label>
                     <input type="text" id="activityConcernedOffice" placeholder="Concerned Office">
+                </div>
+
+                <div class="activity-form-field full-width">
+                    <label for="activityRequestedServices">Requested Service/s</label>
+                    <textarea id="activityRequestedServices" rows="3" placeholder="Encode the service/s to be rendered for this activity (e.g., venue preparation, sound system, chairs and tables, security assistance)."></textarea>
+                    <small class="activity-field-hint">List the services or support required for the activity.</small>
                 </div>
 
                 <div class="activity-form-field">
