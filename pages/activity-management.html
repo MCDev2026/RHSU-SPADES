@@ -1,0 +1,44 @@
+<div class="hidden" id="tabActivityManagement">
+<div class="controls">
+<div>
+<h2 style="margin:0; color:var(--primary);">Activity Management</h2>
+<div style="font-size:12px;color:var(--text-muted);margin-top:4px;">Recurring activities and scheduled PRO 1 venue activities</div>
+</div>
+</div>
+<section aria-label="Activity calendar overview" class="activity-overview-calendar">
+<div class="activity-overview-head">
+<div><h3>Activity Calendar</h3><p>Scheduled activities by date. Select an activity to view its details.</p></div>
+<div class="activity-calendar-head-actions"><button class="action-btn approve-btn activity-calendar-add" id="activityAddBtn" onclick="openActivityModal()" style="color:white;font-weight:bold;">＋ Add Activity</button><button class="action-btn activity-view-data-btn" onclick="openActivityDataModal()" type="button">▤ View Data</button><div class="activity-calendar-nav"><button aria-label="Previous month" onclick="changeActivityOverviewMonth(-1)" type="button">‹</button><strong id="activityOverviewMonthTitle"></strong><button aria-label="Next month" onclick="changeActivityOverviewMonth(1)" type="button">›</button></div></div>
+</div>
+<div class="activity-overview-grid" id="activityOverviewCalendar"></div>
+</section>
+<!-- Activity records are opened in the View Data modal. -->
+<div class="activity-archive-section">
+<details id="archivedActivitiesDetails">
+<summary>Archived Activities</summary>
+<div class="table-wrapper" style="margin-top:8px;">
+<table id="archivedActivityTable">
+<thead>
+<tr>
+<th>Date</th>
+<th>Activity Title</th>
+<th>Assigned Venue</th>
+<th>Requesting Office</th>
+<th>Concerned Office</th>
+<th>Time</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody id="archivedActivityTableBody"></tbody>
+</table>
+</div>
+<div class="pagination-container hidden" id="archivedActivityPagination">
+<span id="archivedActivityPageInfo" style="font-weight:bold;">Page 1 of 1</span>
+<div class="pagination-buttons">
+<button class="page-btn" id="prevArchivedActivityBtn" onclick="changeArchivedActivityPage(-1)">Prev</button>
+<button class="page-btn" id="nextArchivedActivityBtn" onclick="changeArchivedActivityPage(1)">Next</button>
+</div>
+</div>
+</details>
+</div>
+</div>

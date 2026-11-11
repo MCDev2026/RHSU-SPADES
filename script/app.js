@@ -4328,7 +4328,15 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
 
         // Restore the authenticated session whenever the page is loaded or refreshed.
         // Authentication state is stored in localStorage and is not cleared by a refresh.
-        window.addEventListener('load', async () => { await loadAlphaAdminIdentity(); checkAuth(); });
+        const restoreSpadesSession = async () => { await loadAlphaAdminIdentity(); checkAuth(); };
+        // page-loader may inject this runtime after the browser's load event.
+        if (document.readyState === 'complete') {
+            restoreSpadesSession().catch(error => console.error('Session restoration failed:', error));
+        } else {
+            window.addEventListener('load', () => {
+                restoreSpadesSession().catch(error => console.error('Session restoration failed:', error));
+            }, { once: true });
+        }
 
         /* ============================================================
            SPADES ENHANCEMENTS: Duty Office / BMI / Squadding / Leave /

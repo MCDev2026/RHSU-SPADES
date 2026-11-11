@@ -1,0 +1,185 @@
+<div class="hidden" id="tabPersonnel">
+<div class="controls">
+<div>
+<h2 style="margin:0; color:var(--primary);">Personnel Management</h2>
+<div style="font-size:12px;color:var(--text-muted);margin-top:4px;">Personnel database from the Google Sheets <strong>Personnel</strong> sheet</div>
+</div>
+<div class="personnel-actions" id="personnelAdminControls">
+<button class="action-btn approve-btn" onclick="openPersonnelModal()" style="color:white;font-weight:bold;">＋ Add Personnel</button>
+</div>
+</div>
+<div aria-label="Personnel sub-pages" class="personnel-subnav" id="personnelSubNav" role="tablist">
+<button class="personnel-subnav-btn active" data-sub="list" onclick="switchPersonnelSubPage('list')" role="tab" type="button">Personnel List</button>
+<span aria-hidden="true" class="personnel-subnav-sep">|</span>
+<button class="personnel-subnav-btn" data-sub="duty" onclick="switchPersonnelSubPage('duty')" role="tab" type="button">Duty Office</button>
+<span aria-hidden="true" class="personnel-subnav-sep">|</span>
+<button class="personnel-subnav-btn" data-sub="bmi" onclick="switchPersonnelSubPage('bmi')" role="tab" type="button">BMI Monitoring</button>
+<span aria-hidden="true" class="personnel-subnav-sep">|</span>
+<button class="personnel-subnav-btn" data-sub="squad" onclick="switchPersonnelSubPage('squad')" role="tab" type="button">Squadding</button>
+<span aria-hidden="true" class="personnel-subnav-sep">|</span>
+<button class="personnel-subnav-btn" data-sub="leave" onclick="switchPersonnelSubPage('leave')" role="tab" type="button">Leave Management</button>
+<span aria-hidden="true" class="personnel-subnav-sep">|</span>
+<button class="personnel-subnav-btn" data-sub="aor" onclick="switchPersonnelSubPage('aor')" role="tab" type="button">Area of Responsibilities</button>
+</div>
+<div class="personnel-subpage" id="subPersonnelList">
+<div class="personnel-dashboard rhsu-summary-dashboard personnel-summary-dashboard">
+<div class="personnel-card rhsu-summary-panel rhsu-summary-panel-primary"><h4>Total Personnel</h4><div class="count" id="personnelTotal">0</div></div>
+<div class="personnel-card rhsu-summary-panel"><h4>PNCO (Pat–PEMS)</h4><div class="count" id="personnelPNCO">0</div></div>
+<div class="personnel-card rhsu-summary-panel"><h4>PCO (PLT–PCOL)</h4><div class="count" id="personnelPCO">0</div></div>
+<div class="personnel-card rhsu-summary-panel"><h4>NUP</h4><div class="count" id="personnelNUP">0</div></div>
+<div class="personnel-card rhsu-summary-panel"><h4>Other</h4><div class="count" id="personnelOther">0</div></div>
+</div>
+<div class="personnel-content-layout">
+<div class="personnel-table-content">
+<div class="personnel-toolbar">
+<input id="personnelSearch" oninput="filterPersonnel()" placeholder="Search personnel..." style="flex:1;min-width:220px;" type="text"/>
+<select id="personnelRankFilter" onchange="filterPersonnel()" style="width:auto;min-width:170px;">
+<option value="">All Ranks</option>
+</select>
+<select id="personnelStatusFilter" onchange="filterPersonnel()" style="width:auto;min-width:150px;">
+<option value="">All Status</option>
+</select>
+<button class="action-btn" onclick="clearPersonnelFilters()">Clear Filters</button>
+<button class="action-btn" onclick="loadPersonnel()">↻ Refresh</button>
+</div>
+<div id="personnelTablesContainer"></div>
+</div>
+<aside class="personnel-recap-panel">
+<div class="settings-section glass-panel">
+<h3 style="margin-bottom:10px;">Recapitulation By Section</h3>
+<div class="rank-recap" id="personnelSectionRecap"></div>
+</div>
+<div class="settings-section glass-panel">
+<h3 style="margin-bottom:10px;">Detached Service Recapitulation</h3>
+<div class="rank-recap" id="detachedServiceRecap"></div>
+</div>
+<div class="settings-section glass-panel">
+<h3 style="margin-bottom:10px;">DS to Other Office/Unit Recapitulation</h3>
+<div class="rank-recap" id="dsOtherOfficeRecap"></div>
+</div>
+<div class="settings-section glass-panel">
+<h3 style="margin-bottom:10px;">Recapitulation By Rank</h3>
+<div class="rank-recap" id="personnelRankRecap"></div>
+</div>
+</aside>
+</div>
+</div>
+<!-- DUTY OFFICE SUB-PAGE -->
+<div class="personnel-subpage hidden" id="subDutyOffice">
+<div class="subpage-controls">
+<div>
+<h3 style="margin:0;color:var(--primary);">Duty Office</h3>
+<div style="font-size:12px;color:var(--text-muted);margin-top:4px;">Duty personnel schedule and sequence management</div>
+</div>
+<div class="personnel-actions">
+<button class="action-btn approve-btn" id="dutyEditSeqBtn" onclick="openDutySequenceModal()" style="color:white;font-weight:bold;display:none;">⚙ Modify Duty Sequence</button>
+</div>
+</div>
+<div class="duty-calendar-wrap glass-panel">
+<div class="duty-calendar-header">
+<button aria-label="Previous month" class="action-btn" onclick="changeDutyMonth(-1)" type="button">‹</button>
+<strong id="dutyCalendarTitle" style="font-size:16px;color:var(--primary);">Duty Calendar</strong>
+<button aria-label="Next month" class="action-btn" onclick="changeDutyMonth(1)" type="button">›</button>
+</div>
+<div class="duty-calendar-grid" id="dutyCalendarGrid"></div>
+</div>
+<div class="table-wrapper" style="margin-top:20px;">
+<h4 style="margin:0 0 10px;color:var(--primary);">Duty Office Schedule</h4>
+<table class="data-table">
+<thead><tr><th>Rank/Name</th><th>Date (Month D, YYYY)</th><th>Day</th><th>Remarks</th></tr></thead>
+<tbody id="dutyTableBody"></tbody>
+</table>
+</div>
+</div>
+<!-- BMI MONITORING SUB-PAGE -->
+<div class="personnel-subpage hidden" id="subBmiMonitoring">
+<div class="subpage-controls">
+<div>
+<h3 style="margin:0;color:var(--primary);">BMI Monitoring</h3>
+<div style="font-size:12px;color:var(--text-muted);margin-top:4px;">View current and historical monthly BMI records</div>
+</div>
+<div class="personnel-actions" style="align-items:center;gap:8px;">
+<select aria-label="Select BMI month" id="bmiPeriodSelect" onchange="renderBmiTable()" style="margin:0;padding:8px 10px;font-size:13px;border-radius:var(--radius-sm);border:1px solid var(--border-color);height:36px;min-width:160px;max-width:190px;">
+<option value="">Loading months...</option>
+</select>
+<select aria-hidden="true" id="bmiViewMode" style="display:none;"><option value="monthly">Monthly</option></select>
+<input id="bmiSearchInput" list="bmiSearchSuggestions" oninput="renderBmiTable()" placeholder="Search personnel..." style="margin:0;padding:8px 12px;font-size:13px;border-radius:var(--radius-sm);border:1px solid var(--border-color);width:200px;height:36px;box-sizing:border-box;" type="text"/>
+<datalist id="bmiSearchSuggestions"></datalist>
+<button class="action-btn approve-btn" id="bmiAddBtn" onclick="openBmiModal()" style="color:white;font-weight:bold;display:none;margin:0;height:36px;padding:0 14px;font-size:13px;box-sizing:border-box;">＋ Add BMI Record</button>
+<button class="action-btn" id="bmiDownloadBtn" onclick="downloadBmiExcel()" style="margin:0;display:none;height:36px;padding:0 14px;font-size:13px;box-sizing:border-box;">⬇ Download Excel</button>
+</div>
+</div>
+<div class="bmi-classification-summary" id="bmiClassificationSummary"></div>
+<div id="bmiRankRecap" style="margin-top:10px;"></div>
+<div class="table-wrapper" style="margin-top:15px;">
+<table class="data-table">
+<thead><tr><th>No.</th><th>Rank/Full Name</th><th>Age</th><th>Height (cm)</th><th>Weight (kg)</th><th>Waist (cm)</th><th>Hip (cm)</th><th>Wrist (cm)</th><th>BMI Result</th><th>BMI Classification</th><th id="bmiActionHeader" style="display:none;">Actions</th></tr></thead>
+<tbody id="bmiTableBody"></tbody>
+</table>
+</div>
+</div>
+<!-- SQUADDING SUB-PAGE -->
+<div class="personnel-subpage hidden" id="subSquadding">
+<div class="subpage-controls">
+<div>
+<h3 style="margin:0;color:var(--primary);">Squadding</h3>
+<div style="font-size:12px;color:var(--text-muted);margin-top:4px;">Group personnel into squads</div>
+</div>
+<div class="personnel-actions">
+<button class="action-btn approve-btn" id="squadAddBtn" onclick="openSquadModal()" style="color:white;font-weight:bold;display:none;">＋ Create Squad</button>
+</div>
+</div>
+<div class="squad-carousel-container" id="squadCarouselContainer">
+<button aria-label="Previous squad" class="squad-carousel-nav" onclick="scrollSquadCarousel(-1)" type="button">‹</button>
+<div class="squad-carousel" id="squadCarousel"></div>
+<button aria-label="Next squad" class="squad-carousel-nav" onclick="scrollSquadCarousel(1)" type="button">›</button>
+</div>
+</div>
+<!-- LEAVE MANAGEMENT SUB-PAGE -->
+<div class="personnel-subpage hidden" id="subLeaveManagement">
+<div class="subpage-controls">
+<div>
+<h3 style="margin:0;color:var(--primary);">Leave Management</h3>
+<div style="font-size:12px;color:var(--text-muted);margin-top:4px;">Track and encode personnel leave entries</div>
+</div>
+<div class="personnel-actions">
+<button class="action-btn approve-btn" id="leaveAddBtn" onclick="openLeaveModal()" style="color:white;font-weight:bold;display:none;">＋ Add Leave Entry</button>
+</div>
+</div>
+<div class="duty-calendar-wrap glass-panel">
+<div class="duty-calendar-header">
+<button aria-label="Previous month" class="action-btn" onclick="changeLeaveMonth(-1)" type="button">‹</button>
+<strong id="leaveCalendarTitle" style="font-size:16px;color:var(--primary);">Leave Calendar</strong>
+<button aria-label="Next month" class="action-btn" onclick="changeLeaveMonth(1)" type="button">›</button>
+</div>
+<div class="duty-calendar-grid" id="leaveCalendarGrid"></div>
+</div>
+<section aria-label="Leave management recap" aria-live="polite" class="leave-analytics-panel glass-panel" id="leaveTypeRecap"></section>
+<div class="table-wrapper leave-entries-table" style="margin-top:16px;">
+<div class="leave-entries-heading">
+<div>
+<h4 style="margin:0;color:var(--primary);">Leave Entries</h4>
+<p>Recorded leave schedules and encoder details</p>
+</div>
+<span class="leave-entries-count" id="leaveEntriesCount">0 records</span>
+</div>
+<table class="data-table">
+<thead><tr><th>Personnel Name</th><th>Leave Type</th><th>Dates</th><th>Encoded By</th><th id="leaveActionHeader" style="display:none;">Actions</th></tr></thead>
+<tbody id="leaveTableBody"></tbody>
+</table>
+</div>
+</div>
+<!-- AREA OF RESPONSIBILITIES SUB-PAGE -->
+<div class="personnel-subpage hidden" id="subAreaOfResponsibility">
+<div class="subpage-controls">
+<div>
+<h3 style="margin:0;color:var(--primary);">Area of Responsibilities</h3>
+<div style="font-size:12px;color:var(--text-muted);margin-top:4px;">Deploy personnel to designated areas within PRO 1 Camp</div>
+</div>
+<div class="personnel-actions">
+<button class="action-btn approve-btn" id="areaAddBtn" onclick="openAreaModal()" style="color:white;font-weight:bold;display:none;">＋ Add Area</button>
+</div>
+</div>
+<div class="area-cards-grid" id="areaCardsContainer"></div>
+</div>
+</div>

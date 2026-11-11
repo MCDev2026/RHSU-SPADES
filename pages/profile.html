@@ -1,0 +1,68 @@
+<div class="hidden" id="tabProfile">
+<div class="controls">
+<div>
+<h2 style="margin:0; color: var(--primary);">My Profile</h2>
+<div style="font-size:12px;color:var(--text-muted);margin-top:4px;">Manage your account, profile information, security, preferences, and session.</div>
+</div>
+<button class="action-btn" onclick="populateProfileData()">Refresh Profile</button>
+</div>
+<input accept="image/jpeg,image/png,image/webp" id="avatarPhotoInput" onchange="uploadProfilePhoto('profile', this)" style="display:none;" type="file"/>
+<input accept="image/jpeg,image/png,image/webp" id="coverPhotoInput" onchange="uploadProfilePhoto('cover', this)" style="display:none;" type="file"/>
+<span id="profileAvatar" style="display:none;"></span>
+<!-- PROFILE HERO: cover photo + avatar + name + stats -->
+<div class="pf-hero glass-panel">
+<div aria-label="SPADES static cover banner" class="pf-cover" id="profileCoverBanner">
+<div aria-label="Profile cover actions" class="pf-cover-actions"><div class="pf-cover-action-buttons pf-profile-quick-actions">
+<button aria-label="Change Cover Page" class="pf-cover-change-btn" onclick="document.getElementById('coverPhotoInput').click()" title="Change Cover Page" type="button"><i aria-hidden="true" class="fi fi-rr-camera"></i><span class="sr-only">Change Cover Page</span></button>
+<button aria-label="Security &amp; Authentication" onclick="openProfileModal('securitySettingsModal')" title="Security &amp; Authentication" type="button"><i aria-hidden="true" class="fi fi-rr-lock"></i><span class="sr-only">Security &amp; Authentication</span></button>
+<button aria-label="Profile Settings" onclick="openProfileModal('profileSettingsModal')" title="Profile Settings" type="button"><i aria-hidden="true" class="fi fi-rr-settings"></i><span class="sr-only">Profile Settings</span></button>
+</div></div>
+</div>
+<div class="pf-hero-body">
+<div class="pf-avatar-wrap">
+<img alt="Profile" class="pf-avatar-img" id="profileAvatarImg" onerror="this.style.display='none'; const fb=document.getElementById('profileAvatarFallback'); if(fb) fb.style.display='flex';" src=""/>
+<span class="pf-avatar-fallback" id="profileAvatarFallback">U</span>
+<button class="pf-avatar-upload" onclick="document.getElementById('avatarPhotoInput').click()" title="Change profile photo" type="button">📷</button>
+</div>
+<div class="pf-hero-info">
+<h2 id="profileDisplayName" style="margin:0 0 4px 0;color:var(--text-main);">User</h2>
+<div class="pf-username">@<span id="profUsername">user</span></div>
+<span class="profile-role-badge" id="profileRoleBadge">Regular User</span>
+</div>
+<div class="pf-hero-stats">
+<div class="pf-stat">
+<span class="pf-stat-icon">📄</span>
+<div><strong id="profTotalMemos">0</strong><small>Total Memos Created</small></div>
+</div>
+<div class="pf-stat">
+<span class="pf-stat-icon">📅</span>
+<div><strong id="profAccountCreated">—</strong><small>Account Created</small></div>
+</div>
+</div>
+</div>
+</div>
+<div class="pf-body-grid">
+<!-- LEFT: Personal Information -->
+<div class="pf-left glass-panel">
+<h3 style="margin-top:0;">Personal Information</h3>
+<div class="setting-row"><span>Rank</span> <span class="profile-value" id="profRank">Not Available</span></div>
+<div class="setting-row"><span>First Name</span> <span class="profile-value" id="profFirstName">Not Available</span></div>
+<div class="setting-row"><span>Middle Name</span> <span class="profile-value" id="profMiddleName">Not Available</span></div>
+<div class="setting-row"><span>Last Name</span> <span class="profile-value" id="profLastName">Not Available</span></div>
+<div class="setting-row"><span>Qualifier</span> <span class="profile-value" id="profQlf">Not Available</span></div>
+<div class="setting-row"><span>Email Address</span> <span class="profile-value" id="profEmail">Not Available</span></div>
+<div class="setting-row"><span>Contact Number</span> <span class="profile-value" id="profContactNo">Not Available</span></div>
+<div class="setting-row"><span>Assigned Role</span> <span id="profAccType" style="font-weight:600;color:var(--primary);"></span></div>
+<div class="setting-row"><span>Access Level</span> <span class="profile-value" id="profAccessLevel">Standard</span></div>
+<div class="setting-row"><span>Account Status</span> <strong style="color:var(--success);">Active</strong></div>
+<div class="setting-row"><span>Last Activity</span> <span class="profile-value" id="profLastActivity">Not Available</span></div>
+</div>
+<!-- RIGHT: recent memos + account/security/preferences -->
+<div class="pf-right">
+<div class="glass-panel pf-panel">
+<h3 style="margin-top:0;">Recent Memos Created</h3>
+<div id="profileRecentMemos" style="font-size:13px;"></div>
+</div>
+</div>
+</div>
+</div>

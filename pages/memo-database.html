@@ -1,0 +1,94 @@
+<div id="tabHome">
+<div class="controls">
+<h2 style="margin:0; color: var(--primary);">Memo Database</h2>
+<div>
+<button class="action-btn approve-btn" onclick="openMemoModalUser()" style="padding: 10px 18px; font-weight: bold; color:white;">
+<i aria-hidden="true" class="fi fi-rr-plus spades-ui-icon"></i> Add Memo
+                        </button>
+</div>
+</div>
+<div class="settings-grid rhsu-summary-dashboard memo-summary-dashboard" style="margin-top: 15px; margin-bottom: 25px;">
+<div class="settings-section glass-panel rhsu-summary-panel rhsu-summary-panel-primary" style="display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center;">
+<h3 style="margin-bottom: 5px; border-bottom: none; padding-bottom: 0;">Total Memos Created</h3>
+<div id="dashTotalMemos" style="font-size: 38px; font-weight: bold; color: var(--primary);">0</div>
+</div>
+<div class="settings-section glass-panel rhsu-summary-panel rhsu-summary-panel-primary" style="display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center;">
+<h3 style="margin-bottom: 5px; border-bottom: none; padding-bottom: 0;">Memos This Month</h3>
+<div id="dashCurrentMonthMemos" style="font-size: 38px; font-weight: bold; color: var(--primary);">0</div>
+<div id="dashCurrentMonthLabel" style="font-size:12px;margin-top:4px;opacity:.9;">Current Month</div>
+</div>
+<div class="settings-section glass-panel rhsu-summary-panel">
+<h3 style="margin-bottom: 10px;">Total Memos by Categories</h3>
+<div id="dashCategories" style="max-height: 120px; overflow-y: auto; padding-right: 5px;"></div>
+</div>
+<div class="settings-section glass-panel rhsu-summary-panel">
+<h3 style="margin-bottom: 10px;">Total Memos by Users</h3>
+<div id="dashUsers" style="max-height: 120px; overflow-y: auto; padding-right: 5px;"></div>
+</div>
+</div>
+<!-- FILTERS AND SEARCH -->
+<div class="controls" style="margin-top: 20px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center;">
+<input id="searchInput" onkeyup="searchTable()" placeholder="Search memos..." style="margin:0; width: 220px; background: white;" type="text"/>
+<select id="filterCategory" onchange="searchTable()" style="margin:0; width: auto; background: white; padding: 8px 12px; border-radius: var(--radius-sm);">
+<option value="">All Categories</option>
+<option value="A">Admin</option>
+<option value="S">Supply</option>
+<option value="GSS">General Services Section</option>
+<option value="BP">Base Police</option>
+<option value="SSB">Special Services Band</option>
+<option value="RCIA">RCIA</option>
+</select>
+<select id="filterEncoder" onchange="searchTable()" style="margin:0; width: auto; background: white; padding: 8px 12px; border-radius: var(--radius-sm);">
+<option value="">All Encoders</option>
+</select>
+<select id="filterMonth" onchange="searchTable()" style="margin:0; width: auto; background: white; padding: 8px 12px; border-radius: var(--radius-sm);">
+<option value="">All Months</option>
+<option value="01">January</option>
+<option value="02">February</option>
+<option value="03">March</option>
+<option value="04">April</option>
+<option value="05">May</option>
+<option value="06">June</option>
+<option value="07">July</option>
+<option value="08">August</option>
+<option value="09">September</option>
+<option value="10">October</option>
+<option value="11">November</option>
+<option value="12">December</option>
+</select>
+<select id="filterYear" onchange="searchTable()" style="margin:0; width: auto; background: white; padding: 8px 12px; border-radius: var(--radius-sm);">
+<option value="">All Years</option>
+</select>
+<input id="filterDay" onchange="searchTable()" style="margin:0; width:auto; background:white; padding:8px 12px; border-radius:var(--radius-sm);" title="Filter by exact day" type="date"/>
+<button class="action-btn approve-btn" onclick="batchEditStatus()" style="color:white;">
+                        Bulk Edit Status
+                    </button>
+<button class="action-btn delete-btn" onclick="batchDelete()" style="color:white; margin-left: auto;">
+<i aria-hidden="true" class="fi fi-rr-trash spades-ui-icon"></i> Delete Selected
+                    </button>
+</div>
+<div class="table-wrapper">
+<table id="memoTable">
+<thead>
+<tr>
+<th style="width: 40px;"><input id="selectAll" onclick="toggleSelectAll()" type="checkbox"/></th>
+<th>Timestamp</th>
+<th>Memo Subject</th>
+<th>Office Destination</th>
+<th>Control Number</th>
+<th>Encoded By</th>
+<th>Status</th>
+<th>Actions</th>
+</tr>
+</thead>
+<tbody id="dataTable"></tbody>
+</table>
+</div>
+<div class="pagination-container hidden" id="memoPagination">
+<span id="memoPageInfo" style="font-weight: bold;">Page 1 of 1</span>
+<div class="pagination-buttons">
+<button class="page-btn" id="prevMemoBtn" onclick="changeMemoPage(-1)">Prev</button>
+<button class="page-btn" id="nextMemoBtn" onclick="changeMemoPage(1)">Next</button>
+</div>
+</div>
+</div>
