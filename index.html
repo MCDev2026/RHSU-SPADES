@@ -1349,9 +1349,9 @@
                 </div>
             </div>
 
-            <div class="activity-modal-actions" aria-label="Form actions">
-                <button id="activitySaveBtn" class="approve-btn" type="button" onclick="saveActivity()" title="Save activity" aria-label="Save activity"><i class="fi fi-rr-disk" aria-hidden="true"></i></button>
-                <button type="button" class="activity-cancel-icon" onclick="closeActivityModal()" title="Cancel" aria-label="Cancel"><i class="fi fi-rr-cross-small" aria-hidden="true"></i></button>
+            <div style="display:flex;gap:10px;margin-top:20px;">
+                <button id="activitySaveBtn" class="approve-btn" style="flex:1;margin:0;color:white;font-family:inherit;" onclick="saveActivity()">Add Activity</button>
+                <button type="button" style="flex:1;margin:0;background:#e2e8f0;color:#475569;font-family:inherit;" onclick="closeActivityModal()">Cancel</button>
             </div>
         </div>
     </div>
@@ -1704,66 +1704,7 @@
         </div>
     </div>
 
-<script>
-/* Global modal action controls: compact icon buttons in a consistent top-left toolbar. */
-(function () {
-    const actionPattern = /\b(save|saving|update|submit|cancel|discard)\b/i;
-    const saveIntentPattern = /\b(save|saving|update|submit|create|add|publish|apply)\b/i;
-    function enhanceModalActions(root) {
-        const scope = root && root.querySelectorAll ? root : document;
-        scope.querySelectorAll('.modal-content button, .modal-content input[type="submit"], .modal-content input[type="button"]').forEach(function (button) {
-            if (button.dataset.modalIconAction === '1') return;
-            const label = (button.tagName === 'INPUT' ? button.value : button.textContent || '').replace(/\s+/g, ' ').trim();
-            const id = button.id || '';
-            const handler = button.getAttribute('onclick') || '';
-            const isCancel = /\b(cancel|discard)\b/i.test(label) || /cancel|close.*modal/i.test(handler) && !saveIntentPattern.test(handler);
-            const isSave = actionPattern.test(label) || /save|submit/i.test(id) || saveIntentPattern.test(handler) || button.type === 'submit';
-            if (!isCancel && !isSave) return;
-            const action = isCancel ? 'cancel' : 'save';
-            button.dataset.modalIconAction = '1';
-            button.dataset.modalAction = action;
-            button.dataset.modalActionLabel = label;
-            button.classList.add('modal-icon-action', action === 'save' ? 'modal-icon-save' : 'modal-icon-cancel');
-            button.setAttribute('aria-label', label);
-            button.setAttribute('title', label);
-            button.setAttribute('data-tooltip', label);
 
-            const modal = button.closest('.modal-content');
-            if (!modal) return;
-            let toolbar = modal.querySelector(':scope > .modal-action-toolbar');
-            if (!toolbar) {
-                toolbar = document.createElement('div');
-                toolbar.className = 'modal-action-toolbar';
-                toolbar.setAttribute('role', 'group');
-                toolbar.setAttribute('aria-label', 'Modal actions');
-                modal.insertBefore(toolbar, modal.firstChild);
-            }
-            // Preserve native form submission when a submit control is moved outside its form.
-            if (button.type === 'submit') {
-                const form = button.closest('form');
-                if (form) {
-                    if (!form.id) form.id = 'modal-form-' + Math.random().toString(36).slice(2, 10);
-                    button.setAttribute('form', form.id);
-                }
-            }
-            toolbar.appendChild(button);
-        });
-    }
-    function init() {
-        enhanceModalActions(document);
-        const observer = new MutationObserver(function (records) {
-            records.forEach(function (record) {
-                record.addedNodes.forEach(function (node) {
-                    if (node.nodeType === 1) enhanceModalActions(node);
-                });
-            });
-        });
-        observer.observe(document.body, { childList: true, subtree: true });
-    }
-    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init, { once: true });
-    else init();
-})();
-</script>
 
 </body>
 </html>
