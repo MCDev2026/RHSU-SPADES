@@ -3329,7 +3329,8 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             document.getElementById('activityRequestingOffice').value = '';
             document.getElementById('activityConcernedOffice').value = '';
             document.getElementById('activityRequestedServices').value = '';
-            document.getElementById('activityTime').value = '';
+            document.getElementById('activityTimeFrom').value = '';
+            document.getElementById('activityTimeTo').value = '';
             document.getElementById('activityFrequency').value = 'N/A';
             document.getElementById('activityStatus').value = 'Recurring';
             resetActivityDatePicker();
@@ -3342,6 +3343,8 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
 
             const raw = String(value).trim();
             if (!raw) return '';
+            const rangeParts = raw.split(/\s*(?:-|–|to)\s*/i);
+            if (rangeParts.length === 2) return `${formatActivityTime(rangeParts[0])} – ${formatActivityTime(rangeParts[1])}`;
 
             // Google Sheets may return a time-only cell as a full Date string,
             // e.g. "Sat Dec 30 1899 08:30:00 GMT+0800 (...)".
@@ -3450,7 +3453,9 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             document.getElementById('activityRequestingOffice').value = a.requestingOffice || '';
             document.getElementById('activityConcernedOffice').value = a.concernedOffice || '';
             document.getElementById('activityRequestedServices').value = a.requestedServices || '';
-            document.getElementById('activityTime').value = activityTimeForInput(a.time);
+            const savedRange = String(a.time || '').split(/\s*(?:-|–|to)\s*/i);
+            document.getElementById('activityTimeFrom').value = activityTimeForInput(savedRange[0] || '');
+            document.getElementById('activityTimeTo').value = activityTimeForInput(savedRange[1] || savedRange[0] || '');
             document.getElementById('activityFrequency').value = a.frequency || 'N/A';
             document.getElementById('activityStatus').value = a.status || 'Recurring';
             const firstDate = groupDates[0] || String(a.date || '').slice(0,10);
@@ -3477,11 +3482,13 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             const requestingOffice = document.getElementById('activityRequestingOffice').value.trim();
             const concernedOffice = document.getElementById('activityConcernedOffice').value.trim();
             const requestedServices = document.getElementById('activityRequestedServices').value.trim();
-            const time = document.getElementById('activityTime').value;
+            const timeFrom = document.getElementById('activityTimeFrom').value;
+            const timeTo = document.getElementById('activityTimeTo').value;
+            const time = timeFrom && timeTo ? `${timeFrom}-${timeTo}` : ''; 
             const frequency = document.getElementById('activityFrequency').value || 'N/A';
             const dates = getSelectedActivityDates();
 
-            if (!title || !venue || !requestingOffice || !concernedOffice || !time || !dates.length) {
+            if (!title || !venue || !requestingOffice || !concernedOffice || !timeFrom || !timeTo || timeTo <= timeFrom || !dates.length) {
                 return customAlert('Please complete all required fields and select at least one date.', 'Validation Error');
             }
             const wasEditing = !!activityEditId;
@@ -3494,7 +3501,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             };
 
             const btn = document.getElementById('activitySaveBtn');
-            btn.disabled = true; btn.innerText = wasEditing ? 'Updating...' : 'Saving...';
+            btn.disabled = true; btn.innerHTML = '<i class="fi fi-rr-spinner" aria-hidden="true"></i>'; 
             try {
                 const res = await fetch(API_URL, { method:'POST', mode:'cors', headers:{'Content-Type':'text/plain;charset=utf-8'}, body:JSON.stringify(payload) });
                 const data = await res.json();
@@ -3506,7 +3513,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             } catch (err) {
                 customAlert(err.message || 'Unable to save activity.', 'Error');
             } finally {
-                btn.disabled = false; btn.innerText = wasEditing ? 'Update Activity' : 'Add Activity';
+                btn.disabled = false; btn.innerHTML = '<i class="fi fi-rr-disk" aria-hidden="true"></i>'; 
             }
         }
 
@@ -3581,7 +3588,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 const date = raw < 1 ? new Date(year, month - 1, previousCount + raw) : raw > count ? new Date(year, month + 1, raw - count) : new Date(year, month, raw);
                 const key = localDateKey(date), other = date.getMonth() !== month;
                 const matches = (allActivities || []).filter(a => activityOccursOnDate(a, date));
-                html += `<div class="activity-overview-day${other ? ' is-other-month' : ''}${key === today ? ' is-today' : ''}"><span class="activity-overview-day-number">${date.getDate()}</span><div class="activity-overview-events">${matches.slice(0,3).map(a => `<button type="button" class="activity-overview-event activity-event-${String(a.frequency || 'once').toLowerCase().replace(/[^a-z]/g,'')}" title="${escapeAttr((a.activityTitle || 'Activity') + (a.frequency && a.frequency !== 'N/A' ? ' · ' + a.frequency : '') + (a.requestedServices ? ' · Services: ' + a.requestedServices : ''))}" onclick="showActivityDetails('${escapeAttr(a.id)}')">${escapeHtml(a.activityTitle || 'Untitled activity')}</button>`).join('')}${matches.length > 3 ? `<span class="activity-overview-more">+${matches.length-3} more</span>` : ''}</div></div>`;
+                html += `<div class="activity-overview-day${other ? ' is-other-month' : ''}${key === today ? ' is-today' : ''}"><span class="activity-overview-day-number">${date.getDate()}</span>${matches.length ? `<button type="button" class="activity-day-bookmark" aria-label="${matches.length} activities; hover or focus to view" title="${matches.length} scheduled activities"><i class="fi fi-rr-bookmark" aria-hidden="true"></i><span>${matches.length}</span></button><div class="activity-overview-events activity-day-popover">${matches.map(a => `<button type="button" class="activity-overview-event activity-event-${String(a.frequency || 'once').toLowerCase().replace(/[^a-z]/g,'')}" title="${escapeAttr((a.activityTitle || 'Activity') + ' · ' + formatActivityTime(a.time))}" onclick="showActivityDetails('${escapeAttr(a.id)}')">${escapeHtml(a.activityTitle || 'Untitled activity')} <small>${escapeHtml(formatActivityTime(a.time))}</small></button>`).join('')}</div>` : ''}</div>`;
             }
             host.innerHTML = html;
         }
@@ -4444,7 +4451,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
            Area of Responsibilities / User Access / Activity Pagination
            ============================================================ */
         let execActivityPage = 1;
-        const EXEC_ACTIVITY_PAGE_SIZE = 5;
+        const EXEC_ACTIVITY_PAGE_SIZE = 8;
         let currentPersonnelSubPage = 'list';
         let personnelManagementDataLoaded = false;
         let personnelManagementDataPromise = null;
@@ -4867,6 +4874,25 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             if (bmi > 25.0) return 'Overweight (OW)';
             return 'Normal (N)';
         }
+        function getPnpBmiLimits(age) {
+            const a = Number(age);
+            if (!Number.isFinite(a) || a < 0) return null;
+            // Age bands and upper BMI limits transcribed from the supplied PNP workbook.
+            const maxBmi = a < 29 ? 24.9 : a <= 34 ? 25 : a <= 39 ? 25.5 : a <= 44 ? 26 : a <= 50 ? 26.5 : 27;
+            return { minBmi: 18.5, maxBmi };
+        }
+        function computeBmiStandards(heightCm, weightKg, age) {
+            const h = Number(heightCm), w = Number(weightKg), limits = getPnpBmiLimits(age);
+            if (!Number.isFinite(h) || h <= 0 || !Number.isFinite(w) || w < 0 || !limits) return {minIdeal:'', maxAcceptable:'', weightToLose:''};
+            const h2 = (h / 100) ** 2;
+            const minIdeal = limits.minBmi * h2;
+            const maxAcceptable = limits.maxBmi * h2;
+            return {
+                minIdeal: Math.round(minIdeal * 100) / 100,
+                maxAcceptable: Math.round(maxAcceptable * 100) / 100,
+                weightToLose: Math.round(Math.max(0, w - maxAcceptable) * 100) / 100
+            };
+        }
         function computeBmiClient(heightCm, weightKg, age) {
             // BMI = weight (kg) / height (m)^2. Classification uses the rounded
             // result shown in the BMI Result column so both columns stay consistent.
@@ -4881,7 +4907,8 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             if (computed.bmi !== '') {
                 return Object.assign({}, rec, {
                     bmiResult: computed.bmi,
-                    bmiClassification: computed.classification
+                    bmiClassification: computed.classification,
+                    ...computeBmiStandards(rec.height, rec.weight, rec.age)
                 });
             }
             // Fallback for legacy rows that contain a BMI Result but lack usable
@@ -5056,7 +5083,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             }
 
             if (!personnel.length) {
-                tbody.innerHTML = `<tr><td colspan="11" style="text-align:center;color:var(--text-muted);padding:20px;">No personnel records found.</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="14" style="text-align:center;color:var(--text-muted);padding:20px;">No personnel records found.</td></tr>`;
                 return;
             }
 
@@ -5078,7 +5105,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             let rowNo = 1;
             const htmlRows = [];
             orderedSecs.forEach(sec => {
-                htmlRows.push(`<tr class="bmi-section-header"><td colspan="11">${escapeHtml(sec)} — ${sections.get(sec).length} personnel</td></tr>`);
+                htmlRows.push(`<tr class="bmi-section-header"><td colspan="14">${escapeHtml(sec)} — ${sections.get(sec).length} personnel</td></tr>`);
                 sections.get(sec).forEach(x => {
                     const p = x.p;
                     const key = [p.rank, p.lastName, p.firstName, p.middleName, p.qualifiers].map(s => String(s || '').trim()).join('|');
@@ -5110,6 +5137,9 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                         <td>${rec ? escapeHtml(rec.wrist || '') : ''}</td>
                         <td><strong>${rec ? escapeHtml(rec.bmiResult || '') : ''}</strong></td>
                         <td style="color:${rec ? bmiClassColor(rec.bmiClassification) : 'var(--text-muted)'};font-weight:600;">${rec ? escapeHtml(rec.bmiClassification || '') : '<span style="font-size:11px;font-weight:400;">Not encoded</span>'}</td>
+                        <td>${rec && rec.minIdeal !== '' ? Number(rec.minIdeal).toFixed(2) : ''}</td>
+                        <td>${rec && rec.maxAcceptable !== '' ? Number(rec.maxAcceptable).toFixed(2) : ''}</td>
+                        <td>${rec && rec.weightToLose !== '' ? Number(rec.weightToLose).toFixed(2) : ''}</td>
                         ${actionCell}
                     </tr>`);
                 });
@@ -5156,7 +5186,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             });
             [...sections.keys()].filter(k => !orderedSecs.includes(k)).sort().forEach(k => orderedSecs.push(k));
 
-            let csv = '\uFEFFNo.,Section,Rank/Full Name,Age,Height (cm),Weight (kg),Waist (cm),Hip (cm),Wrist (cm),BMI Result,BMI Classification\n';
+            let csv = '\uFEFFNo.,Section,Rank/Full Name,Age,Height (cm),Weight (kg),Waist (cm),Hip (cm),Wrist (cm),BMI Result,BMI Classification,Minimum Ideal Body Weight (kg),Maximum PNP Acceptable BMI (kg),Weight to Lose (kg)\n';
             let rowNo = 1;
             orderedSecs.forEach(sec => {
                 const group = sections.get(sec);
@@ -5165,7 +5195,8 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                     const key = [p.rank, p.lastName, p.firstName, p.middleName, p.qualifiers].map(s => String(s || '').trim()).join('|');
                     const storedRec = recordMap.get(key) || null;
                     const rec = storedRec ? normalizeBmiRecordForDisplay(storedRec) : null;
-                    csv += `${rowNo},${escCsv(p.section||'')},${escCsv(personnelFullName(p))},${rec?rec.age:''},${rec?rec.height:''},${rec?rec.weight:''},${rec?rec.waist:''},${rec?rec.hip:''},${rec?rec.wrist:''},${rec?rec.bmiResult:''},${escCsv(rec?rec.bmiClassification:'')}\n`;
+                    const limits = rec ? computeBmiStandards(rec.height, rec.weight, rec.age) : {minIdeal:'',maxAcceptable:'',weightToLose:''};
+                    csv += `${rowNo},${escCsv(p.section||'')},${escCsv(personnelFullName(p))},${rec?rec.age:''},${rec?rec.height:''},${rec?rec.weight:''},${rec?rec.waist:''},${rec?rec.hip:''},${rec?rec.wrist:''},${rec?rec.bmiResult:''},${escCsv(rec?rec.bmiClassification:'')},${limits.minIdeal},${limits.maxAcceptable},${limits.weightToLose}\\n`;
                     rowNo++;
                 });
             });
@@ -5235,6 +5266,9 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             const cEl = document.getElementById('bmiClassPreview');
             if (rEl) rEl.innerText = res.bmi !== '' ? res.bmi : '—';
             if (cEl) { cEl.innerText = res.classification || '—'; cEl.style.color = bmiClassColor(res.classification); }
+            const standards = computeBmiStandards(h, w, age);
+            const previewMap = {bmiMinIdealPreview: standards.minIdeal, bmiMaxAcceptablePreview: standards.maxAcceptable, bmiWeightLosePreview: standards.weightToLose};
+            Object.keys(previewMap).forEach(id => { const el = document.getElementById(id); if (el) el.textContent = previewMap[id] === '' ? '—' : Number(previewMap[id]).toFixed(2) + ' kg'; });
         }
         function openBmiModal(editId) {
             const selectedRecord = editId ? bmiRecords.find(r => String(r.id) === String(editId)) : null;
