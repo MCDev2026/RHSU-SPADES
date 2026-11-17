@@ -26,6 +26,14 @@
         return style.display !== 'none' && style.visibility !== 'hidden' && style.visibility !== 'collapse';
     }
 
+    // Unspecified buttons default to "submit" inside forms. Explicit submit
+    // controls keep their type; all other controls are made safe action buttons.
+    function normalizeUntypedButtons(root = document) {
+        if (!root) return;
+        if (root instanceof HTMLButtonElement && !root.hasAttribute('type')) root.type = 'button';
+        root.querySelectorAll?.('button:not([type])').forEach(button => { button.type = 'button'; });
+    }
+
     function moveModalsToDocumentRoot() {
         document.querySelectorAll(MODAL_SELECTOR).forEach(modal => {
             // Root-level overlays are not trapped inside tab/layout stacking contexts.
@@ -82,6 +90,7 @@
             if (record.type !== 'childList') return;
             record.addedNodes.forEach(node => {
                 if (!(node instanceof HTMLElement)) return;
+                normalizeUntypedButtons(node);
                 const candidates = [];
                 if (isManagedModal(node)) candidates.push(node);
                 node.querySelectorAll?.(MODAL_SELECTOR).forEach(modal => candidates.push(modal));
@@ -118,6 +127,7 @@
 
     function initialize() {
         if (!document.body) return;
+        normalizeUntypedButtons(document.body);
         moveModalsToDocumentRoot();
         refreshStack();
 
@@ -222,6 +232,13 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
 
         let allActivities = [];
         let filteredActivities = [];
+        let matrixComplianceRecords = [];
+        let matrixComplianceReadOnly = false;
+        let matrixComplianceIsAlphaAdmin = false;
+        let matrixComplianceEditingId = '';
+        let matrixComplianceBusy = false;
+        let currentMatrixCompliancePage = 1;
+        const MATRIX_COMPLIANCES_PER_PAGE = 10;
         let archivedActivities = [];
         let filteredArchivedActivities = [];
         let currentActivityPage = 1;
@@ -1808,6 +1825,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             personnel: { hash: '#personnel-management/personnel-list', label: 'Personnel Management' },
             adminMgmt: { hash: '#user-management', label: 'User Management' },
             activityManagement: { hash: '#activity-management', label: 'Activity Management' },
+            matrixCompliances: { hash: '#matrix-of-compliances', label: 'Matrix of Compliances' },
             settings: { hash: '#settings', label: 'Settings' },
             profile: { hash: '#my-profile', label: 'My Profile' }
         };
@@ -1847,7 +1865,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             const routeMap = {
                 'dashboard': 'dashboard', 'memo-database': 'home',
                 'personnel-management': 'personnel', 'user-management': 'adminMgmt',
-                'activity-management': 'activityManagement', 'settings': 'settings',
+                'activity-management': 'activityManagement', 'matrix-of-compliances': 'matrixCompliances', 'settings': 'settings',
                 'my-profile': 'profile'
             };
             const tabName = routeMap[pageSlug] || 'dashboard';
@@ -1864,17 +1882,17 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
 
         function switchTab(tabName, options = {}) {
             const activeUsername = localStorage.getItem('loggedInUser') || '';
-            const accessControlledTab = ['dashboard', 'home', 'personnel', 'activityManagement', 'settings'].includes(tabName);
+            const accessControlledTab = ['dashboard', 'home', 'personnel', 'activityManagement', 'matrixCompliances', 'settings'].includes(tabName);
             if (activeUsername && accessControlledTab &&
                 typeof userAccessMapLoadedFor !== 'undefined' && userAccessMapLoadedFor === activeUsername &&
                 typeof userHasAccess === 'function' && !userHasAccess(tabName)) {
                 customAlert('Your account does not have access to this page.', 'Permission Denied');
                 return;
             }
-            ['tabDashboard','tabHome','tabProfile','tabAdminMgmt','tabSettings','tabPersonnel','tabActivityManagement'].forEach(id => {
+            ['tabDashboard','tabHome','tabProfile','tabAdminMgmt','tabSettings','tabPersonnel','tabActivityManagement','tabMatrixCompliances'].forEach(id => {
                 const el=document.getElementById(id); if(el) el.classList.add('hidden');
             });
-            ['btnDashboard','btnHome','btnSettings','btnAdminMgmt','btnPersonnel','btnActivityManagement'].forEach(id => {
+            ['btnDashboard','btnHome','btnSettings','btnAdminMgmt','btnPersonnel','btnActivityManagement','btnMatrixCompliances'].forEach(id => {
                 const el=document.getElementById(id); if(el) el.classList.remove('active');
             });
             const settingsMain = document.getElementById('settingsMainPanel');
@@ -1919,6 +1937,10 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 document.getElementById('btnActivityManagement').classList.add('active');
                 updateActivityPermissions();
                 loadActivities();
+            } else if (tabName === 'matrixCompliances') {
+                document.getElementById('tabMatrixCompliances').classList.remove('hidden');
+                document.getElementById('btnMatrixCompliances').classList.add('active');
+                loadMatrixCompliances();
             } else if (tabName === 'personnel') {
                 document.getElementById('tabPersonnel').classList.remove('hidden');
                 document.getElementById('btnPersonnel').classList.add('active');
@@ -2639,6 +2661,327 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 throw new Error((result && result.error) || 'The requested change was rejected by the backend.');
             }
             return result;
+        }
+
+        /* ---------- MATRIX OF COMPLIANCES ---------- */
+        let matrixComplianceCalendarMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+        const MATRIX_COMPLIANCE_FREQUENCIES = ['None', 'Daily', 'Weekly', 'Monthly', 'Quarterly', 'Semestral', 'Annually'];
+
+        function matrixComplianceAuthPayload(action, extra = {}) {
+            return Object.assign({
+                action: action,
+                userName: localStorage.getItem('loggedInUser') || '',
+                credential: localStorage.getItem('loggedCred') || ''
+            }, extra || {});
+        }
+
+        function formatMatrixComplianceDate(value, includeTime = false) {
+            if (!value) return '—';
+            const raw = String(value);
+            const date = includeTime ? new Date(raw) : new Date(raw.slice(0, 10) + 'T12:00:00');
+            if (Number.isNaN(date.getTime())) return raw;
+            return includeTime
+                ? date.toLocaleString(undefined, {year:'numeric', month:'short', day:'numeric', hour:'numeric', minute:'2-digit'})
+                : date.toLocaleDateString(undefined, {year:'numeric', month:'short', day:'numeric'});
+        }
+
+        function setMatrixComplianceNotice(message, type = '') {
+            const notice = document.getElementById('matrixComplianceNotice');
+            if (!notice) return;
+            notice.textContent = String(message || '');
+            notice.className = 'matrix-compliance-notice' + (type ? ' is-' + type : '');
+        }
+
+        function matrixComplianceDateObject(value) {
+            const key = String(value || '').slice(0, 10);
+            const match = key.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+            if (!match) return null;
+            const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+            return Number.isNaN(date.getTime()) ? null : date;
+        }
+
+        function matrixComplianceFrequencyLabel(value) {
+            const normalized = String(value || 'None').trim().toLowerCase();
+            return MATRIX_COMPLIANCE_FREQUENCIES.find(item => item.toLowerCase() === normalized) || 'None';
+        }
+
+        function matrixComplianceOccursOnDate(record, dateObject) {
+            const anchor = matrixComplianceDateObject(record && record.targetDate);
+            if (!anchor || !dateObject) return false;
+            const occurrence = new Date(dateObject.getFullYear(), dateObject.getMonth(), dateObject.getDate());
+            const anchorKey = localDateKey(anchor);
+            const occurrenceKey = localDateKey(occurrence);
+            if (occurrenceKey < anchorKey) return false;
+            const until = matrixComplianceDateObject(record && record.recurrenceUntil);
+            if (until && occurrenceKey > localDateKey(until)) return false;
+
+            const frequency = matrixComplianceFrequencyLabel(record && record.frequency);
+            if (frequency === 'None') return occurrenceKey === anchorKey;
+            if (frequency === 'Daily') return true;
+
+            const dayDifference = Math.round((occurrence.getTime() - anchor.getTime()) / 86400000);
+            if (frequency === 'Weekly') return dayDifference >= 0 && dayDifference % 7 === 0;
+
+            const monthDifference = (occurrence.getFullYear() - anchor.getFullYear()) * 12 + occurrence.getMonth() - anchor.getMonth();
+            const expectedDay = Math.min(anchor.getDate(), new Date(occurrence.getFullYear(), occurrence.getMonth() + 1, 0).getDate());
+            if (frequency === 'Monthly') return monthDifference >= 0 && occurrence.getDate() === expectedDay;
+            if (frequency === 'Quarterly') return monthDifference >= 0 && monthDifference % 3 === 0 && occurrence.getDate() === expectedDay;
+            if (frequency === 'Semestral') return monthDifference >= 0 && monthDifference % 6 === 0 && occurrence.getDate() === expectedDay;
+            if (frequency === 'Annually') return occurrence.getMonth() === anchor.getMonth() && occurrence.getDate() === Math.min(anchor.getDate(), new Date(occurrence.getFullYear(), occurrence.getMonth() + 1, 0).getDate());
+            return occurrenceKey === anchorKey;
+        }
+
+        function changeMatrixComplianceCalendarMonth(delta) {
+            matrixComplianceCalendarMonth = new Date(matrixComplianceCalendarMonth.getFullYear(), matrixComplianceCalendarMonth.getMonth() + Number(delta || 0), 1);
+            renderMatrixComplianceCalendar();
+        }
+
+        function renderMatrixComplianceCalendar() {
+            const host = document.getElementById('matrixComplianceCalendar');
+            const title = document.getElementById('matrixComplianceCalendarMonthTitle');
+            if (!host || !title) return;
+            const year = matrixComplianceCalendarMonth.getFullYear();
+            const month = matrixComplianceCalendarMonth.getMonth();
+            title.textContent = matrixComplianceCalendarMonth.toLocaleDateString(undefined, {month:'long', year:'numeric'});
+            const weekdays = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+            let html = weekdays.map(day => `<div class="activity-overview-weekday">${day}</div>`).join('');
+            const firstDay = new Date(year, month, 1).getDay();
+            const daysInMonth = new Date(year, month + 1, 0).getDate();
+            const previousMonthDays = new Date(year, month, 0).getDate();
+            const today = localDateKey(new Date());
+            let totalOccurrences = 0;
+            for (let index = 0; index < 42; index++) {
+                const rawDay = index - firstDay + 1;
+                const date = rawDay < 1
+                    ? new Date(year, month - 1, previousMonthDays + rawDay)
+                    : rawDay > daysInMonth
+                        ? new Date(year, month + 1, rawDay - daysInMonth)
+                        : new Date(year, month, rawDay);
+                const key = localDateKey(date);
+                const isOtherMonth = date.getMonth() !== month;
+                const matches = (matrixComplianceRecords || []).filter(record => matrixComplianceOccursOnDate(record, date));
+                if (!isOtherMonth) totalOccurrences += matches.length;
+                const list = matches.map(record => {
+                    const recurring = matrixComplianceFrequencyLabel(record.frequency) !== 'None';
+                    const frequency = recurring ? ` · ${matrixComplianceFrequencyLabel(record.frequency)}` : '';
+                    const office = record.officeInCharge ? `Office In-charge: ${record.officeInCharge}` : '';
+                    return `<div class="activity-overview-event-text matrix-compliance-event-text${recurring ? ' is-recurring' : ''}" title="${escapeAttr(record.compliance || 'Untitled compliance')}${escapeAttr(frequency)}${office ? ' — ' + escapeAttr(office) : ''}">${escapeHtml(record.compliance || 'Untitled compliance')}${recurring ? `<span class="matrix-compliance-recurrence-label">${escapeHtml(frequency)}</span>` : ''}</div>`;
+                }).join('');
+                html += `<div class="activity-overview-day${isOtherMonth ? ' is-other-month' : ''}${key === today ? ' is-today' : ''}"><span class="activity-overview-day-number">${date.getDate()}</span>${list ? `<div class="activity-overview-events activity-day-text-list" aria-label="Compliances scheduled on ${escapeAttr(key)}">${list}</div>` : ''}</div>`;
+            }
+            host.innerHTML = html;
+            const count = document.getElementById('matrixComplianceCalendarCount');
+            if (count) count.textContent = `${totalOccurrences} scheduled ${totalOccurrences === 1 ? 'occurrence' : 'occurrences'} this month`;
+        }
+
+        function toggleMatrixComplianceRepeatUntil() {
+            const frequency = matrixComplianceFrequencyLabel(document.getElementById('matrixComplianceFrequency')?.value);
+            const until = document.getElementById('matrixComplianceRepeatUntil');
+            if (until) {
+                until.disabled = frequency === 'None';
+                if (frequency === 'None') until.value = '';
+            }
+        }
+
+        async function loadMatrixCompliances() {
+            const tbody = document.getElementById('matrixComplianceTableBody');
+            const currentUser = localStorage.getItem('loggedInUser') || 'Current account';
+            const accountLabel = document.getElementById('matrixComplianceAccountLabel');
+            if (accountLabel) accountLabel.textContent = currentUser;
+            if (tbody) tbody.innerHTML = '<tr><td colspan="8" class="matrix-compliance-empty"><span class="matrix-compliance-loading" aria-hidden="true"></span> Loading the compliance register…</td></tr>';
+            setMatrixComplianceNotice('Connecting to the shared compliance register…');
+            try {
+                const result = await postPersonnelMutation(matrixComplianceAuthPayload('get_matrix_compliances'));
+                matrixComplianceRecords = Array.isArray(result.records) ? result.records : [];
+                currentMatrixCompliancePage = 1;
+                matrixComplianceReadOnly = !!result.readOnly;
+                matrixComplianceIsAlphaAdmin = !!result.alphaAdmin;
+                const addButton = document.getElementById('matrixComplianceAddBtn');
+                if (addButton) {
+                    addButton.disabled = matrixComplianceReadOnly;
+                    addButton.title = matrixComplianceReadOnly ? 'This account is restricted to read-only access' : 'Add compliance';
+                }
+                renderMatrixCompliances();
+                renderMatrixComplianceCalendar();
+                setMatrixComplianceNotice(
+                    matrixComplianceReadOnly
+                        ? 'Read-only account: you can review the shared register but cannot add, edit, or delete entries.'
+                        : (matrixComplianceIsAlphaAdmin ? 'Shared register loaded. Alpha Admin can manage all entries.' : 'Shared register loaded. You can manage entries you encoded.'),
+                    matrixComplianceReadOnly ? 'warning' : 'success'
+                );
+            } catch (error) {
+                matrixComplianceRecords = [];
+                matrixComplianceReadOnly = true;
+                renderMatrixComplianceCalendar();
+                if (tbody) tbody.innerHTML = '<tr><td colspan="8" class="matrix-compliance-empty matrix-compliance-error">Unable to load the compliance register. ' + escapeHtml(error.message || 'Please retry.') + '</td></tr>';
+                document.getElementById('matrixCompliancePagination')?.classList.add('hidden');
+                setMatrixComplianceNotice(error.message || 'Unable to connect to the compliance service.', 'error');
+                const addButton = document.getElementById('matrixComplianceAddBtn');
+                if (addButton) addButton.disabled = true;
+            }
+        }
+
+        function renderMatrixCompliances() {
+            const tbody = document.getElementById('matrixComplianceTableBody');
+            if (!tbody) return;
+            const search = String(document.getElementById('matrixComplianceSearch')?.value || '').trim().toLowerCase();
+            const matchingRows = matrixComplianceRecords.filter(record => {
+                const haystack = [record.compliance, record.officeInCharge, record.actionTaken, record.targetDate, record.frequency, record.encodedBy].join(' ').toLowerCase();
+                return !search || haystack.includes(search);
+            });
+            const pagination = document.getElementById('matrixCompliancePagination');
+            const pageInfo = document.getElementById('matrixCompliancePageInfo');
+            const previousButton = document.getElementById('prevMatrixComplianceBtn');
+            const nextButton = document.getElementById('nextMatrixComplianceBtn');
+
+            if (!matchingRows.length) {
+                const message = matrixComplianceRecords.length
+                    ? 'No compliance records match your search.'
+                    : 'No compliance entries yet. Select Add Compliance to record the first requirement.';
+                tbody.innerHTML = '<tr><td colspan="8" class="matrix-compliance-empty"><i class="fi fi-rr-clipboard-list"></i><span>' + escapeHtml(message) + '</span></td></tr>';
+                if (pagination) pagination.classList.add('hidden');
+                return;
+            }
+
+            const totalPages = Math.max(1, Math.ceil(matchingRows.length / MATRIX_COMPLIANCES_PER_PAGE));
+            currentMatrixCompliancePage = Math.min(Math.max(currentMatrixCompliancePage, 1), totalPages);
+            const startIndex = (currentMatrixCompliancePage - 1) * MATRIX_COMPLIANCES_PER_PAGE;
+            const pageRows = matchingRows.slice(startIndex, startIndex + MATRIX_COMPLIANCES_PER_PAGE);
+            const currentUser = String(localStorage.getItem('loggedInUser') || '').trim().toLowerCase();
+
+            tbody.innerHTML = pageRows.map(record => {
+                const encodedId = escapeAttr(String(record.id || ''));
+                const compliance = escapeHtml(record.compliance || 'Untitled compliance');
+                const office = escapeHtml(record.officeInCharge || 'Not specified');
+                const actionTaken = escapeHtml(record.actionTaken || 'Not yet recorded');
+                const encodedBy = escapeHtml(record.encodedBy || 'Unknown');
+                const targetDate = formatMatrixComplianceDate(record.targetDate);
+                const lastUpdated = formatMatrixComplianceDate(record.updatedAt || record.createdAt, true);
+                const recurrence = matrixComplianceFrequencyLabel(record.frequency);
+                const recurrenceText = recurrence === 'None' ? 'One-time' : recurrence + (record.recurrenceUntil ? ` · until ${formatMatrixComplianceDate(record.recurrenceUntil)}` : ' · ongoing');
+                const canManage = !matrixComplianceReadOnly && (matrixComplianceIsAlphaAdmin || String(record.encodedBy || '').trim().toLowerCase() === currentUser);
+                const disabled = canManage ? '' : ' disabled aria-disabled="true"';
+                return '<tr>'
+                    + '<td class="matrix-compliance-main-cell"><strong>' + compliance + '</strong></td>'
+                    + '<td class="matrix-compliance-date-cell">' + escapeHtml(targetDate) + '</td>'
+                    + '<td class="matrix-compliance-office-cell">' + office + '</td>'
+                    + '<td class="matrix-compliance-action-cell">' + actionTaken + '</td>'
+                    + '<td class="matrix-compliance-recurrence-cell">' + escapeHtml(recurrenceText) + '</td>'
+                    + '<td class="matrix-compliance-owner-cell">' + encodedBy + '</td>'
+                    + '<td class="matrix-compliance-updated-cell">' + escapeHtml(lastUpdated) + '</td>'
+                    + '<td class="matrix-compliance-actions-cell"><div class="matrix-compliance-row-actions">'
+                    + '<button type="button" class="action-btn icon-action-btn matrix-compliance-edit" onclick="openMatrixComplianceModal(\'' + encodedId + '\')" title="Edit compliance" aria-label="Edit compliance"' + disabled + '><i class="fi fi-rr-edit" aria-hidden="true"></i></button>'
+                    + '<button type="button" class="action-btn icon-action-btn matrix-compliance-delete" onclick="deleteMatrixCompliance(\'' + encodedId + '\')" title="Delete compliance" aria-label="Delete compliance"' + disabled + '><i class="fi fi-rr-trash" aria-hidden="true"></i></button>'
+                    + '</div></td></tr>';
+            }).join('');
+
+            if (pagination) pagination.classList.toggle('hidden', matchingRows.length <= MATRIX_COMPLIANCES_PER_PAGE);
+            if (pageInfo) pageInfo.textContent = `Page ${currentMatrixCompliancePage} of ${totalPages} · ${matchingRows.length} ${matchingRows.length === 1 ? 'record' : 'records'}`;
+            if (previousButton) previousButton.disabled = currentMatrixCompliancePage === 1;
+            if (nextButton) nextButton.disabled = currentMatrixCompliancePage === totalPages;
+        }
+
+        function filterMatrixCompliances() { currentMatrixCompliancePage = 1; renderMatrixCompliances(); }
+
+        function changeMatrixCompliancePage(direction) {
+            currentMatrixCompliancePage += Number(direction || 0);
+            renderMatrixCompliances();
+        }
+
+        function openMatrixComplianceModal(id = '') {
+            if (matrixComplianceReadOnly || matrixComplianceBusy) return customAlert('This account is restricted to read-only access.', 'Permission Denied');
+            matrixComplianceEditingId = String(id || '');
+            const record = matrixComplianceEditingId ? matrixComplianceRecords.find(item => String(item.id) === matrixComplianceEditingId) : null;
+            if (matrixComplianceEditingId && !record) return customAlert('The selected compliance record could not be found. Refresh the page and try again.', 'Record Not Found');
+            const title = document.getElementById('matrixComplianceModalTitle');
+            const compliance = document.getElementById('matrixComplianceText');
+            const target = document.getElementById('matrixComplianceTargetDate');
+            const office = document.getElementById('matrixComplianceOfficeInCharge');
+            const action = document.getElementById('matrixComplianceActionTaken');
+            const frequency = document.getElementById('matrixComplianceFrequency');
+            const repeatUntil = document.getElementById('matrixComplianceRepeatUntil');
+            const saveLabel = document.getElementById('matrixComplianceSaveLabel');
+            if (title) title.textContent = record ? 'Edit Compliance' : 'Add Compliance';
+            if (compliance) compliance.value = record ? String(record.compliance || '') : '';
+            if (target) target.value = record ? String(record.targetDate || '').slice(0, 10) : '';
+            if (office) office.value = record ? String(record.officeInCharge || '') : '';
+            if (action) action.value = record ? String(record.actionTaken || '') : '';
+            if (frequency) frequency.value = matrixComplianceFrequencyLabel(record && record.frequency);
+            if (repeatUntil) repeatUntil.value = record ? String(record.recurrenceUntil || '').slice(0, 10) : '';
+            if (saveLabel) saveLabel.textContent = record ? 'Save Changes' : 'Save Compliance';
+            toggleMatrixComplianceRepeatUntil();
+            const modal = document.getElementById('matrixComplianceModal');
+            if (modal) {
+                modal.classList.remove('hidden');
+                modal.setAttribute('aria-hidden', 'false');
+                window.SPADESModalStack?.bringToFront(modal);
+                window.setTimeout(() => compliance?.focus({preventScroll:true}), 30);
+            }
+        }
+
+        function closeMatrixComplianceModal() {
+            const modal = document.getElementById('matrixComplianceModal');
+            if (modal) {
+                modal.classList.add('hidden');
+                modal.setAttribute('aria-hidden', 'true');
+            }
+            matrixComplianceEditingId = '';
+            matrixComplianceBusy = false;
+            const form = document.getElementById('matrixComplianceForm');
+            if (form) form.reset();
+            const saveButton = document.getElementById('matrixComplianceSaveBtn');
+            if (saveButton) saveButton.disabled = false;
+            toggleMatrixComplianceRepeatUntil();
+            window.SPADESModalStack?.refresh();
+        }
+
+        async function saveMatrixCompliance() {
+            if (matrixComplianceReadOnly || matrixComplianceBusy) return;
+            const wasEditing = !!matrixComplianceEditingId;
+            const compliance = String(document.getElementById('matrixComplianceText')?.value || '').trim();
+            const targetDate = String(document.getElementById('matrixComplianceTargetDate')?.value || '').trim();
+            const officeInCharge = String(document.getElementById('matrixComplianceOfficeInCharge')?.value || '').trim();
+            const actionTaken = String(document.getElementById('matrixComplianceActionTaken')?.value || '').trim();
+            const frequency = matrixComplianceFrequencyLabel(document.getElementById('matrixComplianceFrequency')?.value);
+            const recurrenceUntil = frequency === 'None' ? '' : String(document.getElementById('matrixComplianceRepeatUntil')?.value || '').trim();
+            if (!compliance || !targetDate || !officeInCharge) return customAlert('Please provide the compliance, target date, and Office In-charge.', 'Required Information');
+            if (recurrenceUntil && recurrenceUntil < targetDate) return customAlert('Repeat Until must be on or after the Target Date.', 'Invalid Recurrence');
+            const saveButton = document.getElementById('matrixComplianceSaveBtn');
+            const saveLabel = document.getElementById('matrixComplianceSaveLabel');
+            matrixComplianceBusy = true;
+            if (saveButton) saveButton.disabled = true;
+            if (saveLabel) saveLabel.textContent = 'Saving…';
+            try {
+                const action = matrixComplianceEditingId ? 'update_matrix_compliance' : 'add_matrix_compliance';
+                const payload = matrixComplianceAuthPayload(action, {compliance, targetDate, officeInCharge, actionTaken, frequency, recurrenceUntil});
+                if (matrixComplianceEditingId) payload.id = matrixComplianceEditingId;
+                await postPersonnelMutation(payload);
+                closeMatrixComplianceModal();
+                await loadMatrixCompliances();
+                customAlert(wasEditing ? 'Compliance record updated successfully.' : 'Compliance record saved successfully.', 'Success');
+            } catch (error) {
+                matrixComplianceBusy = false;
+                if (saveButton) saveButton.disabled = false;
+                if (saveLabel) saveLabel.textContent = matrixComplianceEditingId ? 'Save Changes' : 'Save Compliance';
+                customAlert(error.message || 'Unable to save the compliance record.', 'Error');
+            }
+        }
+
+        function deleteMatrixCompliance(id) {
+            if (matrixComplianceReadOnly || matrixComplianceBusy) return customAlert('This account is restricted to read-only access.', 'Permission Denied');
+            customConfirm('Delete this compliance record? This action cannot be undone.', async confirmed => {
+                if (!confirmed) return;
+                matrixComplianceBusy = true;
+                try {
+                    await postPersonnelMutation(matrixComplianceAuthPayload('delete_matrix_compliance', {id:String(id || '')}));
+                    await loadMatrixCompliances();
+                    customAlert('Compliance record deleted successfully.', 'Success');
+                } catch (error) {
+                    customAlert(error.message || 'Unable to delete the compliance record.', 'Error');
+                } finally {
+                    matrixComplianceBusy = false;
+                }
+            });
         }
 
         function updatePersonnelPermissions() {
@@ -3565,6 +3908,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 if (key === anchor) return true;
                 const start = new Date(anchor + 'T00:00:00');
                 if (Number.isNaN(start.getTime())) return false;
+                if (frequency === 'daily') return true;
                 if (frequency === 'weekly') return dateObj.getDay() === start.getDay();
                 if (frequency === 'monthly') return dateObj.getDate() === start.getDate();
                 if (frequency === 'annually' || frequency === 'annual' || frequency === 'yearly') return dateObj.getMonth() === start.getMonth() && dateObj.getDate() === start.getDate();
@@ -3587,10 +3931,33 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 const raw = i - first + 1;
                 const date = raw < 1 ? new Date(year, month - 1, previousCount + raw) : raw > count ? new Date(year, month + 1, raw - count) : new Date(year, month, raw);
                 const key = localDateKey(date), other = date.getMonth() !== month;
-                const matches = (allActivities || []).filter(a => activityOccursOnDate(a, date));
-                html += `<div class="activity-overview-day${other ? ' is-other-month' : ''}${key === today ? ' is-today' : ''}"><span class="activity-overview-day-number">${date.getDate()}</span>${matches.length ? `<button type="button" class="activity-day-bookmark" aria-label="${matches.length} activities; hover or focus to view" title="${matches.length} scheduled activities"><i class="fi fi-rr-bookmark" aria-hidden="true"></i><span>${matches.length}</span></button><div class="activity-overview-events activity-day-popover">${matches.map(a => `<button type="button" class="activity-overview-event activity-event-${String(a.frequency || 'once').toLowerCase().replace(/[^a-z]/g,'')}" title="${escapeAttr((a.activityTitle || 'Activity') + ' · ' + formatActivityTime(a.time))}" onclick="showActivityDetails('${escapeAttr(a.id)}')">${escapeHtml(a.activityTitle || 'Untitled activity')} <small>${escapeHtml(formatActivityTime(a.time))}</small></button>`).join('')}</div>` : ''}</div>`;
+
+                // Active records are expanded according to their recurrence. Archived
+                // records are historical snapshots and appear only on their assigned date.
+                const activeMatches = (allActivities || []).filter(activity => activityOccursOnDate(activity, date));
+                const archivedMatches = (archivedActivities || []).filter(activity => activityAnchorDates(activity).includes(key));
+                const seenIds = new Set();
+                const matches = [...activeMatches, ...archivedMatches].filter(activity => {
+                    const id = String(activity.id || '');
+                    if (id && seenIds.has(id)) return false;
+                    if (id) seenIds.add(id);
+                    return true;
+                });
+
+                const activityTextList = matches.map(activity => {
+                    const activityName = String(activity.activityTitle || 'Untitled activity');
+                    const isArchived = archivedMatches.some(item => String(item.id) === String(activity.id));
+                    const statusLabel = isArchived ? 'Archived' : String(activity.status || activityStatusForDate(activity.date) || 'Recurring');
+                    return `<button type="button" class="activity-overview-event-text${isArchived ? ' is-archived' : ''}" data-activity-details-id="${escapeAttr(activity.id)}" title="View ${escapeAttr(statusLabel.toLowerCase())} activity details: ${escapeAttr(activityName)}" aria-label="View ${escapeAttr(statusLabel.toLowerCase())} activity details for ${escapeAttr(activityName)}">${escapeHtml(activityName)}${isArchived ? ' <span class="activity-overview-archive-label">(Archived)</span>' : ''}</button>`;
+                }).join('');
+                html += `<div class="activity-overview-day${other ? ' is-other-month' : ''}${key === today ? ' is-today' : ''}"><span class="activity-overview-day-number">${date.getDate()}</span>${activityTextList ? `<div class="activity-overview-events activity-day-text-list" aria-label="Activities scheduled on ${escapeAttr(key)}">${activityTextList}</div>` : ''}</div>`;
             }
             host.innerHTML = html;
+            // Bind through DOM listeners rather than inline JavaScript so IDs with
+            // punctuation remain safe and the full text row is an accessible target.
+            host.querySelectorAll('[data-activity-details-id]').forEach(button => {
+                button.addEventListener('click', () => showActivityDetails(button.dataset.activityDetailsId));
+            });
         }
 
         function openActivityDataModal() {
@@ -3611,9 +3978,15 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             if (!activity) return;
             selectedActivityDetailsId = String(activity.id);
             document.getElementById('activityDetailsTitle').textContent = activity.activityTitle || 'Activity Details';
-            const relatedDates = [activity.date, ...getActivityGroupRecords(activity).map(item => String(item.date || '').slice(0,10))].filter(Boolean);
+            const detailRecords = [...(allActivities || []), ...(archivedActivities || [])].filter(item => {
+                if (activity.groupId) return String(item.groupId || '') === String(activity.groupId);
+                return activityLegacyGroupSignature(item) === activityLegacyGroupSignature(activity);
+            });
+            const relatedDates = [activity.date, ...detailRecords.map(item => String(item.date || '').slice(0,10))].filter(Boolean);
             const scheduleText = relatedDates.length > 1 ? [...new Set(relatedDates)].sort().join(', ') : (activity.date || '');
-            const fields = [['Date / Schedule', scheduleText], ['Activity Title', activity.activityTitle], ['Assigned Venue', activity.assignedVenue], ['Requesting Office', activity.requestingOffice], ['Concerned Office', activity.concernedOffice], ['Requested Service/s', activity.requestedServices], ['Time', formatActivityTime(activity.time)], ['Frequency', activity.frequency], ['Status', activity.status]];
+            const isArchivedActivity = (archivedActivities || []).some(item => String(item.id) === String(activity.id));
+            const activityStatus = activity.status || (isArchivedActivity ? 'Archive' : 'Ongoing');
+            const fields = [['Date / Schedule', scheduleText], ['Activity Title', activity.activityTitle], ['Assigned Venue', activity.assignedVenue], ['Requesting Office', activity.requestingOffice], ['Concerned Office', activity.concernedOffice], ['Requested Service/s', activity.requestedServices], ['Time', formatActivityTime(activity.time)], ['Frequency', activity.frequency], ['Status', activityStatus]];
             document.getElementById('activityDetailsContent').innerHTML = fields.map(([label,value]) => `<div class="activity-detail-field"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value || '—')}</strong></div>`).join('');
             const canEditActivity = canManageActivities() && (allActivities || []).some(a => String(a.id) === String(id));
             document.getElementById('activityDetailsEditBtn').classList.toggle('hidden', !canEditActivity);
@@ -3715,7 +4088,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             renderActivityOverviewCalendar();
             const body = document.getElementById('activityTableBody');
             const can = canManageActivities();
-            const perPage = Math.max(1, parseInt(userSettings.recordsPerPage,10) || 10);
+            const perPage = 10; // Activity Records uses a fixed 10-record page size.
             const totalPages = Math.ceil(filteredActivities.length / perPage) || 1;
             currentActivityPage = Math.min(Math.max(currentActivityPage,1),totalPages);
             // Organize by date; ongoing activities always pinned at top.
@@ -3751,7 +4124,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             const p = document.getElementById('activityPagination');
             if (filteredActivities.length > perPage) {
                 p.classList.remove('hidden');
-                document.getElementById('activityPageInfo').innerText = `Page ${currentActivityPage} of ${totalPages}`;
+                document.getElementById('activityPageInfo').innerText = `Page ${currentActivityPage} of ${totalPages} · ${filteredActivities.length} ${filteredActivities.length === 1 ? 'activity' : 'activities'}`;
                 document.getElementById('prevActivityBtn').disabled = currentActivityPage === 1;
                 document.getElementById('nextActivityBtn').disabled = currentActivityPage === totalPages;
             } else p.classList.add('hidden');
@@ -4073,8 +4446,8 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             
             if (currentMemos.length === 0) { tableBody.innerHTML = "<tr><td colspan='8' style='text-align:center;'>No match.</td></tr>"; document.getElementById('memoPagination').classList.add('hidden'); return; }
             currentMemos.forEach(row => {
-                const safeSubject = String(row[1] || "").replace(/'/g, "\\'").replace(/"/g, '&quot;'); 
-                const safeDestination = String(row[5] || "N/A").replace(/'/g, "\\'").replace(/"/g, '&quot;');
+                const safeSubject = String(row[1] || "").replace(/'/g, "\'").replace(/"/g, '&quot;'); 
+                const safeDestination = String(row[5] || "N/A").replace(/'/g, "\'").replace(/"/g, '&quot;');
                 const memoStatus = row[4] || "For Dispatched";
                 
                 const currentIsEncoder = isCurrentUserRecordOwner(row[3]);
@@ -6320,7 +6693,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         }
         function userHasAccess(pageKey) {
             const user = localStorage.getItem('loggedInUser') || '';
-            if (user === ALPHA_ADMIN_NAME) return true;
+            if (user === ALPHA_ADMIN_NAME || pageKey === 'matrixCompliances') return true;
             const allowed = userAccessMap[user];
             if (!Array.isArray(allowed) || !allowed.length) return true; // empty = full access
             return allowed.includes(pageKey);
@@ -6329,7 +6702,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             // Hide sidebar nav buttons for pages the user is not allowed to access.
             const navMap = {
                 'dashboard':'btnDashboard', 'home':'btnHome', 'personnel':'btnPersonnel',
-                'activityManagement':'btnActivityManagement', 'settings':'btnSettings',
+                'activityManagement':'btnActivityManagement', 'matrixCompliances':'btnMatrixCompliances', 'settings':'btnSettings',
                 'adminMgmt':'btnAdminMgmt'
             };
             Object.keys(navMap).forEach(key => {
@@ -6498,6 +6871,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         let currentFolderEntries = [];
         let currentPreviewEntry = null;
         let currentPreviewObjectUrl = null;
+        let currentPreviewReturnFocus = null;
         let previewRequestSequence = 0;
         function formatFolderBytes(n) {
             const num = Number(n) || 0;
@@ -6548,7 +6922,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 }
                 const icon = isFolder ? '\uD83D\uDCC1' : '\uD83D\uDCC4';
                 const secondary = size + ' \u00B7 ' + modified;
-                const clickHandler = isFolder ? '' : ' onclick="openFilePreview(currentFolderEntries[' + i + '])"';
+                const clickHandler = isFolder ? '' : ' onclick="openFilePreview(currentFolderEntries[' + i + '], &#39;personnel&#39;)"';
                 const hoverHandlers = isFolder ? ''
                     : ' onmouseover="this.style.background=\'rgba(37,99,235,0.07)\'" onmouseout="this.style.background=\'\'"';
                 const deleteButton = isFolder ? ''
@@ -6609,7 +6983,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                     renderFolderBrowserEntries(currentFolderEntries);
                     if (status) status.textContent = 'Deleted: ' + fileName;
 
-                    // Refresh from Dropbox to ensure the displayed list matches the backend.
+                    // Refresh from Google Drive to ensure the displayed list matches the backend.
                     try {
                         const refreshed = await fetchPersonnelFolderListing(personnelNo);
                         if (refreshed && refreshed.success) renderFolderBrowserEntries(refreshed.entries || []);
@@ -6662,7 +7036,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         async function uploadFilesToPersonnelFolder() {
             const input = document.getElementById('personnelFolderFileInput');
             const files = (input && input.files) ? Array.from(input.files) : [];
-            if (!files.length) return customAlert('Choose files first.', 'Upload');
+            if (!files.length) return customAlert('Select files to upload.', 'Upload');
             const no = profileCardPersonnelNo;
             if (no == null) return customAlert('No personnel selected.', 'Error');
             const status = document.getElementById('folderBrowserStatus');
@@ -6726,19 +7100,450 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             if (input) input.value = '';
         }
 
-        /* ---------- File Preview (inline, zero auto-download) ---------- */
-        const PREVIEWABLE_IMAGE_EXTS = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
+        /* ---------- My Files: authenticated account-owned Google Drive directory ---------- */
+        const SPADES_ACCOUNT_FILE_MAX_BYTES = 10 * 1024 * 1024;
+        let myFilesEntries = [];
+        let myFilesReadOnly = false;
+        let myFilesUploadQueue = [];
+        let myFilesLoadSequence = 0;
+        let myFilesLoading = false;
+        let myFilesUploading = false;
+        let myFilesSearchTerm = '';
+        const myFilesPendingDeletes = new Set();
 
-        function entryExtension(entry) {
-            const name = String((entry && entry.name) || '').toLowerCase();
-            const dot = name.lastIndexOf('.');
-            return (dot >= 0) ? name.slice(dot + 1) : '';
+        async function callMyFilesApi(action, extra = {}) {
+            const username = localStorage.getItem('loggedInUser') || '';
+            const credential = localStorage.getItem('loggedCred') || '';
+            if (!username || !credential) throw new Error('Your session could not be verified. Please sign in again.');
+            const response = await fetch(API_URL, {
+                method:'POST', mode:'cors',
+                headers:{'Content-Type':'text/plain;charset=utf-8'},
+                body:JSON.stringify({ action, username, credential, ...extra })
+            });
+            let data;
+            try { data = await response.json(); }
+            catch (error) { throw new Error('The server returned an invalid response. Please retry.'); }
+            if (!response.ok || !data || !data.success) {
+                throw new Error((data && data.error) || 'The file request could not be completed.');
+            }
+            return data;
         }
 
+        function getFileExtension(name) {
+            const value = String(name || '').trim().toLowerCase();
+            const dot = value.lastIndexOf('.');
+            return dot >= 0 ? value.slice(dot + 1) : '';
+        }
+
+        function getFileTypeLabel(entry) {
+            const ext = getFileExtension(entry && entry.name);
+            if (ext) return ext.toUpperCase() === 'XLXS' ? 'XLSX (XLXS)' : ext.toUpperCase();
+            const mime = String((entry && entry.mimeType) || '').toLowerCase();
+            if (mime.includes('pdf')) return 'PDF';
+            if (mime.startsWith('image/')) return mime.split('/')[1].toUpperCase();
+            if (mime.includes('word')) return 'WORD';
+            if (mime.includes('spreadsheet')) return 'SPREADSHEET';
+            if (mime.includes('presentation')) return 'PRESENTATION';
+            return mime || 'FILE';
+        }
+
+        function openMyFilesModal() {
+            const modal = document.getElementById('myFilesModal');
+            if (!modal) return;
+            modal.classList.remove('hidden');
+            const user = localStorage.getItem('loggedInUser') || 'Signed-in user';
+            const label = document.getElementById('myFilesAccountLabel');
+            if (label) label.textContent = user;
+            window.SPADESModalStack?.bringToFront('myFilesModal');
+            loadMyFiles();
+            window.requestAnimationFrame(() => modal.querySelector('[data-myfiles-refresh]')?.focus({preventScroll:true}));
+        }
+
+        function closeMyFilesModal() {
+            const modal = document.getElementById('myFilesModal');
+            if (modal) modal.classList.add('hidden');
+            const input = document.getElementById('myFilesUploadInput');
+            if (input) input.value = '';
+            myFilesUploadQueue = [];
+            renderMyFilesSelection();
+            updateMyFilesUploadControls();
+            document.querySelector('#tabProfile .pf-profile-quick-actions button[aria-label="My Files"]')?.focus({preventScroll:true});
+        }
+
+        function setMyFilesNotice(message, state = '') {
+            const notice = document.getElementById('myFilesNotice');
+            if (!notice) return;
+            notice.textContent = message || '';
+            notice.classList.remove('is-error', 'is-success', 'is-warning');
+            if (state) notice.classList.add('is-' + state);
+        }
+
+        function updateMyFilesCount() {
+            const count = document.getElementById('myFilesCount');
+            if (!count) return;
+            const visibleCount = getFilteredMyFiles().length;
+            count.textContent = visibleCount + (visibleCount === 1 ? ' file' : ' files');
+        }
+
+        function getFilteredMyFiles() {
+            const query = String(myFilesSearchTerm || '').trim().toLowerCase();
+            return myFilesEntries.map((entry, index) => ({entry, index})).filter(item => {
+                if (!query) return true;
+                return String(item.entry.name || '').toLowerCase().includes(query)
+                    || getFileTypeLabel(item.entry).toLowerCase().includes(query);
+            });
+        }
+
+        function filterMyFiles(value) {
+            myFilesSearchTerm = String(value || '');
+            renderMyFilesTable();
+        }
+
+        async function loadMyFiles() {
+            const requestId = ++myFilesLoadSequence;
+            myFilesLoading = true;
+            updateMyFilesUploadControls();
+            const body = document.getElementById('myFilesTableBody');
+            const refreshButton = document.querySelector('#myFilesModal [data-myfiles-refresh]');
+            if (refreshButton) { refreshButton.disabled = true; refreshButton.setAttribute('aria-busy', 'true'); }
+            if (body) body.innerHTML = '<tr><td colspan="5" class="my-files-empty-cell"><span class="my-files-spinner"></span> Loading your account files…</td></tr>';
+            setMyFilesNotice('Connecting securely to your account directory…');
+            try {
+                const result = await callMyFilesApi('list_user_files');
+                if (requestId !== myFilesLoadSequence) return;
+                myFilesReadOnly = !!result.restricted;
+                // Only account-root files are displayed. System-managed folders remain separate.
+                myFilesEntries = (Array.isArray(result.files) ? result.files : []).filter(item => item && !item.isFolder);
+                renderMyFilesTable();
+                const sizeText = myFilesEntries.length + (myFilesEntries.length === 1 ? ' file' : ' files');
+                if (myFilesReadOnly) {
+                    setMyFilesNotice('Read-only access is enabled for this account. Preview and download are available; upload and delete are disabled.', 'warning');
+                } else {
+                    setMyFilesNotice(sizeText + ' in your private account directory. Each upload may be up to 10 MB.', 'success');
+                }
+                updateMyFilesUploadControls();
+            } catch (error) {
+                if (requestId !== myFilesLoadSequence) return;
+                myFilesEntries = [];
+                myFilesReadOnly = true; // Fail closed until account permissions can be confirmed.
+                renderMyFilesTable('Your files could not be loaded. ' + (error && error.message ? error.message : 'Please retry.'));
+                setMyFilesNotice(error && error.message ? error.message : 'Could not load your files.', 'error');
+            } finally {
+                if (requestId === myFilesLoadSequence) {
+                    myFilesLoading = false;
+                    if (refreshButton) {
+                        refreshButton.disabled = false;
+                        refreshButton.removeAttribute('aria-busy');
+                    }
+                    updateMyFilesUploadControls();
+                }
+            }
+        }
+
+        function getMyFilesIconClass(ext) {
+            if (ext === 'pdf') return 'file-type-pdf';
+            if (['doc', 'docx', 'rtf'].includes(ext)) return 'file-type-word';
+            if (['xls', 'xlsx', 'xlxs', 'csv'].includes(ext)) return 'file-type-sheet';
+            if (['ppt', 'pptx'].includes(ext)) return 'file-type-slide';
+            if (PREVIEWABLE_IMAGE_EXTS.includes(ext)) return 'file-type-image';
+            return 'file-type-generic';
+        }
+
+        function renderMyFilesTable(errorMessage = '') {
+            const body = document.getElementById('myFilesTableBody');
+            if (!body) return;
+            updateMyFilesCount();
+            if (errorMessage) {
+                body.innerHTML = '<tr><td colspan="5" class="my-files-empty-cell my-files-error-cell"><strong>Unable to load files</strong><span>' + escapeHtml(errorMessage) + '</span><button type="button" class="my-files-retry-btn" onclick="loadMyFiles()">Try again</button></td></tr>';
+                return;
+            }
+            const visibleEntries = getFilteredMyFiles();
+            if (!visibleEntries.length) {
+                const isSearching = !!String(myFilesSearchTerm || '').trim();
+                body.innerHTML = '<tr><td colspan="5" class="my-files-empty-cell"><span class="my-files-empty-icon"><i class="fi fi-rr-' + (isSearching ? 'search' : 'folder-open') + '" aria-hidden="true"></i></span><strong>' + (isSearching ? 'No matching files' : 'Your workspace is empty') + '</strong><span>' + (isSearching ? 'Try another search term.' : 'Click Upload files above or drag files into the upload area to get started.') + '</span></td></tr>';
+                return;
+            }
+            body.innerHTML = visibleEntries.map(item => {
+                const entry = item.entry;
+                const index = item.index;
+                const name = String(entry.name || 'Unnamed file');
+                const ext = getFileExtension(name);
+                const iconClass = getMyFilesIconClass(ext);
+                const dateRaw = entry.modifiedAt || entry.modifiedTime || entry.server_modified || '';
+                const parsedDate = dateRaw ? new Date(dateRaw) : null;
+                const modified = parsedDate && !Number.isNaN(parsedDate.getTime()) ? parsedDate.toLocaleString() : '—';
+                const deleteAction = myFilesReadOnly ? '' : '<button type="button" class="my-files-row-action my-files-delete-action" data-file-index="' + index + '" data-file-action="delete" onclick="deleteMyFile(' + index + ')" title="Delete ' + escapeAttr(name) + '" aria-label="Delete ' + escapeAttr(name) + '"><i class="fi fi-rr-trash" aria-hidden="true"></i><span>Delete</span></button>';
+                const previewAction = '<button type="button" class="my-files-row-action my-files-preview-action" data-file-index="' + index + '" data-file-action="preview" onclick="previewMyFile(' + index + ')" title="Preview ' + escapeAttr(name) + '" aria-label="Preview ' + escapeAttr(name) + '"><i class="fi fi-rr-eye" aria-hidden="true"></i><span>Preview</span></button>';
+                const downloadAction = '<button type="button" class="my-files-row-action" data-file-index="' + index + '" data-file-action="download" onclick="downloadMyFile(' + index + ')" title="Download ' + escapeAttr(name) + '" aria-label="Download ' + escapeAttr(name) + '"><i class="fi fi-rr-download" aria-hidden="true"></i><span>Download</span></button>';
+                return '<tr data-myfiles-row="' + index + '">'
+                    + '<td class="my-files-name-cell"><span class="my-files-type-icon ' + iconClass + '"><i class="fi fi-rr-file" aria-hidden="true"></i></span><span class="my-files-name-wrap"><button type="button" class="my-files-file-name" onclick="previewMyFile(' + index + ')" title="Preview ' + escapeAttr(name) + '">' + escapeHtml(name) + '</button><small>' + escapeHtml(entry.id ? 'Stored in your account directory' : 'File identifier unavailable') + '</small></span></td>'
+                    + '<td class="my-files-modified-cell">' + escapeHtml(modified) + '</td>'
+                    + '<td class="my-files-size-cell">' + escapeHtml(formatFolderBytes(entry.size)) + '</td>'
+                    + '<td><span class="my-files-type-pill">' + escapeHtml(getFileTypeLabel(entry)) + '</span></td>'
+                    + '<td class="my-files-actions-cell"><div class="my-files-row-actions">' + previewAction + downloadAction + deleteAction + '</div></td></tr>';
+            }).join('');
+        }
+
+        function renderMyFilesSelection() {
+            const row = document.getElementById('myFilesSelectionRow');
+            const text = document.getElementById('myFilesSelectionText');
+            if (!row || !text) return;
+            if (!myFilesUploadQueue.length) {
+                row.hidden = true;
+                text.textContent = '';
+                return;
+            }
+            row.hidden = false;
+            const names = myFilesUploadQueue.slice(0, 2).map(file => file.name).join(', ');
+            const remainder = myFilesUploadQueue.length - Math.min(2, myFilesUploadQueue.length);
+            const totalSize = myFilesUploadQueue.reduce((sum, file) => sum + (Number(file.size) || 0), 0);
+            text.textContent = myFilesUploadQueue.length + (myFilesUploadQueue.length === 1 ? ' file selected' : ' files selected') + ': ' + names + (remainder ? ' +' + remainder + ' more' : '') + ' · ' + formatFolderBytes(totalSize);
+        }
+
+        function setMyFilesUploadQueue(files, append = false) {
+            const incoming = Array.from(files || []);
+            myFilesUploadQueue = append ? myFilesUploadQueue.concat(incoming) : incoming;
+            renderMyFilesSelection();
+            updateMyFilesUploadControls();
+            if (!myFilesUploadQueue.length) return;
+            const oversized = myFilesUploadQueue.filter(file => file.size > SPADES_ACCOUNT_FILE_MAX_BYTES);
+            const empty = myFilesUploadQueue.filter(file => !file.size);
+            if (oversized.length || empty.length) {
+                setMyFilesNotice(oversized.length + ' file(s) exceed the 10 MB limit and ' + empty.length + ' empty file(s) will be skipped.', 'warning');
+            } else {
+                setMyFilesNotice(myFilesUploadQueue.length + ' file(s) selected. Review the selection, then select Upload files to continue.', 'success');
+            }
+        }
+
+        function openMyFilesFilePicker() {
+            if (myFilesReadOnly || myFilesLoading || myFilesUploading) return;
+            const input = document.getElementById('myFilesUploadInput');
+            if (!input) return;
+            input.value = '';
+            input.click();
+        }
+
+        function handleMyFilesUploadSelection(input) {
+            setMyFilesUploadQueue((input && input.files) || []);
+        }
+
+        function clearMyFilesSelection() {
+            if (myFilesUploading) return;
+            myFilesUploadQueue = [];
+            const input = document.getElementById('myFilesUploadInput');
+            if (input) input.value = '';
+            renderMyFilesSelection();
+            updateMyFilesUploadControls();
+            setMyFilesNotice('File selection cleared.');
+        }
+
+        function handleMyFilesDragOver(event) {
+            if (event) event.preventDefault();
+            if (myFilesReadOnly || myFilesLoading || myFilesUploading) return;
+            document.getElementById('myFilesDropzone')?.classList.add('is-dragging');
+        }
+
+        function handleMyFilesDragLeave(event) {
+            if (event) event.preventDefault();
+            const zone = document.getElementById('myFilesDropzone');
+            if (zone && (!event.relatedTarget || !zone.contains(event.relatedTarget))) zone.classList.remove('is-dragging');
+        }
+
+        function handleMyFilesDrop(event) {
+            if (event) event.preventDefault();
+            const zone = document.getElementById('myFilesDropzone');
+            zone?.classList.remove('is-dragging');
+            if (myFilesReadOnly || myFilesLoading || myFilesUploading) return;
+            const files = event && event.dataTransfer ? event.dataTransfer.files : null;
+            if (files && files.length) setMyFilesUploadQueue(files, true);
+        }
+
+        function updateMyFilesUploadControls() {
+            const upload = document.getElementById('myFilesUploadBtn');
+            const input = document.getElementById('myFilesUploadInput');
+            const clear = document.getElementById('myFilesClearSelection');
+            const refresh = document.querySelector('#myFilesModal [data-myfiles-refresh]');
+            const uploadLabel = document.getElementById('myFilesUploadBtnLabel');
+            const busy = myFilesUploading || myFilesLoading;
+            // The single Upload button doubles as the file picker when no files are queued.
+            if (upload) upload.disabled = myFilesReadOnly || busy;
+            if (input) input.disabled = myFilesReadOnly || busy;
+            if (clear) clear.disabled = busy;
+            if (refresh) refresh.disabled = busy || refresh.getAttribute('aria-busy') === 'true';
+            const uploadStateLabel = myFilesUploading
+                ? 'Uploading files'
+                : (myFilesUploadQueue.length ? 'Upload ' + myFilesUploadQueue.length + (myFilesUploadQueue.length === 1 ? ' selected file' : ' selected files') : 'Choose files to upload');
+            if (uploadLabel) uploadLabel.textContent = myFilesUploading ? 'Uploading…' : (myFilesUploadQueue.length ? 'Upload ' + myFilesUploadQueue.length + (myFilesUploadQueue.length === 1 ? ' file' : ' files') : 'Upload files');
+            if (upload) {
+                upload.setAttribute('aria-label', uploadStateLabel);
+                upload.setAttribute('title', uploadStateLabel);
+            }
+            const dropzone = document.getElementById('myFilesDropzone');
+            if (dropzone) dropzone.classList.toggle('is-readonly', myFilesReadOnly);
+        }
+
+        function arrayBufferToBase64(buffer) {
+            const bytes = new Uint8Array(buffer);
+            const chunkSize = 0x8000;
+            let binary = '';
+            for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+                binary += String.fromCharCode.apply(null, bytes.subarray(offset, Math.min(offset + chunkSize, bytes.length)));
+            }
+            return btoa(binary);
+        }
+
+        async function uploadMyFiles() {
+            if (myFilesReadOnly) return customAlert('This account is restricted to read-only access.', 'Upload Not Available');
+            if (myFilesLoading || myFilesUploading) return;
+            const files = myFilesUploadQueue.slice();
+            // With no queued selection, the Upload button opens the device picker.
+            if (!files.length) return openMyFilesFilePicker();
+            const validFiles = files.filter(file => file && file.size > 0 && file.size <= SPADES_ACCOUNT_FILE_MAX_BYTES);
+            const failures = files.filter(file => !file || !file.size || file.size > SPADES_ACCOUNT_FILE_MAX_BYTES)
+                .map(file => (file && file.name ? file.name : 'Selected file') + (!file || !file.size ? ': empty files are not accepted' : ': exceeds the 10 MB limit'));
+            if (!validFiles.length) {
+                setMyFilesNotice('No files meet the upload requirements. Choose non-empty files up to 10 MB each.', 'warning');
+                customAlert(failures.join('\n'), 'Upload Not Started');
+                return;
+            }
+            myFilesUploading = true;
+            updateMyFilesUploadControls();
+            let uploaded = 0;
+            try {
+                for (let i = 0; i < validFiles.length; i++) {
+                    const file = validFiles[i];
+                    setMyFilesNotice('Uploading ' + (i + 1) + ' of ' + validFiles.length + ': ' + file.name, '');
+                    try {
+                        const base64 = arrayBufferToBase64(await file.arrayBuffer());
+                        await callMyFilesApi('upload_user_file', {
+                            fileName:file.name,
+                            mimeType:file.type || 'application/octet-stream',
+                            base64
+                        });
+                        uploaded++;
+                    } catch (error) {
+                        failures.push(file.name + ': ' + (error && error.message ? error.message : 'upload failed'));
+                    }
+                }
+            } finally {
+                myFilesUploading = false;
+                myFilesUploadQueue = [];
+                const input = document.getElementById('myFilesUploadInput');
+                if (input) input.value = '';
+                renderMyFilesSelection();
+                updateMyFilesUploadControls();
+            }
+            await loadMyFiles();
+            const summary = uploaded + ' file(s) uploaded successfully.' + (failures.length ? ' ' + failures.length + ' file(s) could not be uploaded.' : '');
+            setMyFilesNotice(summary + (failures.length ? ' Review the upload details.' : ''), failures.length ? 'warning' : 'success');
+            if (uploaded || failures.length) customAlert(summary + (failures.length ? '\n\n' + failures.join('\n') : ''), 'Upload Result');
+        }
+
+        async function fetchMyAccountFile(fileId) {
+            if (!fileId) throw new Error('The selected file has no valid account file identifier. Refresh the list and try again.');
+            const result = await callMyFilesApi('get_user_file_content', { fileId:String(fileId) });
+            if (!result.file || !result.file.base64) throw new Error('The server did not return the selected file content.');
+            const binary = atob(result.file.base64);
+            const bytes = new Uint8Array(binary.length);
+            for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+            return new Blob([bytes], {type:result.file.mimeType || 'application/octet-stream'});
+        }
+
+        function saveBlobToDevice(blob, fileName) {
+            const objectUrl = URL.createObjectURL(blob);
+            const anchor = document.createElement('a');
+            anchor.href = objectUrl;
+            anchor.download = String(fileName || 'download');
+            anchor.rel = 'noopener';
+            anchor.style.display = 'none';
+            document.body.appendChild(anchor);
+            anchor.click();
+            anchor.remove();
+            window.setTimeout(() => { try { URL.revokeObjectURL(objectUrl); } catch (_) {} }, 2500);
+        }
+
+        async function downloadMyFile(index) {
+            const entry = myFilesEntries[index];
+            if (!entry) return customAlert('Select a valid file to download.', 'Download File');
+            const button = document.querySelector('#myFilesTableBody [data-file-index="' + index + '"][data-file-action="download"]');
+            if (button && button.disabled) return;
+            if (button) { button.disabled = true; button.setAttribute('aria-busy', 'true'); }
+            try {
+                setMyFilesNotice('Preparing download: ' + entry.name, '');
+                const blob = await fetchMyAccountFile(entry.id);
+                saveBlobToDevice(blob, entry.name);
+                setMyFilesNotice('Download started: ' + entry.name, 'success');
+            } catch (error) {
+                const message = error && error.message ? error.message : 'The file could not be downloaded.';
+                customAlert(message, 'Download Error');
+                setMyFilesNotice(message, 'error');
+            } finally {
+                if (button && button.isConnected) { button.disabled = false; button.removeAttribute('aria-busy'); }
+            }
+        }
+
+        function previewMyFile(index) {
+            const entry = myFilesEntries[index];
+            if (!entry) return customAlert('Select a valid file to preview.', 'Preview File');
+            if (!entry.id) return customAlert('This file has no valid account file identifier. Refresh the list and try again.', 'Preview Unavailable');
+            setMyFilesNotice('Opening preview: ' + entry.name, '');
+            openFilePreview(entry, 'account');
+        }
+
+        function deleteMyFile(index) {
+            const entry = myFilesEntries[index];
+            if (!entry) return customAlert('Select a valid file to delete.', 'Delete File');
+            if (!entry.id) return customAlert('This file has no valid account file identifier. Refresh the list and try again.', 'Delete Unavailable');
+            if (myFilesReadOnly) return customAlert('This account is restricted to read-only access.', 'Delete Not Available');
+            if (myFilesPendingDeletes.has(String(entry.id))) return;
+            myFilesPendingDeletes.add(String(entry.id));
+            const button = document.querySelector('#myFilesTableBody [data-file-index="' + index + '"][data-file-action="delete"]');
+            if (button) { button.disabled = true; button.setAttribute('aria-busy', 'true'); }
+            customConfirm('Move "' + String(entry.name || 'this file') + '" to Google Drive Trash? You can restore it later from Drive Trash.', async confirmed => {
+                if (!confirmed) {
+                    myFilesPendingDeletes.delete(String(entry.id));
+                    if (button && button.isConnected) { button.disabled = false; button.removeAttribute('aria-busy'); }
+                    return;
+                }
+                try {
+                    setMyFilesNotice('Deleting ' + entry.name + '…', '');
+                    await callMyFilesApi('delete_user_file', { fileId:String(entry.id) });
+                    myFilesEntries = myFilesEntries.filter(item => String(item.id) !== String(entry.id));
+                    renderMyFilesTable();
+                    setMyFilesNotice('Deleted: ' + entry.name, 'success');
+                    await loadMyFiles();
+                    setMyFilesNotice('Deleted: ' + entry.name, 'success');
+                } catch (error) {
+                    const message = error && error.message ? error.message : 'The file could not be deleted.';
+                    customAlert(message, 'Delete Error');
+                    setMyFilesNotice(message, 'error');
+                    if (button && button.isConnected) { button.disabled = false; button.removeAttribute('aria-busy'); }
+                } finally {
+                    myFilesPendingDeletes.delete(String(entry.id));
+                }
+            });
+        }
+
+        /* ---------- Shared File Preview: images, PDF and Office documents ---------- */
+        const PREVIEWABLE_IMAGE_EXTS = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
+        const PREVIEWABLE_OFFICE_EXTS = ['docx', 'xlsx', 'xlxs', 'pptx'];
+        let currentPreviewSource = 'personnel';
+        let currentPreviewBlob = null;
+        let docxPreviewLibraryPromise = null;
+        let xlsxPreviewLibraryPromise = null;
+        let pptxPreviewLibraryPromise = null;
+        let currentPptxRenderer = null;
+        let currentPptxSlideIndex = 0;
+        let currentXlsxWorkbook = null;
+        let currentXlsxSheetIndex = 0;
+
+        function entryExtension(entry) { return getFileExtension(entry && entry.name); }
+
         function entryModifiedLabel(entry) {
-            const modRaw = (entry && (entry.server_modified || entry.client_modified)) || '';
-            if (!modRaw) return '\u2014';
-            try { return new Date(modRaw).toLocaleString(); } catch (_) { return String(modRaw); }
+            const modRaw = (entry && (entry.modifiedAt || entry.server_modified || entry.client_modified)) || '';
+            if (!modRaw) return 'Saved in SPADES';
+            const parsed = new Date(modRaw);
+            return Number.isNaN(parsed.getTime()) ? String(modRaw) : parsed.toLocaleString();
         }
 
         function revokePreviewObjectUrl() {
@@ -6748,90 +7553,377 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             }
         }
 
-        async function fetchFileTempLink(path) {
-            const res = await fetch(API_URL, {
-                method:'POST', mode:'cors',
-                headers:{'Content-Type':'text/plain;charset=utf-8'},
-                body: JSON.stringify({
-                    action:'get_file_temp_link',
-                    username: localStorage.getItem('loggedInUser') || '',
-                    credential: localStorage.getItem('loggedCred') || '',
-                    path: path || ''
-                })
+        function disposeOfficePreviewEngines() {
+            if (currentPptxRenderer) {
+                try { currentPptxRenderer.destroy(); } catch (_) {}
+                currentPptxRenderer = null;
+            }
+            currentXlsxWorkbook = null;
+            currentXlsxSheetIndex = 0;
+        }
+
+        function loadPreviewScript(scriptId, sourceUrl, readyCheck) {
+            if (readyCheck && readyCheck()) return Promise.resolve();
+            let existing = document.getElementById(scriptId);
+            if (existing && existing.dataset.loaded === 'true' && (!readyCheck || readyCheck())) return Promise.resolve();
+            if (existing && existing.dataset.promise === 'error') {
+                existing.remove();
+                existing = null;
+            }
+            if (existing && existing.dataset.promise === 'loading') {
+                return new Promise((resolve, reject) => {
+                    existing.addEventListener('load', resolve, {once:true});
+                    existing.addEventListener('error', () => reject(new Error('Could not load the document preview library.')), {once:true});
+                });
+            }
+            return new Promise((resolve, reject) => {
+                const script = existing || document.createElement('script');
+                script.id = scriptId;
+                script.src = sourceUrl;
+                script.async = true;
+                script.dataset.promise = 'loading';
+                script.onload = () => {
+                    script.dataset.loaded = 'true';
+                    script.dataset.promise = 'loaded';
+                    if (readyCheck && !readyCheck()) reject(new Error('The document preview library loaded without its expected API.'));
+                    else resolve();
+                };
+                script.onerror = () => {
+                    script.dataset.promise = 'error';
+                    reject(new Error('Could not load the document preview library. Check your internet connection or content filter.'));
+                };
+                if (!existing) document.head.appendChild(script);
             });
-            let data;
-            try { data = await res.json(); }
-            catch (parseErr) { throw new Error('The server returned an invalid response.'); }
-            if (data && data.success && data.url) return data.url;
-            throw new Error((data && data.error) ? data.error : 'Could not retrieve a temporary link for this file.');
+        }
+
+        async function loadDocxPreviewLibrary() {
+            if (!docxPreviewLibraryPromise) {
+                docxPreviewLibraryPromise = (async () => {
+                    await loadPreviewScript('spades-jszip-library', 'https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js', () => !!window.JSZip);
+                    await loadPreviewScript('spades-docx-preview-library', 'https://cdn.jsdelivr.net/npm/docx-preview@0.4.1/dist/docx-preview.min.js', () => !!(window.docx && window.docx.renderAsync));
+                })().catch(error => { docxPreviewLibraryPromise = null; throw error; });
+            }
+            return docxPreviewLibraryPromise;
+        }
+
+        async function loadXlsxPreviewLibrary() {
+            if (!xlsxPreviewLibraryPromise) {
+                xlsxPreviewLibraryPromise = loadPreviewScript('spades-sheetjs-library', 'https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js', () => !!(window.XLSX && window.XLSX.read))
+                    .catch(error => { xlsxPreviewLibraryPromise = null; throw error; });
+            }
+            return xlsxPreviewLibraryPromise;
+        }
+
+        async function loadPptxPreviewLibrary() {
+            if (!pptxPreviewLibraryPromise) {
+                pptxPreviewLibraryPromise = import('https://cdn.jsdelivr.net/npm/pptx-browser@4.1.5/+esm')
+                    .then(module => {
+                        if (!module || typeof module.PptxRenderer !== 'function') throw new Error('The PowerPoint preview engine is unavailable.');
+                        return module;
+                    })
+                    .catch(error => { pptxPreviewLibraryPromise = null; throw new Error('Could not load the PowerPoint preview engine. ' + (error && error.message ? error.message : '')); });
+            }
+            return pptxPreviewLibraryPromise;
         }
 
         function renderPreviewInfoBlock(entry, message) {
-            const size = (entry && entry.isFolder) ? '\u2014' : formatFolderBytes(entry && entry.size);
-            return '<div style="text-align:left;max-width:480px;margin:0 auto;">'
-                + '<div style="font-weight:700;font-size:16px;margin-bottom:12px;word-break:break-all;">' + escapeHtml(String((entry && entry.name) || '')) + '</div>'
-                + '<div style="font-size:13px;color:var(--text-muted,#888);margin-bottom:6px;">Size: ' + escapeHtml(size) + '</div>'
-                + '<div style="font-size:13px;color:var(--text-muted,#888);margin-bottom:16px;">Modified: ' + escapeHtml(entryModifiedLabel(entry)) + '</div>'
-                + '<div style="font-size:13px;color:var(--text,#333);background:rgba(37,99,235,0.06);padding:12px;border-radius:6px;line-height:1.5;">' + escapeHtml(message) + '</div>'
+            const size = (entry && entry.isFolder) ? '—' : formatFolderBytes(entry && entry.size);
+            const type = getFileTypeLabel(entry);
+            return '<div class="file-preview-info-card">'
+                + '<div class="file-preview-info-icon"><i class="fi fi-rr-file" aria-hidden="true"></i></div>'
+                + '<strong class="file-preview-info-name">' + escapeHtml(String((entry && entry.name) || '')) + '</strong>'
+                + '<div class="file-preview-info-meta"><span>' + escapeHtml(size) + '</span><span>' + escapeHtml(type) + '</span><span>' + escapeHtml(entryModifiedLabel(entry)) + '</span></div>'
+                + '<p>' + escapeHtml(message) + '</p>'
                 + '</div>';
         }
 
-        async function openFilePreview(entry) {
+        async function fetchPersonnelFolderFile(entry) {
+            const username = localStorage.getItem('loggedInUser') || '';
+            const credential = localStorage.getItem('loggedCred') || '';
+            if (!username || !credential || profileCardPersonnelNo == null) throw new Error('The selected personnel folder session could not be verified.');
+            const response = await fetch(API_URL, {
+                method:'POST', mode:'cors',
+                headers:{'Content-Type':'text/plain;charset=utf-8'},
+                body:JSON.stringify({
+                    action:'get_personnel_folder_file_content',
+                    username, credential,
+                    personnelNo:profileCardPersonnelNo,
+                    path:String(entry.path_lower || entry.id || '')
+                })
+            });
+            let result;
+            try { result = await response.json(); }
+            catch (error) { throw new Error('The server returned an invalid file response.'); }
+            if (!response.ok || !result || !result.success || !result.file || !result.file.base64) {
+                throw new Error((result && result.error) || 'The personnel document could not be retrieved.');
+            }
+            const binary = atob(result.file.base64);
+            const bytes = new Uint8Array(binary.length);
+            for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+            return new Blob([bytes], {type:result.file.mimeType || 'application/octet-stream'});
+        }
+
+        async function loadPreviewBlob(entry, source) {
+            if (source === 'account') return fetchMyAccountFile(entry.id);
+            return fetchPersonnelFolderFile(entry);
+        }
+
+        function base64PreviewBlob(base64, mimeType) {
+            const binary = atob(String(base64 || ''));
+            const bytes = new Uint8Array(binary.length);
+            for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+            return new Blob([bytes], {type:mimeType || 'application/octet-stream'});
+        }
+
+        async function loadOfficePreviewPdfBlob(entry, source) {
+            let result;
+            if (source === 'account') {
+                result = await callMyFilesApi('preview_user_file_pdf', {fileId:String(entry.id || '')});
+            } else {
+                const username = localStorage.getItem('loggedInUser') || '';
+                const credential = localStorage.getItem('loggedCred') || '';
+                if (!username || !credential || profileCardPersonnelNo == null) throw new Error('The selected personnel folder session could not be verified.');
+                const response = await fetch(API_URL, {
+                    method:'POST', mode:'cors',
+                    headers:{'Content-Type':'text/plain;charset=utf-8'},
+                    body:JSON.stringify({
+                        action:'preview_personnel_folder_file_pdf',
+                        username, credential,
+                        personnelNo:profileCardPersonnelNo,
+                        path:String(entry.path_lower || entry.id || '')
+                    })
+                });
+                try { result = await response.json(); }
+                catch (_) { throw new Error('The server returned an invalid Office preview response.'); }
+                if (!response.ok || !result || !result.success) throw new Error((result && result.error) || 'The Office document could not be converted for preview.');
+            }
+            if (!result || !result.file || !result.file.base64) throw new Error('The server did not return a PDF preview.');
+            const blob = base64PreviewBlob(result.file.base64, result.file.mimeType || 'application/pdf');
+            if (!blob.size) throw new Error('The converted PDF preview is empty.');
+            if (blob.size > SPADES_ACCOUNT_FILE_MAX_BYTES) throw new Error('The converted PDF preview exceeds the 10 MB preview limit.');
+            return blob;
+        }
+
+        function setFilePreviewFooterNote(message) {
+            const note = document.querySelector('#filePreviewModal .file-preview-local-note');
+            if (note) note.textContent = message || '';
+        }
+
+        function addOfficeFallbackNotice(content) {
+            if (!content) return;
+            const notice = document.createElement('div');
+            notice.className = 'office-preview-fallback-note';
+            notice.textContent = 'This is a browser-rendered fallback. Some advanced layout, embedded objects, or formatting may differ from the original. Use Download for the untouched file.';
+            content.insertBefore(notice, content.firstChild);
+        }
+
+        function renderOfficePdfPreview(blob, content, fileName) {
+            currentPreviewObjectUrl = URL.createObjectURL(blob);
+            content.classList.remove('is-centered');
+            content.innerHTML = '<div class="office-pdf-preview-shell"><iframe class="file-preview-pdf" src="' + escapeAttr(currentPreviewObjectUrl) + '#toolbar=1&navpanes=1&scrollbar=1" title="' + escapeAttr(fileName || 'Office document') + ' PDF preview" loading="eager"></iframe></div>';
+        }
+
+        async function renderDocxPreview(blob, content, requestSequence) {
+            await loadDocxPreviewLibrary();
+            if (requestSequence !== previewRequestSequence) return;
+            content.classList.remove('is-centered');
+            content.innerHTML = '<div class="office-document-shell"><div id="docxPreviewOutput" class="docx-preview-output"></div></div>';
+            const output = document.getElementById('docxPreviewOutput');
+            await window.docx.renderAsync(blob, output, output, {
+                className:'spades-docx',
+                inWrapper:true,
+                breakPages:true,
+                ignoreWidth:false,
+                ignoreHeight:false,
+                ignoreFonts:false,
+                ignoreLastRenderedPageBreak:false,
+                useBase64URL:true,
+                renderHeaders:true,
+                renderFooters:true,
+                renderFootnotes:true,
+                renderEndnotes:true,
+                renderComments:false,
+                renderAltChunks:false,
+                experimental:true,
+                debug:false
+            });
+        }
+
+        function renderXlsxSheetByIndex(index) {
+            if (!currentXlsxWorkbook || !Array.isArray(currentXlsxWorkbook.SheetNames)) return;
+            currentXlsxSheetIndex = Math.max(0, Math.min(Number(index) || 0, currentXlsxWorkbook.SheetNames.length - 1));
+            const content = document.getElementById('previewContent');
+            const sheetName = currentXlsxWorkbook.SheetNames[currentXlsxSheetIndex];
+            if (!content || !sheetName) return;
+            const sheet = currentXlsxWorkbook.Sheets[sheetName];
+            const tableHost = content.querySelector('#xlsxSheetPreviewTable');
+            if (!tableHost) return;
+            if (!sheet || !sheet['!ref']) {
+                tableHost.innerHTML = '<div class="xlsx-empty-sheet">This worksheet is empty.</div>';
+            } else {
+                const XLSX = window.XLSX;
+                const sourceRange = XLSX.utils.decode_range(sheet['!ref']);
+                const end = { r:Math.min(sourceRange.e.r, 749), c:Math.min(sourceRange.e.c, 39) };
+                const displaySheet = Object.assign({}, sheet, { '!ref':XLSX.utils.encode_range({s:sourceRange.s, e:end}) });
+                if (Array.isArray(sheet['!merges'])) {
+                    displaySheet['!merges'] = sheet['!merges'].filter(range => range.s.r <= end.r && range.s.c <= end.c && range.e.r <= end.r && range.e.c <= end.c);
+                }
+                const html = XLSX.utils.sheet_to_html(displaySheet, { id:'spadesXlsxSheetTable', editable:false });
+                tableHost.innerHTML = html || '<div class="xlsx-empty-sheet">This worksheet is empty.</div>';
+                const table = tableHost.querySelector('table');
+                if (table) table.classList.add('xlsx-preview-table');
+                const truncated = sourceRange.e.r > 749 || sourceRange.e.c > 39;
+                const limitNote = content.querySelector('.xlsx-limit-note');
+                if (limitNote) limitNote.textContent = truncated ? 'Preview limited to the first 750 rows and 40 columns. Download the original workbook to view the complete worksheet.' : 'Worksheet preview';
+            }
+            content.querySelectorAll('[data-xlsx-sheet-index]').forEach(button => {
+                button.classList.toggle('is-active', Number(button.dataset.xlsxSheetIndex) === currentXlsxSheetIndex);
+            });
+        }
+
+        async function renderXlsxPreview(blob, content, requestSequence) {
+            await loadXlsxPreviewLibrary();
+            if (requestSequence !== previewRequestSequence) return;
+            const workbook = window.XLSX.read(await blob.arrayBuffer(), { type:'array', cellDates:true, cellStyles:true, cellNF:true, cellFormula:true, bookImages:true });
+            if (requestSequence !== previewRequestSequence) return;
+            currentXlsxWorkbook = workbook;
+            content.classList.remove('is-centered');
+            if (!workbook.SheetNames || !workbook.SheetNames.length) {
+                content.innerHTML = '<div class="file-preview-info-card"><strong>No worksheets found.</strong></div>';
+                return;
+            }
+            const tabs = workbook.SheetNames.map((name, index) => '<button type="button" class="xlsx-sheet-tab ' + (index === 0 ? 'is-active' : '') + '" data-xlsx-sheet-index="' + index + '" onclick="renderXlsxSheetByIndex(' + index + ')">' + escapeHtml(name) + '</button>').join('');
+            content.innerHTML = '<div class="xlsx-preview-shell"><div class="xlsx-preview-toolbar"><div class="xlsx-sheet-tabs">' + tabs + '</div><span class="xlsx-limit-note">Worksheet preview</span></div><div id="xlsxSheetPreviewTable" class="xlsx-sheet-table-host"></div></div>';
+            renderXlsxSheetByIndex(0);
+        }
+
+        async function renderPptxSlide(index, requestSequence) {
+            if (!currentPptxRenderer || requestSequence !== previewRequestSequence) return;
+            const canvas = document.getElementById('pptxSlideCanvas');
+            const label = document.getElementById('pptxSlideCounter');
+            const previous = document.getElementById('pptxPreviousSlide');
+            const next = document.getElementById('pptxNextSlide');
+            if (!canvas) return;
+            currentPptxSlideIndex = Math.max(0, Math.min(index, currentPptxRenderer.slideCount - 1));
+            if (label) label.textContent = 'Slide ' + (currentPptxSlideIndex + 1) + ' of ' + currentPptxRenderer.slideCount;
+            if (previous) previous.disabled = currentPptxSlideIndex <= 0;
+            if (next) next.disabled = currentPptxSlideIndex >= currentPptxRenderer.slideCount - 1;
+            canvas.setAttribute('aria-label', 'PowerPoint slide ' + (currentPptxSlideIndex + 1));
+            await currentPptxRenderer.renderSlide(currentPptxSlideIndex, canvas, 1280);
+        }
+
+        function changePptxSlide(delta) {
+            renderPptxSlide(currentPptxSlideIndex + Number(delta || 0), previewRequestSequence).catch(error => {
+                const content = document.getElementById('previewContent');
+                if (content) content.innerHTML = renderPreviewInfoBlock(currentPreviewEntry, 'The selected slide could not be rendered. ' + (error && error.message ? error.message : ''));
+            });
+        }
+
+        async function renderPptxPreview(blob, content, requestSequence) {
+            const module = await loadPptxPreviewLibrary();
+            if (requestSequence !== previewRequestSequence) return;
+            currentPptxRenderer = new module.PptxRenderer();
+            await currentPptxRenderer.load(blob);
+            if (requestSequence !== previewRequestSequence) { disposeOfficePreviewEngines(); return; }
+            if (!currentPptxRenderer.slideCount) throw new Error('No slides were found in this presentation.');
+            content.classList.remove('is-centered');
+            content.innerHTML = '<div class="pptx-preview-shell"><div class="pptx-preview-toolbar"><button type="button" id="pptxPreviousSlide" onclick="changePptxSlide(-1)" disabled>‹ Previous</button><span id="pptxSlideCounter">Slide 1</span><button type="button" id="pptxNextSlide" onclick="changePptxSlide(1)">Next ›</button></div><div class="pptx-slide-stage"><canvas id="pptxSlideCanvas"></canvas></div></div>';
+            await renderPptxSlide(0, requestSequence);
+        }
+
+        async function openFilePreview(entry, source = 'personnel') {
             if (!entry) return;
+            currentPreviewReturnFocus = document.activeElement;
             const requestSequence = ++previewRequestSequence;
             currentPreviewEntry = entry;
+            currentPreviewSource = source === 'account' ? 'account' : 'personnel';
+            currentPreviewBlob = null;
             revokePreviewObjectUrl();
+            disposeOfficePreviewEngines();
             const modal = document.getElementById('filePreviewModal');
             const nameEl = document.getElementById('previewFileName');
             const metaEl = document.getElementById('previewMeta');
             const content = document.getElementById('previewContent');
             const downloadBtn = document.getElementById('previewDownloadBtn');
             if (downloadBtn) downloadBtn.disabled = !!entry.isFolder;
-            const name = String(entry.name || '');
+            const name = String(entry.name || 'File');
             if (nameEl) nameEl.textContent = name;
-            if (metaEl) metaEl.textContent = (entry.isFolder ? '\u2014' : formatFolderBytes(entry.size)) + ' \u00B7 ' + entryModifiedLabel(entry);
-            if (content) content.innerHTML = '<div style="color:var(--text-muted,#888);">Loading preview\u2026</div>';
+            if (metaEl) metaEl.textContent = (entry.isFolder ? 'Folder' : formatFolderBytes(entry.size)) + ' · ' + getFileTypeLabel(entry) + ' · ' + entryModifiedLabel(entry);
+            setFilePreviewFooterNote('Original file download is always preserved.');
+            if (content) {
+                content.classList.add('is-centered');
+                content.innerHTML = '<div class="file-preview-loading"><span class="my-files-spinner"></span><span>Preparing secure preview…</span></div>';
+            }
             if (modal) modal.classList.remove('hidden');
+            window.SPADESModalStack?.bringToFront('filePreviewModal');
+
             const ext = entryExtension(entry);
-            const isImage = PREVIEWABLE_IMAGE_EXTS.indexOf(ext) >= 0;
+            const isImage = PREVIEWABLE_IMAGE_EXTS.includes(ext);
             const isPdf = ext === 'pdf';
-            if (entry.isFolder || (!isImage && !isPdf)) {
-                const msg = entry.isFolder
-                    ? 'This is a folder. Files inside it are listed in the browser.'
-                    : 'This file type cannot be previewed inline. Use the download icon above to save it to your device.';
-                if (content) content.innerHTML = renderPreviewInfoBlock(entry, msg);
+            const isDocx = ext === 'docx';
+            const isXlsx = ext === 'xlsx' || ext === 'xlxs';
+            const isPptx = ext === 'pptx';
+            const isOffice = isDocx || isXlsx || isPptx;
+            if (entry.isFolder || (!isImage && !isPdf && !isOffice)) {
+                if (content) content.innerHTML = renderPreviewInfoBlock(entry, entry.isFolder
+                    ? 'This is a folder. Open My Files to view the files saved in your account directory.'
+                    : 'This file type is not supported for inline preview. Use Download to save the original file.');
                 return;
             }
-            let url = String(entry.url || '').trim();
-            if (!url) {
-                try {
-                    url = await fetchFileTempLink(entry.path_lower);
-                } catch (err) {
-                    if (requestSequence !== previewRequestSequence || currentPreviewEntry !== entry) return;
-                    if (content) content.innerHTML = renderPreviewInfoBlock(entry, 'Preview unavailable: ' + ((err && err.message) ? err.message : 'could not fetch a temporary link.'));
-                    return;
-                }
-            }
-            if (requestSequence !== previewRequestSequence || currentPreviewEntry !== entry) return;
-            if (isImage) {
-                if (content) content.innerHTML = '<img src="' + escapeAttr(url) + '" style="max-width:100%;max-height:70vh;object-fit:contain;" alt="' + escapeAttr(name) + '">';
-                return;
-            }
-            // PDF: fetch as blob and render via same-origin object URL in an iframe.
+
             try {
-                const res = await fetch(url);
-                if (!res.ok) throw new Error('HTTP ' + res.status);
-                const blob = await res.blob();
-                const objUrl = URL.createObjectURL(blob);
-                if (requestSequence !== previewRequestSequence || currentPreviewEntry !== entry) {
-                    URL.revokeObjectURL(objUrl);
-                    return;
+                // Office files are first converted server-side to a private PDF preview.
+                // This preserves page breaks, embedded images, tables, headers/footers,
+                // slide composition, and spreadsheet print layout much better than a
+                // text-only browser reconstruction. The source Office file is untouched.
+                if (isOffice) {
+                    try {
+                        const previewPdf = await loadOfficePreviewPdfBlob(entry, currentPreviewSource);
+                        if (requestSequence !== previewRequestSequence || currentPreviewEntry !== entry) return;
+                        renderOfficePdfPreview(previewPdf, content, name);
+                        setFilePreviewFooterNote('Page-layout preview. Download returns the untouched original Office file.');
+                        return;
+                    } catch (conversionError) {
+                        if (requestSequence !== previewRequestSequence || currentPreviewEntry !== entry) return;
+                        // Fallback to the in-browser renderers if the Drive conversion
+                        // service is unavailable or the file contains unsupported content.
+                        const fallbackBlob = await loadPreviewBlob(entry, currentPreviewSource);
+                        if (requestSequence !== previewRequestSequence || currentPreviewEntry !== entry) return;
+                        if (!fallbackBlob || !fallbackBlob.size) throw new Error('The selected Office file is empty or could not be read.');
+                        if (fallbackBlob.size > SPADES_ACCOUNT_FILE_MAX_BYTES) throw new Error('This file exceeds the 10 MB preview/download limit.');
+                        currentPreviewBlob = fallbackBlob;
+                        if (isDocx) {
+                            await renderDocxPreview(fallbackBlob, content, requestSequence);
+                        } else if (isXlsx) {
+                            await renderXlsxPreview(fallbackBlob, content, requestSequence);
+                        } else if (isPptx) {
+                            await renderPptxPreview(fallbackBlob, content, requestSequence);
+                        }
+                        if (requestSequence !== previewRequestSequence || currentPreviewEntry !== entry) return;
+                        addOfficeFallbackNotice(content);
+                        setFilePreviewFooterNote('Fallback view only. Some formatting may differ; Download returns the untouched original.');
+                        return;
+                    }
                 }
-                currentPreviewObjectUrl = objUrl;
-                if (content) content.innerHTML = '<iframe src="' + escapeAttr(objUrl) + '" style="width:100%;height:70vh;border:none;background:#fff;" title="' + escapeAttr(name) + '"></iframe>';
-            } catch (err) {
+
+                const blob = await loadPreviewBlob(entry, currentPreviewSource);
                 if (requestSequence !== previewRequestSequence || currentPreviewEntry !== entry) return;
-                if (content) content.innerHTML = renderPreviewInfoBlock(entry, 'Preview unavailable for this PDF (' + ((err && err.message) ? err.message : 'fetch failed') + '). Use the download icon above.');
+                if (!blob || !blob.size) throw new Error('The selected file is empty or could not be read.');
+                if (blob.size > SPADES_ACCOUNT_FILE_MAX_BYTES) throw new Error('This file exceeds the 10 MB preview/download limit.');
+                currentPreviewBlob = blob;
+                if (isImage) {
+                    currentPreviewObjectUrl = URL.createObjectURL(blob);
+                    content.classList.add('is-centered');
+                    content.innerHTML = '<img class="file-preview-image" src="' + escapeAttr(currentPreviewObjectUrl) + '" alt="' + escapeAttr(name) + '">';
+                } else if (isPdf) {
+                    currentPreviewObjectUrl = URL.createObjectURL(blob);
+                    content.classList.add('is-centered');
+                    content.innerHTML = '<iframe class="file-preview-pdf" src="' + escapeAttr(currentPreviewObjectUrl) + '#toolbar=1&navpanes=1&scrollbar=1' + '" title="' + escapeAttr(name) + '" loading="eager"></iframe>';
+                }
+            } catch (error) {
+                if (requestSequence !== previewRequestSequence || currentPreviewEntry !== entry) return;
+                if (content) content.innerHTML = renderPreviewInfoBlock(entry, 'Preview unavailable. ' + (error && error.message ? error.message : 'The file could not be rendered. Use Download to save the original.'));
+                setFilePreviewFooterNote('Preview unavailable. Download remains available for the original file.');
             }
         }
 
@@ -6841,25 +7933,14 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             if (entry.isFolder) return customAlert('Select a file rather than a folder to download.', 'Download');
             const btn = document.getElementById('previewDownloadBtn');
             if (btn) { btn.disabled = true; btn.setAttribute('aria-busy', 'true'); }
-            let objUrl = null;
             try {
-                let url = String(entry.url || '').trim();
-                if (!url) url = await fetchFileTempLink(entry.path_lower);
-                const res = await fetch(url);
-                if (!res.ok) throw new Error('HTTP ' + res.status);
-                const blob = await res.blob();
-                objUrl = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = objUrl;
-                a.download = String(entry.name || 'download');
-                document.body.appendChild(a);
-                a.click();
-                a.remove();
-            } catch (err) {
-                customAlert((err && err.message) ? err.message : 'Download failed. Please try again.', 'Download Error');
+                const blob = currentPreviewBlob || await loadPreviewBlob(entry, currentPreviewSource);
+                if (!blob || !blob.size) throw new Error('The selected file could not be retrieved.');
+                saveBlobToDevice(blob, entry.name || 'download');
+            } catch (error) {
+                customAlert((error && error.message) ? error.message : 'Download failed. Please try again.', 'Download Error');
             } finally {
-                if (objUrl) setTimeout(function () { try { URL.revokeObjectURL(objUrl); } catch (_) {} }, 2000);
-                if (btn) { btn.disabled = false; btn.removeAttribute('aria-busy'); }
+                if (btn) { btn.disabled = !!(entry && entry.isFolder); btn.removeAttribute('aria-busy'); }
             }
         }
 
@@ -6868,9 +7949,16 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             const modal = document.getElementById('filePreviewModal');
             if (modal) modal.classList.add('hidden');
             revokePreviewObjectUrl();
+            disposeOfficePreviewEngines();
+            currentPreviewBlob = null;
             const content = document.getElementById('previewContent');
             if (content) content.innerHTML = '';
             const meta = document.getElementById('previewMeta');
             if (meta) meta.textContent = '';
             currentPreviewEntry = null;
+            const returnFocus = currentPreviewReturnFocus;
+            currentPreviewReturnFocus = null;
+            if (returnFocus && returnFocus.isConnected && typeof returnFocus.focus === 'function') {
+                window.requestAnimationFrame(() => returnFocus.focus({preventScroll:true}));
+            }
         }
