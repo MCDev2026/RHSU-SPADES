@@ -225,10 +225,8 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         let chatNotificationInitialized = false;
         const CHAT_NOTIFICATION_POLL_MS = 4000;
         const CHAT_POPUP_MAX = 4;
-        const CHAT_MINIMIZED_MAX = 6;
         let chatUnreadCount = 0;
         const chatUnreadByConversation = Object.create(null);
-        let minimizedChatInstances = [];
 
         let allActivities = [];
         let filteredActivities = [];
@@ -781,6 +779,8 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 if (!data.success) throw new Error(data.error || 'Unable to load chat users.');
                 chatUsers = Array.isArray(data.users) ? data.users : [];
                 chatUsersLoaded = true;
+                const countEl = document.getElementById('chatActiveUsersCount');
+                if (countEl) countEl.textContent = String(chatUsers.filter(u => String(u.username) !== String(currentUser)).length);
                 if (chatSelectedUser && !chatUsers.some(u => String(u.username) === String(chatSelectedUser))) {
                     chatSelectedUser = '';
                     chatMode = 'global';
@@ -805,7 +805,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 return;
             }
             box.innerHTML = users.map(u => {
-                return `<button type="button" class="chat-user-item" onclick="openUsersChatWindow('private','${escapeAttr(u.username)}')" role="menuitem">
+                return `<button type="button" class="chat-user-item${chatMode === 'private' && String(chatSelectedUser) === String(u.username) ? ' is-active' : ''}" onclick="openUsersChatPage('private','${escapeAttr(u.username)}')" role="listitem">
                     <span class="chat-user-dot"></span>
                     <span class="chat-user-name">${escapeHtml(u.name || u.username)} <span style="opacity:.6;">(${escapeHtml(u.username)})</span> <small style="opacity:.75;margin-left:6px;cursor:pointer;text-decoration:underline;color:var(--primary);" onclick="event.stopPropagation();viewUserProfile('${escapeAttr(u.username)}')" title="View profile">view profile</small></span>
                 </button>`;
@@ -824,6 +824,8 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 if (title) title.innerText = chatSelectedUser ? `Private: ${chatSelectedUser}` : 'Private Chat';
                 if (subtitle) subtitle.innerText = chatSelectedUser ? 'Only you and the selected user can see these messages.' : 'Select a user to start a private conversation.';
             }
+            document.getElementById('usersChatGlobalBtn')?.classList.toggle('is-active', chatMode === 'global');
+            renderChatUserList();
             loadChatMessages();
         }
 
@@ -1000,7 +1002,9 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             if (!message && !chatAttachmentFile) return;
             if (chatMode === 'private' && !chatSelectedUser) return customAlert('Select a user before sending a private message.', 'Chat');
             const btn = document.querySelector('.users-chat-send');
-            if (btn) { btn.disabled = true; btn.innerText = 'Sending...'; }
+            const btnLabel = btn?.querySelector('span');
+            if (btn) { btn.disabled = true; btn.setAttribute('aria-busy', 'true'); }
+            if (btnLabel) btnLabel.textContent = 'Sending…';
             try {
                 const auth = chatCredentialPayload();
                 let attachment = null;
@@ -1045,7 +1049,8 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             } catch (err) {
                 customAlert(err.message || 'Unable to send message.', 'Chat Error');
             } finally {
-                if (btn) { btn.disabled = false; btn.innerText = 'Send'; }
+                if (btn) { btn.disabled = false; btn.removeAttribute('aria-busy'); }
+                if (btnLabel) btnLabel.textContent = 'Send';
                 input?.focus();
             }
         }
@@ -1076,9 +1081,9 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         function openIncomingChatMessage(message) {
             const type = String(message?.type || 'Global').toLowerCase() === 'private' ? 'private' : 'global';
             if (type === 'private') {
-                openUsersChatWindow('private', String(message.sender || ''));
+                openUsersChatPage('private', String(message.sender || ''));
             } else {
-                openUsersChatWindow('global');
+                openUsersChatPage('global');
             }
         }
 
@@ -1271,67 +1276,10 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             badge.setAttribute('aria-label', `${count} unread chat message${count === 1 ? '' : 's'}`);
         }
 
-        function chatConversationLabel(mode, username) {
-            if (mode !== 'private') return 'Global Chat';
-            const target = String(username || '').trim();
-            const found = chatUsers.find(u => String(u.username || '') === target);
-            return found?.name ? `Private: ${found.name}` : `Private: ${target || 'Chat'}`;
-        }
-
-        function renderMinimizedChatStack() {
-            const stack = document.getElementById('usersChatMinimizedStack');
-            if (!stack) return;
-
-            stack.innerHTML = minimizedChatInstances.map(item => {
-                const unread = Math.max(0, Number(item.unread) || 0);
-                const label = chatConversationLabel(item.mode, item.username);
-                const key = escapeAttr(item.key);
-                return `<div class="users-chat-minimized-item" data-chat-key="${key}">
-                    <button type="button" class="users-chat-minimized-open" title="Restore ${escapeAttr(label)}" aria-label="Restore ${escapeAttr(label)}">
-                        <span class="users-chat-minimized-avatar">💬</span>
-                        <span class="users-chat-minimized-label">${escapeHtml(label)}</span>
-                        ${unread ? `<span class="users-chat-minimized-badge">${unread > 99 ? '99+' : unread}</span>` : ''}
-                    </button>
-                    <button type="button" class="users-chat-minimized-close" title="Remove minimized chat" aria-label="Remove minimized chat">×</button>
-                </div>`;
-            }).join('');
-
-            stack.querySelectorAll('.users-chat-minimized-item').forEach(itemEl => {
-                const key = itemEl.getAttribute('data-chat-key') || '';
-                const record = minimizedChatInstances.find(item => item.key === key);
-                itemEl.querySelector('.users-chat-minimized-open')?.addEventListener('click', () => {
-                    if (!record) return;
-                    minimizedChatInstances = minimizedChatInstances.filter(item => item.key !== key);
-                    renderMinimizedChatStack();
-                    openUsersChatWindow(record.mode, record.username);
-                });
-                itemEl.querySelector('.users-chat-minimized-close')?.addEventListener('click', event => {
-                    event.stopPropagation();
-                    minimizedChatInstances = minimizedChatInstances.filter(item => item.key !== key);
-                    renderMinimizedChatStack();
-                });
-            });
-        }
-
-        function addMinimizedChatInstance(mode = chatMode, username = chatSelectedUser, unreadDelta = 0) {
-            const key = chatConversationKey(mode, username);
-            let item = minimizedChatInstances.find(entry => entry.key === key);
-            if (!item) {
-                item = { key, mode: mode === 'private' ? 'private' : 'global', username: mode === 'private' ? String(username || '') : '', unread: 0 };
-                minimizedChatInstances.unshift(item);
-            } else {
-                minimizedChatInstances = [item, ...minimizedChatInstances.filter(entry => entry.key !== key)];
-            }
-            item.unread = Math.max(0, (Number(item.unread) || 0) + (Number(unreadDelta) || 0));
-            if (minimizedChatInstances.length > CHAT_MINIMIZED_MAX) minimizedChatInstances = minimizedChatInstances.slice(0, CHAT_MINIMIZED_MAX);
-            renderMinimizedChatStack();
-        }
-
         function markChatConversationUnread(mode, username) {
             const key = chatConversationKey(mode, username);
             chatUnreadByConversation[key] = (Number(chatUnreadByConversation[key]) || 0) + 1;
             chatUnreadCount += 1;
-            addMinimizedChatInstance(mode, username, 1);
             updateChatUnreadBadge();
         }
 
@@ -1340,76 +1288,44 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             const amount = Math.max(0, Number(chatUnreadByConversation[key]) || 0);
             if (amount) chatUnreadCount = Math.max(0, chatUnreadCount - amount);
             delete chatUnreadByConversation[key];
-            minimizedChatInstances = minimizedChatInstances.filter(item => item.key !== key);
             updateChatUnreadBadge();
-            renderMinimizedChatStack();
         }
 
         function resetChatUnreadState() {
             chatUnreadCount = 0;
             Object.keys(chatUnreadByConversation).forEach(key => delete chatUnreadByConversation[key]);
-            minimizedChatInstances = [];
             updateChatUnreadBadge();
-            renderMinimizedChatStack();
         }
 
         function isCurrentChatConversation(mode, username) {
-            const win = document.getElementById('usersChatFloatingWindow');
-            if (!win || win.classList.contains('hidden')) return false;
+            const page = document.getElementById('tabUsersChat');
+            if (!page || page.classList.contains('hidden')) return false;
             if (mode === 'private') return chatMode === 'private' && String(chatSelectedUser || '') === String(username || '');
             return chatMode === 'global';
         }
 
-        function toggleUsersChatDropdown(event, forceState) {
-            if (event) event.stopPropagation();
-            const dropdown = document.getElementById('usersChatDropdown');
-            const button = document.getElementById('usersChatHeaderBtn');
-            if (!dropdown) return;
-            const shouldOpen = typeof forceState === 'boolean' ? forceState : dropdown.classList.contains('hidden');
-            dropdown.classList.toggle('hidden', !shouldOpen);
-            button?.setAttribute('aria-expanded', shouldOpen ? 'true' : 'false');
-            if (shouldOpen) {
-                chatUsersLoaded = false;
-                loadChatUsers();
-                setTimeout(() => document.getElementById('chatDropdownUserSearch')?.focus(), 0);
-            }
+        // Users Chat is a normal application page, not a floating popup or modal.
+        // Keep its conversation panel inside tabUsersChat so it follows page navigation.
+        function ensureUsersChatPageConversation() {
+            const page = document.getElementById('tabUsersChat');
+            const panel = document.getElementById('usersChatConversationPanel');
+            const layout = page?.querySelector('.users-chat-page-layout');
+            if (!page || !panel || !layout) return null;
+            if (panel.parentElement !== layout) layout.appendChild(panel);
+            panel.classList.remove('users-chat-floating', 'hidden');
+            panel.classList.add('users-chat-page-conversation');
+            panel.setAttribute('role', 'region');
+            panel.setAttribute('aria-label', 'Chat conversation');
+            panel.setAttribute('aria-hidden', 'false');
+            panel.removeAttribute('aria-modal');
+            return panel;
         }
 
-        function closeUsersChatWindow() {
-            const win = document.getElementById('usersChatFloatingWindow');
-            win?.classList.add('hidden');
-            win?.setAttribute('aria-hidden', 'true');
-            renderMinimizedChatStack();
-        }
-
-        function minimizeUsersChatWindow() {
-            const win = document.getElementById('usersChatFloatingWindow');
-            if (!win || win.classList.contains('hidden')) return;
-            if (chatMode === 'private' && !chatSelectedUser) return;
-            addMinimizedChatInstance(chatMode, chatSelectedUser, 0);
-            win.classList.add('hidden');
-            win.setAttribute('aria-hidden', 'true');
-            if (chatMessagesTimer) {
-                clearInterval(chatMessagesTimer);
-                chatMessagesTimer = null;
-            }
-        }
-
-        function openUsersChatWindow(mode = 'global', username = '') {
-            if (mode === 'private' && !username) return;
-            chatMode = mode === 'private' ? 'private' : 'global';
-            chatSelectedUser = chatMode === 'private' ? String(username) : '';
-            markChatConversationRead(chatMode, chatSelectedUser);
-            document.getElementById('usersChatFloatingWindow')?.classList.remove('hidden');
-            document.getElementById('usersChatFloatingWindow')?.setAttribute('aria-hidden', 'false');
-            toggleUsersChatDropdown(null, false);
-            setChatMode(chatMode);
-            if (chatMode === 'private') renderChatUserList();
-            document.getElementById('usersChatInput')?.focus();
+        function startUsersChatMessageRefresh() {
             if (chatMessagesTimer) clearInterval(chatMessagesTimer);
             chatMessagesTimer = setInterval(() => {
-                const win = document.getElementById('usersChatFloatingWindow');
-                if (!win || win.classList.contains('hidden')) {
+                const page = document.getElementById('tabUsersChat');
+                if (!page || page.classList.contains('hidden')) {
                     clearInterval(chatMessagesTimer);
                     chatMessagesTimer = null;
                     return;
@@ -1419,18 +1335,36 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             }, 5000);
         }
 
+        function openUsersChatPage(mode = 'global', username = '') {
+            if (mode === 'private' && !username) return;
+            chatMode = mode === 'private' ? 'private' : 'global';
+            chatSelectedUser = chatMode === 'private' ? String(username) : '';
+
+            const page = document.getElementById('tabUsersChat');
+            if (!page) {
+                console.warn('Users Chat page was not found.');
+                return;
+            }
+            if (page.classList.contains('hidden')) switchTab('usersChat', { fromChat: true });
+            const conversation = ensureUsersChatPageConversation();
+            if (!conversation) return;
+
+            try { markChatConversationRead(chatMode, chatSelectedUser); }
+            catch (error) { console.warn('Unable to update chat read state:', error); }
+            setChatMode(chatMode);
+            if (!chatUsersLoaded) loadChatUsers();
+            else renderChatUserList();
+            startUsersChatMessageRefresh();
+            window.setTimeout(() => document.getElementById('usersChatInput')?.focus({preventScroll:true}), 40);
+        }
+
         function startUsersChat() {
             chatUsersLoaded = false;
             loadChatUsers();
         }
 
-        document.addEventListener('click', function(event) {
-            const wrap = document.getElementById('headerChatWrap');
-            const dropdown = document.getElementById('usersChatDropdown');
-            if (wrap && dropdown && !wrap.contains(event.target) && !dropdown.classList.contains('hidden')) {
-                toggleUsersChatDropdown(null, false);
-            }
-        });
+        // Place the chat conversation panel in its dedicated page container once at startup.
+        ensureUsersChatPageConversation();
 
         function toggleChat(forceState) {
             const panel = document.getElementById('chatbot-window');
@@ -1523,7 +1457,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             if (query.includes('personnel')) return 'Open Personnel Management and choose the relevant sub-page, such as Personnel List, Duty Office, BMI Monitoring, Squadding, Leave Management, or Area of Responsibilities.';
             if (query.includes('admin') || query.includes('user management') || query.includes('permission')) return 'User Management is reserved for the configured Alpha Admin. Access and editing options elsewhere depend on your assigned role and permissions.';
             if (query.includes('profile') || query.includes('password') || query.includes('pin') || query.includes('cover photo')) return 'Open My Profile to review your information. Use Profile Settings or Security & Authentication to update supported account settings. The profile banner can be changed from the Change Cover button.';
-            if (query.includes('chat') || query.includes('message')) return 'Use the chat icon in the top bar to open Global Chat or select an active user for a private conversation. Do not send passwords, PINs, or sensitive information in chat.';
+            if (query.includes('chat') || query.includes('message')) return 'Open Users Chat from the main navigation. Choose Global Chat or select an active user for a private conversation. Do not send passwords, PINs, or sensitive information in chat.';
             if (query.includes('setting') || query.includes('theme') || query.includes('dark mode') || query.includes('notification')) return 'Open Settings to adjust theme, notifications, AI assistant visibility, automatic logout, table display, accessibility, and other personal preferences.';
             return 'I can help explain SPADES workflows for memos, personnel, Duty Office, Activity Management, profile settings, and Users Chat. For account permissions or official records, rely on the data shown in the portal and your office guidance.';
         }
@@ -1632,7 +1566,45 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             const av = document.getElementById('profileAvatarImg');
             const fb = document.getElementById('profileAvatarFallback');
             const displayName = document.getElementById('profileDisplayName')?.textContent || localStorage.getItem('loggedInUser') || 'U';
-            setProfileImageDisplay(av, fb, profileUrl || getCachedProfilePhotoUrl(localStorage.getItem('loggedInUser'), 'profile'), displayName);
+            const resolvedUrl = profileUrl || getCachedProfilePhotoUrl(localStorage.getItem('loggedInUser'), 'profile');
+            setProfileImageDisplay(av, fb, resolvedUrl, displayName);
+            syncProfilePictureModalPreview(resolvedUrl, displayName);
+        }
+        function syncProfilePictureModalPreview(url, displayName) {
+            const preview = document.getElementById('profilePictureModalPreview');
+            const fallback = document.getElementById('profilePictureModalFallback');
+            if (!preview || !fallback) return;
+            const name = displayName || document.getElementById('profileDisplayName')?.textContent || localStorage.getItem('loggedInUser') || 'U';
+            if (url) {
+                preview.onerror = () => { preview.style.display = 'none'; fallback.style.display = 'flex'; fallback.textContent = String(name).trim().charAt(0).toUpperCase() || 'U'; };
+                preview.src = url;
+                preview.style.display = 'block';
+                fallback.style.display = 'none';
+            } else {
+                preview.removeAttribute('src');
+                preview.style.display = 'none';
+                fallback.textContent = String(name).trim().charAt(0).toUpperCase() || 'U';
+                fallback.style.display = 'flex';
+            }
+        }
+        function openProfilePictureModal() {
+            const modal = document.getElementById('profilePictureModal');
+            if (!modal) return;
+            const avatar = document.getElementById('profileAvatarImg');
+            const cachedUrl = getCachedProfilePhotoUrl(localStorage.getItem('loggedInUser'), 'profile');
+            const visibleAvatarUrl = avatar && avatar.style.display !== 'none' ? avatar.src : '';
+            syncProfilePictureModalPreview(cachedUrl || visibleAvatarUrl, document.getElementById('profileDisplayName')?.textContent);
+            modal.classList.remove('hidden');
+            modal.setAttribute('aria-hidden','false');
+            modal.querySelector('.profile-picture-modal')?.focus({preventScroll:true});
+        }
+        function closeProfilePictureModal() {
+            const modal = document.getElementById('profilePictureModal');
+            if (modal) { modal.classList.add('hidden'); modal.setAttribute('aria-hidden','true'); }
+        }
+        function chooseProfilePictureFromModal() {
+            const input = document.getElementById('avatarPhotoInput');
+            if (input && !input.disabled) input.click();
         }
         function applyProfileCover(coverUrl) {
             const cover = document.getElementById('profileCoverBanner');
@@ -1657,7 +1629,9 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             }
             // Loading/disabled state: disable the hidden input and its visible trigger button
             // so a double-selection cannot fire while an upload is in flight.
-            const triggerBtn = document.querySelector(type === 'cover' ? '.pf-cover-change-btn' : '.pf-avatar-upload');
+            const triggerBtn = type === 'cover'
+                ? document.querySelector('.pf-cover-change-btn')
+                : (document.querySelector('#profilePictureModal .profile-picture-select-btn') || document.querySelector('.pf-avatar-trigger'));
             inputEl.disabled = true;
             if (triggerBtn) { triggerBtn.disabled = true; triggerBtn.style.opacity = '0.5'; triggerBtn.style.pointerEvents = 'none'; }
             const restoreUploadUI = function () {
@@ -1699,6 +1673,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                                 : 'Cover photo updated successfully.', data.cleanupWarning ? 'Updated with Warning' : 'Success');
                         } else {
                             applyProfilePhotos(data.url);
+                            closeProfilePictureModal();
                             customAlert(data.cleanupWarning
                                 ? 'Profile photo updated successfully. ' + data.cleanupWarning
                                 : 'Profile photo updated successfully.', data.cleanupWarning ? 'Updated with Warning' : 'Success');
@@ -1758,9 +1733,24 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 if (p.coverPhotoUrl) rememberProfilePhotoUrl(p.username, 'cover', p.coverPhotoUrl);
                 setProfileImageDisplay(av, fb, savedViewProfilePhoto, fullName);
                 const cv = document.getElementById('viewCoverBanner');
-                if (savedViewCoverPhoto) cv.style.backgroundImage = `url("${savedViewCoverPhoto}")`; else cv.style.backgroundImage = '';
-                const rows = [['Rank', p.rank], ['First Name', p.firstName], ['Middle Name', p.middleName], ['Last Name', p.lastName], ['Qualifier', p.qlf], ['Email', p.email], ['Role', p.role], ['Total Memos', p.totalMemos]];
-                document.getElementById('viewProfileInfo').innerHTML = rows.map(([k,v]) => `<div class="setting-row" style="margin:0;"><span>${k}</span><span class="profile-value">${escapeHtml(v || '—')}</span></div>`).join('');
+                if (savedViewCoverPhoto) cv.style.setProperty('background-image', `url("${savedViewCoverPhoto}")`, 'important'); else cv.style.removeProperty('background-image');
+                const detailGroups = [
+                    { title: 'Personnel Details', icon: 'fi-rr-id-badge', description: 'Registered personnel name information', fields: [
+                        ['Rank', p.rank], ['First Name', p.firstName], ['Middle Name', p.middleName], ['Last Name', p.lastName], ['Qualifier', p.qlf]
+                    ] },
+                    { title: 'Account Information', icon: 'fi-rr-user-shield', description: 'Contact and account details', fields: [
+                        ['Email Address', p.email], ['Assigned Role', p.role || 'Regular User']
+                    ] }
+                ];
+                const detailsNode = document.getElementById('viewProfileInfo');
+                if (detailsNode) detailsNode.innerHTML = detailGroups.map(group => `
+                    <section class="um-user-info-card" aria-label="${escapeAttr(group.title)}">
+                        <div class="um-user-info-card-head"><span class="um-user-info-card-icon"><i class="fi ${group.icon}" aria-hidden="true"></i></span><div><h3>${escapeHtml(group.title)}</h3><p>${escapeHtml(group.description)}</p></div></div>
+                        <div class="um-user-info-fields">${group.fields.map(([label,value]) => `
+                            <div class="um-user-info-field"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value || '—')}</strong></div>
+                        `).join('')}</div>
+                    </section>
+                `).join('');
                 document.getElementById('userProfileViewModal').classList.remove('hidden');
             } catch (err) { customAlert('Could not load profile.', 'Error'); }
         }
@@ -1826,6 +1816,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             adminMgmt: { hash: '#user-management', label: 'User Management' },
             activityManagement: { hash: '#activity-management', label: 'Activity Management' },
             matrixCompliances: { hash: '#matrix-of-compliances', label: 'Matrix of Compliances' },
+            usersChat: { hash: '#users-chat', label: 'Users Chat' },
             settings: { hash: '#settings', label: 'Settings' },
             profile: { hash: '#my-profile', label: 'My Profile' }
         };
@@ -1865,7 +1856,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             const routeMap = {
                 'dashboard': 'dashboard', 'memo-database': 'home',
                 'personnel-management': 'personnel', 'user-management': 'adminMgmt',
-                'activity-management': 'activityManagement', 'matrix-of-compliances': 'matrixCompliances', 'settings': 'settings',
+                'activity-management': 'activityManagement', 'matrix-of-compliances': 'matrixCompliances', 'users-chat': 'usersChat', 'settings': 'settings',
                 'my-profile': 'profile'
             };
             const tabName = routeMap[pageSlug] || 'dashboard';
@@ -1882,17 +1873,18 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
 
         function switchTab(tabName, options = {}) {
             const activeUsername = localStorage.getItem('loggedInUser') || '';
-            const accessControlledTab = ['dashboard', 'home', 'personnel', 'activityManagement', 'matrixCompliances', 'settings'].includes(tabName);
+            const accessControlledTab = ['dashboard', 'home', 'personnel', 'activityManagement', 'matrixCompliances', 'usersChat', 'settings'].includes(tabName);
             if (activeUsername && accessControlledTab &&
                 typeof userAccessMapLoadedFor !== 'undefined' && userAccessMapLoadedFor === activeUsername &&
                 typeof userHasAccess === 'function' && !userHasAccess(tabName)) {
                 customAlert('Your account does not have access to this page.', 'Permission Denied');
                 return;
             }
-            ['tabDashboard','tabHome','tabProfile','tabAdminMgmt','tabSettings','tabPersonnel','tabActivityManagement','tabMatrixCompliances'].forEach(id => {
+            if (tabName !== 'usersChat' && chatMessagesTimer) { clearInterval(chatMessagesTimer); chatMessagesTimer = null; }
+            ['tabDashboard','tabHome','tabProfile','tabAdminMgmt','tabSettings','tabPersonnel','tabActivityManagement','tabMatrixCompliances','tabUsersChat'].forEach(id => {
                 const el=document.getElementById(id); if(el) el.classList.add('hidden');
             });
-            ['btnDashboard','btnHome','btnSettings','btnAdminMgmt','btnPersonnel','btnActivityManagement','btnMatrixCompliances'].forEach(id => {
+            ['btnDashboard','btnHome','btnSettings','btnAdminMgmt','btnPersonnel','btnActivityManagement','btnMatrixCompliances','btnUsersChat'].forEach(id => {
                 const el=document.getElementById(id); if(el) el.classList.remove('active');
             });
             const settingsMain = document.getElementById('settingsMainPanel');
@@ -1930,8 +1922,16 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 }
 
             } else if (tabName === 'usersChat') {
-                openUsersChatWindow(chatMode || 'global');
-                return;
+                const chatPage = document.getElementById('tabUsersChat');
+                if (chatPage) chatPage.classList.remove('hidden');
+                document.getElementById('btnUsersChat')?.classList.add('active');
+                ensureUsersChatPageConversation();
+                if (!options.fromChat) {
+                    setChatMode(chatMode || 'global');
+                    if (!chatUsersLoaded) startUsersChat();
+                    else renderChatUserList();
+                    startUsersChatMessageRefresh();
+                }
             } else if (tabName === 'activityManagement') {
                 document.getElementById('tabActivityManagement').classList.remove('hidden');
                 document.getElementById('btnActivityManagement').classList.add('active');
@@ -2440,7 +2440,19 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         function openMemoModalUser() { document.getElementById('memoSubmissionModal').classList.remove('hidden'); document.getElementById('memoSubmitBtn').disabled = false; document.getElementById('memoSubmitBtn').innerText = "Submit Data"; }
         function dashboardAddMemo() {
             switchTab('home');
-            setTimeout(openMemoModalUser, 0);
+            setTimeout(() => {
+                if (!document.getElementById('tabHome')?.classList.contains('hidden')) openMemoModalUser();
+            }, 0);
+        }
+        function dashboardAddActivity() {
+            // The Dashboard shortcut must perform the advertised action, not merely
+            // navigate to Activity Management. The destination tab is verified before
+            // opening the page-specific Add Activity form.
+            switchTab('activityManagement');
+            requestAnimationFrame(() => {
+                const activityPage = document.getElementById('tabActivityManagement');
+                if (activityPage && !activityPage.classList.contains('hidden')) openActivityModal();
+            });
         }
         function closeMemoModal() { document.getElementById('memoSubmissionModal').classList.add('hidden'); }
         function toggleAdminCredentialVisibility() {
@@ -2555,8 +2567,8 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 const isPending = statusText.trim().toLowerCase() === 'pending';
                 const restricted = !!userRestrictedMap[username];
                 const roleOptions = `<option value="Regular User" ${role === 'Regular User' ? 'selected' : ''}>Regular User</option><option value="Admin" ${role === 'Admin' ? 'selected' : ''}>Admin</option>`;
-                const accessButton = `<button type="button" class="um-action-link" data-um-action="access" data-username="${safeUser}" title="Configure allowed page access">Configure access</button>`;
-                const restrictButton = isPending ? '' : `<button type="button" class="um-mini-btn ${restricted ? 'um-mini-danger' : 'um-mini-neutral'}" data-um-action="restrict" data-restrict="${restricted ? 'false' : 'true'}" data-username="${safeUser}" title="${restricted ? 'Remove read-only restriction' : 'Restrict to read-only access'}">${restricted ? '&#128274; Restricted' : '&#128275; Restrict'}</button>`;
+                const accessButton = `<button type="button" class="um-action-link um-access-icon-btn" data-um-action="access" data-username="${safeUser}" title="Configure allowed page access" aria-label="Configure allowed page access for ${safeUser}"><i class="fi fi-rr-settings-sliders" aria-hidden="true"></i></button>`;
+                const restrictButton = isPending ? '' : `<button type="button" class="um-mini-btn um-access-icon-btn ${restricted ? 'um-mini-danger' : 'um-mini-neutral'}" data-um-action="restrict" data-restrict="${restricted ? 'false' : 'true'}" data-username="${safeUser}" title="${restricted ? 'Remove read-only restriction' : 'Restrict to read-only access'}" aria-label="${restricted ? 'Remove read-only restriction' : 'Restrict to read-only access'} for ${safeUser}"><i class="fi ${restricted ? 'fi-rr-unlock' : 'fi-rr-lock'}" aria-hidden="true"></i></button>`;
                 const primaryActions = isPending ? `<button type="button" class="um-mini-btn um-mini-success" data-um-action="approve" data-username="${safeUser}">Approve</button><button type="button" class="um-mini-btn um-mini-danger" data-um-action="reject" data-username="${safeUser}">Reject</button>` : `<button type="button" class="um-mini-btn um-mini-danger" data-um-action="delete" data-username="${safeUser}">Delete account</button>`;
                 return `<tr>
                     <td><div class="um-account-cell"><span class="um-account-avatar">${escapeHtml(String((name || username).trim().charAt(0) || 'U').toUpperCase())}</span><div class="um-account-copy"><button type="button" class="um-account-name" data-um-action="view-profile" data-username="${safeUser}">${escapeHtml(name)}</button><span>${escapeHtml(rank || 'Personnel account')}</span></div></div></td>
@@ -3388,7 +3400,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             document.getElementById('personnelModalTitle').innerText = 'Add Personnel';
             document.getElementById('personnelModalDescription').innerText = "Enter the personnel\'s identity, assignment, and current status.";
             saveBtn.disabled = false;
-            saveBtn.innerText = 'Add Personnel';
+            saveBtn.innerText = 'Save Personnel';
             populatePersonnelRemarks('');
             modal.classList.remove('hidden');
             document.body.classList.add('modal-open');
@@ -3483,7 +3495,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 await loadPersonnel();
             } catch(e) {
                 customAlert(e.message||'Unable to save personnel record.','Error');
-            } finally { btn.disabled=false; btn.removeAttribute('aria-busy'); btn.innerText=(payload.action==='add_personnel' ? 'Add Personnel' : 'Update Personnel'); }
+            } finally { btn.disabled=false; btn.removeAttribute('aria-busy'); btn.innerText=(payload.action==='add_personnel' ? 'Save Personnel' : 'Update Personnel'); }
         }
 
         function archivePersonnel(no) {
@@ -3665,7 +3677,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             if (!canManageActivities()) return customAlert('Only Alpha Admin and Admin users can add activities.', 'Permission Denied');
             activityEditId = null;
             document.getElementById('activityModalTitle').innerText = 'Add Activity';
-            document.getElementById('activitySaveBtn').innerText = 'Add Activity';
+            document.getElementById('activitySaveBtn').innerText = 'Save Activity';
             document.getElementById('activityTitle').value = '';
             document.getElementById('activityVenue').value = '';
             document.getElementById('activityVenueOther').value = '';
@@ -3779,6 +3791,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             if (!canManageActivities()) return customAlert('Permission denied.', 'Error');
             const a = allActivities.find(x => String(x.id) === String(id));
             if (!a) return;
+            if (isActivityMarkedDone(a)) return customAlert('Completed or archived activities are locked and cannot be edited.', 'Record Locked');
             if (!isCurrentUserRecordOwner(a.encodedBy)) return customAlert('You can edit only activities that you encoded.', 'Permission Denied');
             const groupRecords = getActivityGroupRecords(a);
             const groupDates = [...new Set(groupRecords.map(item => String(item.date || '').slice(0,10)).filter(d => /^\d{4}-\d{2}-\d{2}$/.test(d)))].sort();
@@ -3864,6 +3877,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             if (!canManageActivities()) return customAlert('Permission denied.', 'Error');
             const a = allActivities.find(x => String(x.id) === String(id));
             if (!a) return;
+            if (isActivityMarkedDone(a)) return customAlert('Completed or archived activities are locked and cannot be deleted.', 'Record Locked');
             customConfirm(`Delete activity "${a.activityTitle}" scheduled on ${a.date}?`, async confirmed => {
                 if (!confirmed) return;
                 try {
@@ -3888,10 +3902,30 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         }
 
         let activityOverviewMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+        let activityOverviewMode = 'month';
+        let activityOverviewWeekStart = getActivityWeekStart(new Date());
         let selectedActivityDetailsId = null;
+        let selectedActivityOccurrenceLocked = false;
 
+        function getActivityWeekStart(date) {
+            const d = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+            d.setDate(d.getDate() - d.getDay());
+            d.setHours(0,0,0,0);
+            return d;
+        }
+        function setActivityCalendarView(mode) {
+            activityOverviewMode = mode === 'week' ? 'week' : 'month';
+            if (activityOverviewMode === 'week') activityOverviewWeekStart = getActivityWeekStart(new Date());
+            document.getElementById('activityMonthViewBtn')?.classList.toggle('is-active', activityOverviewMode === 'month');
+            document.getElementById('activityWeekViewBtn')?.classList.toggle('is-active', activityOverviewMode === 'week');
+            renderActivityOverviewCalendar();
+        }
         function changeActivityOverviewMonth(delta) {
-            activityOverviewMonth = new Date(activityOverviewMonth.getFullYear(), activityOverviewMonth.getMonth() + delta, 1);
+            if (activityOverviewMode === 'week') {
+                activityOverviewWeekStart.setDate(activityOverviewWeekStart.getDate() + (Number(delta) || 0) * 7);
+            } else {
+                activityOverviewMonth = new Date(activityOverviewMonth.getFullYear(), activityOverviewMonth.getMonth() + (Number(delta) || 0), 1);
+            }
             renderActivityOverviewCalendar();
         }
 
@@ -3911,15 +3945,60 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 if (frequency === 'daily') return true;
                 if (frequency === 'weekly') return dateObj.getDay() === start.getDay();
                 if (frequency === 'monthly') return dateObj.getDate() === start.getDate();
+                if (frequency === 'quarterly') return dateObj.getDate() === start.getDate() && ((dateObj.getFullYear() - start.getFullYear()) * 12 + dateObj.getMonth() - start.getMonth()) % 3 === 0;
+                if (frequency === 'semestral' || frequency === 'semiannual') return dateObj.getDate() === start.getDate() && ((dateObj.getFullYear() - start.getFullYear()) * 12 + dateObj.getMonth() - start.getMonth()) % 6 === 0;
                 if (frequency === 'annually' || frequency === 'annual' || frequency === 'yearly') return dateObj.getMonth() === start.getMonth() && dateObj.getDate() === start.getDate();
                 return false;
             });
         }
-
+        function isActivityArchived(activity) {
+            return (archivedActivities || []).some(item => String(item.id) === String(activity && activity.id));
+        }
+        function isActivitySingleDatePast(activity) {
+            const frequency = String(activity && activity.frequency || '').trim().toLowerCase();
+            const recurring = ['daily','weekly','monthly','quarterly','semestral','semiannual','annually','annual','yearly'].includes(frequency);
+            if (recurring) return false;
+            const dates = activityAnchorDates(activity);
+            return dates.length > 0 && dates.every(date => date < localDateKey(new Date()));
+        }
+        function isActivityMarkedDone(activity) {
+            const status = String(activity && activity.status || '').trim().toLowerCase();
+            return isActivityArchived(activity) || isActivitySingleDatePast(activity) || /^(done|complete|completed|finished|closed|archive|archived)$/.test(status);
+        }
+        function activityMatchesOnDate(dateObj) {
+            const key = localDateKey(dateObj);
+            const activeMatches = (allActivities || []).filter(activity => activityOccursOnDate(activity, dateObj));
+            const archivedMatches = (archivedActivities || []).filter(activity => activityAnchorDates(activity).includes(key));
+            const seenIds = new Set();
+            return [...activeMatches, ...archivedMatches].filter(activity => {
+                const id = String(activity.id || '');
+                if (id && seenIds.has(id)) return false;
+                if (id) seenIds.add(id);
+                return true;
+            }).map(activity => {
+                const archived = archivedMatches.some(item => String(item.id) === String(activity.id));
+                const pastOccurrence = key < localDateKey(new Date());
+                return { activity, archived, locked: isActivityMarkedDone(activity) || archived || pastOccurrence };
+            });
+        }
+        function bindActivityCalendarDetails(host) {
+            host.querySelectorAll('[data-activity-details-id]').forEach(button => {
+                button.addEventListener('click', () => showActivityDetails(
+                    button.dataset.activityDetailsId,
+                    button.dataset.activityOccurrenceLocked === 'true'
+                ));
+            });
+        }
         function renderActivityOverviewCalendar() {
             const host = document.getElementById('activityOverviewCalendar');
             const title = document.getElementById('activityOverviewMonthTitle');
             if (!host || !title) return;
+            document.getElementById('activityMonthViewBtn')?.classList.toggle('is-active', activityOverviewMode === 'month');
+            document.getElementById('activityWeekViewBtn')?.classList.toggle('is-active', activityOverviewMode === 'week');
+            if (activityOverviewMode === 'week') {
+                renderActivityOverviewWeekCalendar(host, title);
+                return;
+            }
             const year = activityOverviewMonth.getFullYear(), month = activityOverviewMonth.getMonth();
             title.textContent = activityOverviewMonth.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
             const weekdays = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
@@ -3931,36 +4010,98 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 const raw = i - first + 1;
                 const date = raw < 1 ? new Date(year, month - 1, previousCount + raw) : raw > count ? new Date(year, month + 1, raw - count) : new Date(year, month, raw);
                 const key = localDateKey(date), other = date.getMonth() !== month;
-
-                // Active records are expanded according to their recurrence. Archived
-                // records are historical snapshots and appear only on their assigned date.
-                const activeMatches = (allActivities || []).filter(activity => activityOccursOnDate(activity, date));
-                const archivedMatches = (archivedActivities || []).filter(activity => activityAnchorDates(activity).includes(key));
-                const seenIds = new Set();
-                const matches = [...activeMatches, ...archivedMatches].filter(activity => {
-                    const id = String(activity.id || '');
-                    if (id && seenIds.has(id)) return false;
-                    if (id) seenIds.add(id);
-                    return true;
-                });
-
-                const activityTextList = matches.map(activity => {
+                const matches = activityMatchesOnDate(date);
+                const activityTextList = matches.map(({activity, archived, locked}) => {
                     const activityName = String(activity.activityTitle || 'Untitled activity');
-                    const isArchived = archivedMatches.some(item => String(item.id) === String(activity.id));
-                    const statusLabel = isArchived ? 'Archived' : String(activity.status || activityStatusForDate(activity.date) || 'Recurring');
-                    return `<button type="button" class="activity-overview-event-text${isArchived ? ' is-archived' : ''}" data-activity-details-id="${escapeAttr(activity.id)}" title="View ${escapeAttr(statusLabel.toLowerCase())} activity details: ${escapeAttr(activityName)}" aria-label="View ${escapeAttr(statusLabel.toLowerCase())} activity details for ${escapeAttr(activityName)}">${escapeHtml(activityName)}${isArchived ? ' <span class="activity-overview-archive-label">(Archived)</span>' : ''}</button>`;
+                    const statusLabel = archived ? 'Archived' : String(activity.status || activityStatusForDate(activity.date) || 'Ongoing');
+                    return `<button type="button" class="activity-overview-event-text${archived ? ' is-archived' : ''}${locked ? ' is-locked' : ''}" data-activity-details-id="${escapeAttr(activity.id)}" data-activity-occurrence-locked="${locked ? 'true' : 'false'}" title="${locked ? 'Completed or archived · ' : ''}View ${escapeAttr(statusLabel.toLowerCase())} activity details: ${escapeAttr(activityName)}" aria-label="${locked ? 'Locked completed activity. ' : ''}View ${escapeAttr(statusLabel.toLowerCase())} activity details for ${escapeAttr(activityName)}">${locked ? '<i class="fi fi-rr-lock activity-lock-icon" aria-hidden="true"></i>' : ''}${escapeHtml(activityName)}${archived ? ' <span class="activity-overview-archive-label">(Archived)</span>' : ''}</button>`;
                 }).join('');
-                html += `<div class="activity-overview-day${other ? ' is-other-month' : ''}${key === today ? ' is-today' : ''}"><span class="activity-overview-day-number">${date.getDate()}</span>${activityTextList ? `<div class="activity-overview-events activity-day-text-list" aria-label="Activities scheduled on ${escapeAttr(key)}">${activityTextList}</div>` : ''}</div>`;
+                const lockedDate = matches.length > 0 && matches.every(item => item.locked);
+                html += `<div class="activity-overview-day${other ? ' is-other-month' : ''}${key === today ? ' is-today' : ''}${lockedDate ? ' is-locked-date' : ''}"><span class="activity-overview-day-number">${date.getDate()}${lockedDate ? ' <i class="fi fi-rr-lock" aria-label="Completed date locked"></i>' : ''}</span>${activityTextList ? `<div class="activity-overview-events activity-day-text-list" aria-label="Activities scheduled on ${escapeAttr(key)}">${activityTextList}</div>` : ''}</div>`;
             }
+            host.classList.remove('activity-week-view-host');
+            host.classList.add('activity-month-view-host');
             host.innerHTML = html;
-            // Bind through DOM listeners rather than inline JavaScript so IDs with
-            // punctuation remain safe and the full text row is an accessible target.
-            host.querySelectorAll('[data-activity-details-id]').forEach(button => {
-                button.addEventListener('click', () => showActivityDetails(button.dataset.activityDetailsId));
+            bindActivityCalendarDetails(host);
+        }
+        function getActivityTimeRange(activity) {
+            const raw = String(activity && activity.time || '').trim();
+            const parts = raw.split(/\s*(?:-|–|to)\s*/i);
+            const startText = activityTimeForInput(parts[0] || '') || activityTimeForInput(formatActivityTime(parts[0] || ''));
+            const endText = activityTimeForInput(parts[1] || '') || activityTimeForInput(formatActivityTime(parts[1] || ''));
+            const toMinutes = value => {
+                if (!value) return null;
+                const [hh, mm] = value.split(':').map(Number);
+                return hh * 60 + mm;
+            };
+            let start = toMinutes(startText), end = toMinutes(endText);
+            if (start == null) return {start: null, end: null, label: raw ? formatActivityTime(raw) : 'Time not specified'};
+            if (end == null) end = start + 60;
+            if (end <= start) end += 24 * 60;
+            return {start, end, label: formatActivityTime(raw) || 'Time not specified'};
+        }
+        function activityWeekColor(activity) {
+            const palette = ['#2563eb','#0f766e','#7c3aed','#b45309','#be123c','#0369a1','#475569'];
+            const key = String(activity && (activity.groupId || activity.id || activity.activityTitle) || 'activity');
+            let hash = 0;
+            for (let i=0;i<key.length;i++) hash = ((hash << 5) - hash + key.charCodeAt(i)) | 0;
+            return palette[Math.abs(hash) % palette.length];
+        }
+        function renderActivityOverviewWeekCalendar(host, title) {
+            const start = getActivityWeekStart(activityOverviewWeekStart);
+            activityOverviewWeekStart = start;
+            const days = Array.from({length:7}, (_,index) => {
+                const d = new Date(start); d.setDate(start.getDate()+index); return d;
             });
+            const end = days[6];
+            title.textContent = `${start.toLocaleDateString(undefined,{month:'short',day:'numeric'})} – ${end.toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'})}`;
+            const firstMinute = 6 * 60, lastMinute = 22 * 60, pxPerMinute = 0.72;
+            const hourLabels = Array.from({length:17},(_,i)=>`<div class="activity-week-hour" style="top:${i*60*pxPerMinute}px">${String((i+6)%24).padStart(2,'0')}:00</div>`).join('');
+            const dayColumns = days.map((date,dayIndex) => {
+                const matches = activityMatchesOnDate(date);
+                const timed = [], untimed = [];
+                matches.forEach(match => {
+                    const range = getActivityTimeRange(match.activity);
+                    const entry = {...match, range};
+                    if (range.start == null) untimed.push(entry); else timed.push(entry);
+                });
+                timed.sort((a,b)=>a.range.start-b.range.start || a.range.end-b.range.end);
+                const laneEnds = [];
+                timed.forEach(item => {
+                    let lane = laneEnds.findIndex(endMinute => endMinute <= item.range.start);
+                    if (lane < 0) lane = laneEnds.length;
+                    laneEnds[lane] = item.range.end;
+                    item.lane = lane;
+                });
+                const laneCount = Math.max(1,laneEnds.length);
+                const topEvents = untimed.map(item => {
+                    const name = String(item.activity.activityTitle || 'Untitled activity');
+                    const color = activityWeekColor(item.activity);
+                    return `<button type="button" class="activity-week-all-day-event${item.locked?' is-locked':''}" style="--week-event-color:${color}" data-activity-details-id="${escapeAttr(item.activity.id)}" data-activity-occurrence-locked="${item.locked?'true':'false'}" title="${escapeAttr(item.range.label)} · ${escapeAttr(name)}">${item.locked?'<i class="fi fi-rr-lock" aria-hidden="true"></i> ':''}${escapeHtml(name)}</button>`;
+                }).join('');
+                const positioned = timed.map(item => {
+                    const startMinute = Math.max(firstMinute,item.range.start);
+                    const endMinute = Math.min(lastMinute,item.range.end);
+                    if (endMinute <= firstMinute || startMinute >= lastMinute) return '';
+                    const top = (startMinute-firstMinute)*pxPerMinute;
+                    const height = Math.max(26,(endMinute-startMinute)*pxPerMinute);
+                    const width = 100/laneCount;
+                    const left = item.lane*width;
+                    const name = String(item.activity.activityTitle || 'Untitled activity');
+                    const color = activityWeekColor(item.activity);
+                    return `<button type="button" class="activity-week-event${item.locked?' is-locked':''}" style="--week-event-color:${color};top:${top}px;height:${height}px;left:calc(${left}% + 2px);width:calc(${width}% - 4px)" data-activity-details-id="${escapeAttr(item.activity.id)}" data-activity-occurrence-locked="${item.locked?'true':'false'}" title="${escapeAttr(name)} · ${escapeAttr(item.range.label)}"><strong>${item.locked?'<i class="fi fi-rr-lock" aria-hidden="true"></i> ':''}${escapeHtml(name)}</strong><span>${escapeHtml(item.range.label)}</span></button>`;
+                }).join('');
+                const dateKey = localDateKey(date);
+                const lockedDate = matches.length > 0 && matches.every(item => item.locked);
+                return `<div class="activity-week-day-col${dateKey===localDateKey(new Date())?' is-today':''}${lockedDate?' is-locked-date':''}"><div class="activity-week-all-day">${topEvents || '<span class="activity-week-empty-label">No all-day activity</span>'}</div><div class="activity-week-day-body"><div class="activity-week-grid-lines" aria-hidden="true"></div>${positioned || ''}</div></div>`;
+            }).join('');
+            host.classList.remove('activity-month-view-host');
+            host.classList.add('activity-week-view-host');
+            host.innerHTML = `<div class="activity-week-scroll"><div class="activity-week-view"><div class="activity-week-header-spacer"></div><div class="activity-week-header-days">${days.map(date=>`<div class="activity-week-day-header"><strong>${date.toLocaleDateString(undefined,{weekday:'short'})}</strong><span>${date.getDate()}</span></div>`).join('')}</div><div class="activity-week-body"><div class="activity-week-time-axis">${hourLabels}</div><div class="activity-week-columns">${dayColumns}</div></div></div></div><div class="activity-week-legend"><span><i class="activity-week-legend-swatch"></i>Activity block height represents scheduled duration</span><span><i class="fi fi-rr-lock" aria-hidden="true"></i> Completed / archived · read-only</span></div>`;
+            bindActivityCalendarDetails(host);
         }
 
-        function openActivityDataModal() {
+                function openActivityDataModal() {
             const modal = document.getElementById('activityDataModal');
             if (!modal) return;
             modal.classList.remove('hidden');
@@ -3973,10 +4114,11 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             if (modal) modal.classList.add('hidden');
         }
 
-        function showActivityDetails(id) {
+        function showActivityDetails(id, occurrenceLocked = false) {
             const activity = (allActivities || []).find(a => String(a.id) === String(id)) || (archivedActivities || []).find(a => String(a.id) === String(id));
             if (!activity) return;
             selectedActivityDetailsId = String(activity.id);
+            selectedActivityOccurrenceLocked = !!occurrenceLocked || isActivityMarkedDone(activity);
             document.getElementById('activityDetailsTitle').textContent = activity.activityTitle || 'Activity Details';
             const detailRecords = [...(allActivities || []), ...(archivedActivities || [])].filter(item => {
                 if (activity.groupId) return String(item.groupId || '') === String(activity.groupId);
@@ -3988,14 +4130,17 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             const activityStatus = activity.status || (isArchivedActivity ? 'Archive' : 'Ongoing');
             const fields = [['Date / Schedule', scheduleText], ['Activity Title', activity.activityTitle], ['Assigned Venue', activity.assignedVenue], ['Requesting Office', activity.requestingOffice], ['Concerned Office', activity.concernedOffice], ['Requested Service/s', activity.requestedServices], ['Time', formatActivityTime(activity.time)], ['Frequency', activity.frequency], ['Status', activityStatus]];
             document.getElementById('activityDetailsContent').innerHTML = fields.map(([label,value]) => `<div class="activity-detail-field"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value || '—')}</strong></div>`).join('');
-            const canEditActivity = canManageActivities() && (allActivities || []).some(a => String(a.id) === String(id));
+            const canEditActivity = !selectedActivityOccurrenceLocked && canManageActivities() && (allActivities || []).some(a => String(a.id) === String(id));
+            const lockNote = selectedActivityOccurrenceLocked ? '<div class="activity-details-locked-note"><i class="fi fi-rr-lock" aria-hidden="true"></i><span>This activity is completed or archived and is locked from editing.</span></div>' : '';
+            const contentEl = document.getElementById('activityDetailsContent');
+            if (contentEl && lockNote) contentEl.insertAdjacentHTML('beforeend', lockNote);
             document.getElementById('activityDetailsEditBtn').classList.toggle('hidden', !canEditActivity);
             const detailsFooter = document.getElementById('activityDetailsFooter');
             if (detailsFooter) detailsFooter.classList.toggle('hidden', !canEditActivity);
             document.getElementById('activityDetailsModal').classList.remove('hidden');
         }
-        function closeActivityDetails() { document.getElementById('activityDetailsModal').classList.add('hidden'); selectedActivityDetailsId = null; }
-        function editActivityFromDetails() { const id = selectedActivityDetailsId; closeActivityDetails(); if (id) editActivity(id); }
+        function closeActivityDetails() { document.getElementById('activityDetailsModal').classList.add('hidden'); selectedActivityDetailsId = null; selectedActivityOccurrenceLocked = false; }
+        function editActivityFromDetails() { const id = selectedActivityDetailsId; const locked = selectedActivityOccurrenceLocked; closeActivityDetails(); if (id && !locked) editActivity(id); }
 
         let selectedArchivedPersonnelRow = null;
 
@@ -4195,10 +4340,25 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             const el = document.getElementById('execVenues');
             if (!el) return;
             const rows = Array.isArray(activities) ? activities : [];
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
             const ongoing = rows.filter(a => {
+                // Use the same recurrence engine as the calendar so a weekly/monthly
+                // activity is listed whenever one of its actual occurrences is today,
+                // even when the original anchor date is in a previous month.
+                const scheduledToday = typeof activityOccursOnDate === 'function'
+                    ? activityOccursOnDate(a, today)
+                    : (typeof activityStatusForDate === 'function' && activityStatusForDate(a.date) === 'Ongoing');
                 const status = String(a.status || '').trim().toLowerCase();
-                return status === 'ongoing' || (typeof activityStatusForDate === 'function' && activityStatusForDate(a.date) === 'Ongoing');
-            }).sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')) || String(a.activityTitle || '').localeCompare(String(b.activityTitle || '')));
+                const explicitlyCompleted = /^(done|complete|completed|finished|closed|archive|archived)$/.test(status);
+                const completed = typeof isActivityMarkedDone === 'function' && isActivityMarkedDone(a);
+                return scheduledToday && !explicitlyCompleted && !completed;
+            }).sort((a, b) => {
+                const aStart = typeof getActivityTimeRange === 'function' ? getActivityTimeRange(a).start : null;
+                const bStart = typeof getActivityTimeRange === 'function' ? getActivityTimeRange(b).start : null;
+                const startCompare = (aStart == null ? Number.MAX_SAFE_INTEGER : aStart) - (bStart == null ? Number.MAX_SAFE_INTEGER : bStart);
+                return startCompare || String(a.activityTitle || '').localeCompare(String(b.activityTitle || ''));
+            });
             const venues = execCountMap(rows, a => a.assignedVenue);
             const venueEntries = Object.entries(venues).sort((a,b) => b[1]-a[1] || a[0].localeCompare(b[0]));
             const max = venueEntries.length ? Math.max(1, venueEntries[0][1]) : 1;
@@ -4206,9 +4366,9 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 ? `<div class="exec-venue-section-title"><span class="exec-venue-live-dot"></span> Ongoing Activities <span class="exec-venue-section-count">${ongoing.length}</span></div>` +
                   ongoing.map(a => `<div class="exec-ongoing-activity-row">
                       <div class="exec-ongoing-activity-main"><span class="exec-status">ONGOING</span><strong title="${escapeAttr(a.activityTitle || 'Untitled Activity')}">${escapeHtml(a.activityTitle || 'Untitled Activity')}</strong></div>
-                      <div class="exec-ongoing-activity-meta"><span>${escapeHtml(String(a.date || 'Today').slice(0, 10))}</span><span>${escapeHtml(a.assignedVenue || 'Venue not specified')}</span></div>
+                      <div class="exec-ongoing-activity-meta"><span>${escapeHtml(new Date().toLocaleDateString(undefined, {month:'short', day:'numeric'}))}${a.time ? ' · ' + escapeHtml(a.time) : ''}</span><span>${escapeHtml(a.assignedVenue || 'Venue not specified')}</span></div>
                   </div>`).join('')
-                : `<div class="exec-venue-section-title"><span class="exec-venue-live-dot is-idle"></span> Ongoing Activities <span class="exec-venue-section-count">0</span></div><div class="exec-venue-empty">No activity is marked ongoing today.</div>`;
+                : `<div class="exec-venue-section-title"><span class="exec-venue-live-dot is-idle"></span> Ongoing Activities <span class="exec-venue-section-count">0</span></div><div class="exec-venue-empty">No activity is scheduled for today.</div>`;
             const venueHtml = venueEntries.length
                 ? `<div class="exec-venue-section-title exec-venue-recap-title">Venue Recap</div>` + venueEntries.slice(0, 12).map(([name, count]) => `<div class="exec-row"><div style="min-width:0;flex:1"><strong title="${escapeAttr(name)}">${escapeHtml(name)}</strong><div class="exec-bar"><i style="width:${Math.max(4,(count/max)*100)}%"></i></div></div><span>${count}</span></div>`).join('')
                 : '<div class="exec-venue-empty">No venue records available.</div>';
@@ -4259,12 +4419,13 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             const dsOtherPersonnel = (allPersonnel || []).filter(p => String(p.section || '').trim().toLowerCase() === 'ds to other office/unit');
             const totalPersonnel = organicPersonnel.length + detachedPersonnel.length + dsOtherPersonnel.length;
             const totalActivities = (allActivities || []).length;
-            const totalArchived = (archivedActivities || []).length;
+            const totalCompliances = (matrixComplianceRecords || []).length;
 
             document.getElementById('execTotalMemos').innerText = totalMemos;
             document.getElementById('execTotalPersonnel').innerText = totalPersonnel;
             document.getElementById('execTotalActivities').innerText = totalActivities;
-            document.getElementById('execArchivedActivities').innerText = totalArchived;
+            const complianceKpi = document.getElementById('execTotalCompliances');
+            if (complianceKpi) complianceKpi.innerText = totalCompliances;
 
             const encoders = execCountMap(allMemos, r => r[3]);
             document.getElementById('execEncoderCount').innerText = Object.keys(encoders).length;
@@ -4333,7 +4494,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         async function loadExecutiveDashboard() {
             // Preload the complete Personnel Management data set even when the user stays
             // on the Dashboard. Operational summaries must not depend on opening each tab.
-            try { await Promise.allSettled([loadData(), loadAllPersonnelManagementData(true), loadActivities(), fetchActivityLogs()]); }
+            try { await Promise.allSettled([loadData(), loadAllPersonnelManagementData(true), loadActivities(), loadMatrixCompliances(), fetchActivityLogs()]); }
             catch (e) {}
             renderExecutiveDashboard();
         }
@@ -4881,8 +5042,8 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
 
         /* ---------- Dashboard Live Activity Log: 5 latest + pagination ---------- */
         function renderExecActivityLogs() {
-            const recent = document.getElementById('execRecentMemos');
-            if (!recent) return;
+            const logContainer = document.getElementById('execLiveActivityLogs');
+            if (!logContainer) return;
             const logs = sortActivityLogsLatestFirst(liveActivityLogs);
             populateExecActivityUserFilter(logs);
             const getLogTime = (log) => log && (log.timestamp || log.time || log.datetime || log.date || log.createdAt || log.created_at || '');
@@ -4908,13 +5069,13 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                         <button type="button" class="action-btn page-btn" style="margin:0;padding:4px 10px;font-size:12px;" ${execActivityPage>=totalPages?'disabled':''} onclick="setExecActivityPage(${execActivityPage+1})">Next ›</button>
                     </div>`;
                 }
-                recent.innerHTML = `<div style="margin-bottom:10px;font-size:11px;color:var(--text-muted);font-weight:600;">${escapeHtml(countText)}</div><div style="overflow:auto;"><table class="exec-table"><thead><tr><th>Time</th><th>User</th><th>Activity</th></tr></thead><tbody>${
+                logContainer.innerHTML = `<div style="margin-bottom:10px;font-size:11px;color:var(--text-muted);font-weight:600;">${escapeHtml(countText)}</div><div class="exec-log-scroll"><table class="exec-table"><thead><tr><th>Time</th><th>User</th><th>Activity</th></tr></thead><tbody>${
                     pageLogs.map(log => `<tr><td>${escapeHtml(execFormatDate(getLogTime(log)))}</td><td>${escapeHtml(getLogUser(log))}</td><td>${escapeHtml(getLogAction(log))}</td></tr>`).join('')
                 }</tbody></table></div>${paginationHtml}`;
             } else if (execActivityUserFilter && logs.length) {
-                recent.innerHTML = '<div class="exec-empty">No activity logs found for the selected user.</div>';
+                logContainer.innerHTML = '<div class="exec-empty">No activity logs found for the selected user.</div>';
             } else {
-                recent.innerHTML = '<div class="exec-empty">No activity logs are currently available from the backend.</div>';
+                logContainer.innerHTML = '<div class="exec-empty">No activity logs are currently available from the backend.</div>';
             }
         }
         function setExecActivityPage(page) {
@@ -6702,7 +6863,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             // Hide sidebar nav buttons for pages the user is not allowed to access.
             const navMap = {
                 'dashboard':'btnDashboard', 'home':'btnHome', 'personnel':'btnPersonnel',
-                'activityManagement':'btnActivityManagement', 'matrixCompliances':'btnMatrixCompliances', 'settings':'btnSettings',
+                'activityManagement':'btnActivityManagement', 'matrixCompliances':'btnMatrixCompliances', 'usersChat':'btnUsersChat', 'settings':'btnSettings',
                 'adminMgmt':'btnAdminMgmt'
             };
             Object.keys(navMap).forEach(key => {
@@ -6826,6 +6987,62 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
 
         /* ---------- Personnel Profile Card Modal ---------- */
         let profileCardPersonnelNo = null;
+        let personnelNameCopyFeedbackTimer = null;
+        async function copyPersonnelProfileName() {
+            const nameElement = document.getElementById('profileCardName');
+            const feedback = document.getElementById('profileCardCopyNameFeedback');
+            const copyButton = document.getElementById('profileCardCopyNameBtn');
+            const personnelName = String(nameElement?.textContent || '').trim();
+            if (!personnelName || personnelName === 'Name' || personnelName === 'Personnel Profile') return;
+
+            if (feedback) {
+                feedback.textContent = '';
+                feedback.classList.remove('is-visible', 'is-error');
+            }
+            if (personnelNameCopyFeedbackTimer) clearTimeout(personnelNameCopyFeedbackTimer);
+
+            try {
+                if (navigator.clipboard && window.isSecureContext && typeof navigator.clipboard.writeText === 'function') {
+                    await navigator.clipboard.writeText(personnelName);
+                } else {
+                    const temporaryInput = document.createElement('textarea');
+                    temporaryInput.value = personnelName;
+                    temporaryInput.setAttribute('readonly', '');
+                    temporaryInput.setAttribute('aria-hidden', 'true');
+                    temporaryInput.style.position = 'fixed';
+                    temporaryInput.style.left = '-9999px';
+                    temporaryInput.style.top = '0';
+                    temporaryInput.style.opacity = '0';
+                    document.body.appendChild(temporaryInput);
+                    temporaryInput.focus();
+                    temporaryInput.select();
+                    temporaryInput.setSelectionRange(0, temporaryInput.value.length);
+                    const copied = document.execCommand('copy');
+                    temporaryInput.remove();
+                    if (!copied) throw new Error('Clipboard copy was not permitted');
+                }
+
+                if (feedback) {
+                    feedback.textContent = 'Personnel name copied to clipboard.';
+                    feedback.classList.add('is-visible');
+                }
+                if (copyButton) copyButton.setAttribute('aria-label', 'Copy personnel name again');
+            } catch (error) {
+                if (feedback) {
+                    feedback.textContent = 'Copy was blocked. Please select the personnel name and copy it manually.';
+                    feedback.classList.add('is-visible', 'is-error');
+                }
+                if (copyButton) copyButton.setAttribute('aria-label', 'Copy personnel name');
+            }
+
+            if (feedback) {
+                personnelNameCopyFeedbackTimer = setTimeout(() => {
+                    feedback.classList.remove('is-visible', 'is-error');
+                    feedback.textContent = '';
+                }, 3200);
+            }
+        }
+
         function openPersonnelProfile(no) {
             const p = allPersonnel.find(x => String(x.no) === String(no));
             if (!p) return;
@@ -6834,6 +7051,13 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             const initials = [p.firstName, p.lastName].map(v => String(v || '').trim()).filter(Boolean).map(v => v.charAt(0)).join('').slice(0,2);
             document.getElementById('profileCardAvatar').innerText = initials || String(p.rank || 'U').charAt(0);
             document.getElementById('profileCardName').innerText = fullName || 'Personnel Profile';
+            const copyNameFeedback = document.getElementById('profileCardCopyNameFeedback');
+            if (copyNameFeedback) {
+                copyNameFeedback.textContent = '';
+                copyNameFeedback.classList.remove('is-visible', 'is-error');
+            }
+            const copyNameButton = document.getElementById('profileCardCopyNameBtn');
+            if (copyNameButton) copyNameButton.setAttribute('aria-label', 'Copy personnel name');
             document.getElementById('profileCardDesignation').innerText = [p.designation, p.section].filter(Boolean).join('  •  ') || 'No designation assigned';
             const meta = document.getElementById('profileCardMeta');
             if (meta) meta.innerHTML = `<span class="profile-card-status ${String(p.status || 'Active').toLowerCase().replace(/[^a-z]/g,'-')}"><i aria-hidden="true"></i>${escapeHtml(p.status || 'Active')}</span><span class="profile-card-number">Personnel No. ${escapeHtml(String(p.no || '—'))}</span>`;
@@ -6856,7 +7080,13 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             if (browseButton) browseButton.style.display = '';
             document.getElementById('personnelProfileModal').classList.remove('hidden');
         }
-        function closePersonnelProfile() { document.getElementById('personnelProfileModal').classList.add('hidden'); profileCardPersonnelNo = null; }
+        function closePersonnelProfile() {
+            document.getElementById('personnelProfileModal').classList.add('hidden');
+            profileCardPersonnelNo = null;
+            const feedback = document.getElementById('profileCardCopyNameFeedback');
+            if (feedback) { feedback.textContent = ''; feedback.classList.remove('is-visible', 'is-error'); }
+            if (personnelNameCopyFeedbackTimer) { clearTimeout(personnelNameCopyFeedbackTimer); personnelNameCopyFeedbackTimer = null; }
+        }
         function editDetailsFromProfile() {
             const no = profileCardPersonnelNo;
             closePersonnelProfile();

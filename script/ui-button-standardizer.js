@@ -13,8 +13,64 @@
     '.users-chat-dropdown-global', '.chat-user-item', '.um-account-name',
     '.my-files-file-name', '.folder-entry-main', '.xlsx-sheet-tab',
     '.chat-mode-tab', '.users-chat-format-toolbar button',
-    '.header-icon-btn', '.profile-btn', '.nav-toggle-btn'
+    '.header-icon-btn', '.profile-btn', '.nav-toggle-btn',
+    // This prominent page-level action keeps both its plus icon and visible text.
+    '#memoDatabaseAddBtn'
   ].join(',');
+
+  // Page-scoped create actions intentionally use distinct icons and tooltip
+  // labels. This prevents multiple generic “Add” controls from being confused
+  // when they appear in different modules or sub-pages.
+  const PAGE_ACTION_PROFILES = Object.freeze({
+    'dashboard-memo-create': {
+      icon: 'fi-rr-memo', kind: 'primary',
+      label: 'Create Memo', context: 'Dashboard'
+    },
+    'dashboard-activity-create': {
+      icon: 'fi-rr-sparkles', kind: 'primary',
+      label: 'Create Activity', context: 'Dashboard'
+    },
+    'memo-database-add-memo': {
+      icon: 'fi-rr-documents', kind: 'primary',
+      label: 'Add Memo Record', context: 'Memo Database'
+    },
+    'personnel-list-add-personnel': {
+      icon: 'fi-rr-id-badge', kind: 'primary',
+      label: 'Add Personnel', context: 'Personnel Management · Personnel List'
+    },
+    'personnel-bmi-add-record': {
+      icon: 'fi-rr-clipboard-list', kind: 'primary',
+      label: 'Add BMI Record', context: 'Personnel Management · BMI Monitoring'
+    },
+    'personnel-squadding-create': {
+      icon: 'fi-rr-users', kind: 'primary',
+      label: 'Create Squad', context: 'Personnel Management · Squadding'
+    },
+    'personnel-leave-add-entry': {
+      icon: 'fi-rr-calendar-check', kind: 'primary',
+      label: 'Add Leave Entry', context: 'Personnel Management · Leave Management'
+    },
+    'personnel-aor-add-area': {
+      icon: 'fi-rr-category', kind: 'primary',
+      label: 'Add Area', context: 'Personnel Management · Area of Responsibilities'
+    },
+    'activity-management-add-activity': {
+      icon: 'fi-rr-calendar', kind: 'primary',
+      label: 'Add Activity', context: 'Activity Management'
+    },
+    'matrix-compliance-add-compliance': {
+      icon: 'fi-rr-list-check', kind: 'primary',
+      label: 'Add Compliance', context: 'Matrix of Compliances'
+    },
+    'duty-office-add-personnel': {
+      icon: 'fi-rr-user-check', kind: 'primary',
+      label: 'Add Personnel to Duty Sequence', context: 'Personnel Management · Duty Office'
+    },
+    'leave-management-add-date': {
+      icon: 'fi-rr-clock', kind: 'primary',
+      label: 'Add Leave Date', context: 'Personnel Management · Leave Management'
+    }
+  });
 
   const ICON_RULES = [
     { test: /\bapprove(?:d|s)?\b/i, icon: 'fi-rr-check-circle', kind: 'approve' },
@@ -24,7 +80,7 @@
     { test: /\b(save|submit|verify|apply|continue|publish)\b/i, icon: 'fi-rr-check', kind: 'primary' },
     { test: /\b(close|cancel|dismiss|no|clear selection)\b/i, icon: 'fi-rr-cross', kind: 'neutral' },
     { test: /\b(add|create|new)\b/i, icon: 'fi-rr-plus', kind: 'primary' },
-    { test: /\b(edit|modify)\b/i, icon: 'fi-rr-edit', kind: 'neutral' },
+    { test: /\b(edit|modify|update)\b/i, icon: 'fi-rr-edit', kind: 'neutral' },
     { test: /\b(upload|choose files|attach)\b/i, icon: 'fi-rr-upload', kind: 'primary' },
     { test: /\b(download|export)\b/i, icon: 'fi-rr-download', kind: 'neutral' },
     { test: /\b(preview|view|browse)\b/i, icon: 'fi-rr-eye', kind: 'neutral' },
@@ -78,18 +134,26 @@
   }
 
   function renderIconButton(button, label, rule) {
-    const accessibleLabel = String(label || '').replace(/[×✕✖＋+‹›←→↑↓↻↺]/g, '').replace(/\s+/g, ' ').trim() || label;
-    button.dataset.spadesOriginalLabel = label;
+    const profile = PAGE_ACTION_PROFILES[button.dataset.spadesActionKey || ''];
+    const resolvedRule = profile || rule;
+    const baseLabel = profile ? profile.label : label;
+    const contextLabel = profile ? profile.context : '';
+    const accessibleLabel = [baseLabel, contextLabel].filter(Boolean).join(' · ')
+      .replace(/[×✕✖＋+‹›←→↑↓↻↺]/g, '').replace(/\s+/g, ' ').trim() || label;
+    const tooltipLabel = profile ? `${profile.context} — ${profile.label}` : accessibleLabel;
+
+    button.dataset.spadesOriginalLabel = accessibleLabel;
     button.dataset.spadesIconized = 'true';
     button.classList.add('spades-icon-only');
     button.classList.remove('spades-icon-primary', 'spades-icon-approve', 'spades-icon-danger', 'spades-icon-neutral');
-    button.classList.add('spades-icon-' + rule.kind);
+    button.classList.add('spades-icon-' + resolvedRule.kind);
     button.setAttribute('aria-label', accessibleLabel);
-    button.setAttribute('title', accessibleLabel);
-    button.setAttribute('data-spades-icon', rule.icon);
+    button.setAttribute('title', tooltipLabel);
+    button.setAttribute('data-tooltip', tooltipLabel);
+    button.setAttribute('data-spades-icon', resolvedRule.icon);
 
     const icon = document.createElement('i');
-    icon.className = 'fi ' + rule.icon + ' spades-action-icon';
+    icon.className = 'fi ' + resolvedRule.icon + ' spades-action-icon';
     icon.setAttribute('aria-hidden', 'true');
     const srLabel = document.createElement('span');
     srLabel.className = 'spades-visually-hidden';
@@ -159,6 +223,7 @@
     });
     observer.observe(document.body, { childList: true, subtree: true });
     window.SPADESIconButtonObserver = observer;
+    window.SPADESPageActionProfiles = PAGE_ACTION_PROFILES;
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init, { once: true });
