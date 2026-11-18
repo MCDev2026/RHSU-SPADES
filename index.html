@@ -136,7 +136,7 @@
 <i aria-hidden="true" class="fi fi-rr-id-badge nav-icon"></i>
 <span class="nav-text">Personnel Management</span>
 </button>
-<button class="sidebar-btn hidden" id="btnAdminMgmt" onclick="switchTab('adminMgmt');" style="display:none !important;">
+<button class="sidebar-btn hidden" id="btnAdminMgmt" onclick="switchTab('adminMgmt');" aria-label="User Management">
 <i aria-hidden="true" class="fi fi-rr-users nav-icon"></i>
 <span class="nav-text">User Management</span>
 </button>
@@ -960,6 +960,7 @@
 </div>
 <div class="settings-header-actions">
 <span class="settings-save-status"><span class="settings-status-dot"></span> Changes save automatically</span>
+<button aria-label="Open User Management" class="settings-reset-btn settings-user-management-header-btn hidden" id="settingsUserMgmtBtn" onclick="switchTab('adminMgmt')" title="Open User Management" type="button"><i aria-hidden="true" class="fi fi-rr-users-gear"></i><span>User Management</span></button>
 <button class="settings-reset-btn" onclick="resetPreferences()" type="button"><span aria-hidden="true">↺</span> Reset preferences</button>
 </div>
 </header>
@@ -1008,16 +1009,6 @@
 <div class="setting-row"><span>Language</span><select id="setLanguage" onchange="saveSettings()"><option value="English">English</option></select></div>
 <div class="setting-row"><span>Date Format</span><select id="setDateFormat" onchange="saveSettings()"><option value="US">MM/DD/YYYY</option><option value="ISO">YYYY-MM-DD</option><option value="Long">Month DD, YYYY</option></select></div>
 <div class="setting-row"><span>24-Hour Time</span><label class="switch"><input id="set24Hour" onchange="saveSettings()" type="checkbox"/><span class="slider"></span></label></div>
-</div>
-<div class="settings-section glass-panel settings-user-management-card">
-<h3>User Management</h3>
-<div class="settings-user-management-content">
-<div>
-<div style="font-size:14px;font-weight:600;color:var(--text-main);">Manage system user accounts</div>
-<div style="font-size:12px;color:var(--text-muted);margin-top:4px;">Restricted to the Alpha Admin and protected by admin validation.</div>
-</div>
-<button class="action-btn approve-btn settings-user-management-open" id="settingsUserMgmtBtn" onclick="switchTab('adminMgmt')" type="button"><i aria-hidden="true" class="fi fi-rr-users-gear"></i><span>Open User Management</span></button>
-</div>
 </div>
 <div class="settings-section glass-panel settings-user-management-card hidden" id="settingsBackupAdminCard">
 <h3>Backup &amp; Recovery</h3>

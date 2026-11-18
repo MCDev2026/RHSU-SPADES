@@ -12990,3 +12990,51 @@ body .profile-settings-overlay .modal-content > header.modal-uniform-header > bu
 .spades-backup-row small,.spades-backup-row > span { color:var(--text-muted); font-size:11px; }
 .spades-backup-empty { padding:20px; text-align:center; color:var(--text-muted); font-size:12px; border:1px dashed var(--border-color); border-radius:10px; }
 @media(max-width:600px) { .spades-backup-manager-body { padding:14px; } .spades-backup-actions > button,.spades-backup-recovery-actions > button { flex:1 1 100%; } .spades-backup-row { align-items:flex-start; flex-direction:column; } }
+
+
+/* PHASE 1 AUTH SPEED + SETTINGS NAV UPDATE
+   User Management now lives beside Reset preferences in the Settings header.
+   The hidden sidebar entry remains for legacy route/ID compatibility only. */
+#tabSettings .settings-user-management-header-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 8px 12px;
+  border: 1px solid rgba(255,255,255,.22);
+  border-radius: 10px;
+  background: rgba(255,255,255,.11);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+#tabSettings .settings-user-management-header-btn:hover:not(:disabled) {
+  border-color: rgba(255,255,255,.42);
+  background: rgba(255,255,255,.18);
+}
+#tabSettings .settings-user-management-header-btn i { font-size: 13px; }
+#tabSettings .settings-user-management-header-btn.hidden { display: none !important; }
+#tabSettings #settingsMainPanel > .settings-grid {
+  grid-template-areas:
+    "appearance notifications memo"
+    "assistant security accessibility"
+    "data localization backup" !important;
+}
+#tabSettings #settingsBackupAdminCard {
+  grid-area: backup !important;
+  grid-column: auto !important;
+}
+#navSidebar #btnAdminMgmt { display: none !important; }
+@media (max-width: 820px) {
+  #tabSettings .settings-header-actions { flex-wrap: wrap; gap: 8px; }
+  #tabSettings .settings-user-management-header-btn,
+  #tabSettings .settings-reset-btn { min-height: 36px; }
+}
+@media (max-width: 560px) {
+  #tabSettings .settings-header-actions { flex-direction: row; align-items: center; justify-content: flex-start; }
+  #tabSettings .settings-save-status { flex: 1 0 100%; }
+  #tabSettings .settings-user-management-header-btn,
+  #tabSettings .settings-reset-btn { flex: 1 1 auto; }
+}

@@ -155,7 +155,19 @@
 })();
 
 const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUAf04mJqqHLcVfSsEC9Ku8bcYWd5KZ2S1H_zzGWs8zE-kS/exec";
-        let ALPHA_ADMIN_NAME = ''; // Loaded from backend Script Properties; no Alpha Admin credential is stored in frontend source.
+        const ALPHA_ADMIN_NAME_CACHE_KEY = 'spadesAlphaAdminName';
+        const ALPHA_ADMIN_NAME_CACHE_TIME_KEY = 'spadesAlphaAdminNameCachedAt';
+        function readCachedAlphaAdminName() {
+            try {
+                const cachedAt = Number(localStorage.getItem(ALPHA_ADMIN_NAME_CACHE_TIME_KEY) || 0);
+                const cachedName = String(localStorage.getItem(ALPHA_ADMIN_NAME_CACHE_KEY) || '').trim();
+                // The username is not a credential. A short cache only improves initial UI readiness;
+                // the backend remains authoritative for all authentication and administrative actions.
+                if (cachedName && cachedAt && Date.now() - cachedAt < 7 * 24 * 60 * 60 * 1000) return cachedName;
+            } catch (_) {}
+            return '';
+        }
+        let ALPHA_ADMIN_NAME = readCachedAlphaAdminName(); // Public identifier cache only; never stores the Alpha Admin credential.
 
         let sessionAdminPass = "";
         let sessionAdminPassExpiresAt = 0;
@@ -213,24 +225,50 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             });
         }
 
-        async function loadAlphaAdminIdentity() {
+        function setCachedAlphaAdminName(name) {
+            const safeName = String(name || '').trim();
+            ALPHA_ADMIN_NAME = safeName;
             try {
-                const response = await fetch(`${API_URL}?action=get_alpha_admin_name&_ts=${Date.now()}`, { cache: 'no-store' });
+                if (safeName) {
+                    localStorage.setItem(ALPHA_ADMIN_NAME_CACHE_KEY, safeName);
+                    localStorage.setItem(ALPHA_ADMIN_NAME_CACHE_TIME_KEY, String(Date.now()));
+                } else {
+                    localStorage.removeItem(ALPHA_ADMIN_NAME_CACHE_KEY);
+                    localStorage.removeItem(ALPHA_ADMIN_NAME_CACHE_TIME_KEY);
+                }
+            } catch (_) {}
+            syncAlphaAdminLoginCredentialField();
+            syncAlphaAdminAccessVisibility();
+        }
+
+        async function loadAlphaAdminIdentity() {
+            const controller = new AbortController();
+            const timeoutId = window.setTimeout(() => controller.abort(), 7000);
+            try {
+                const response = await fetch(`${API_URL}?action=get_alpha_admin_name`, {
+                    cache: 'no-store',
+                    signal: controller.signal
+                });
+                if (!response.ok) throw new Error('Alpha Admin identity request failed (' + response.status + ').');
                 const data = await response.json();
                 if (data && data.configured && data.username) {
-                    ALPHA_ADMIN_NAME = String(data.username).trim();
+                    setCachedAlphaAdminName(data.username);
                     alphaAdminConfigLoaded = true;
-                } else {
-                    ALPHA_ADMIN_NAME = '';
+                } else if (data && data.configured === false) {
+                    setCachedAlphaAdminName('');
                     alphaAdminConfigLoaded = false;
-                    console.warn('Alpha Admin Script Properties are not configured. Set ALPHA_ADMIN_USERNAME and ALPHA_ADMIN_CREDENTIAL or ALPHA_ADMIN_CREDENTIAL_HASH in Apps Script Project Settings.');
+                    console.warn('Alpha Admin Script Properties are not configured.');
                 }
             } catch (error) {
-                ALPHA_ADMIN_NAME = '';
+                // Retain a previously validated public username cache during network interruptions.
+                // This only affects UI hints; every protected backend operation checks the session.
                 alphaAdminConfigLoaded = false;
-                console.error('Unable to load Alpha Admin identity from backend.', error);
+                console.warn('Alpha Admin identity refresh deferred; the cached identity remains in use.', error);
+            } finally {
+                window.clearTimeout(timeoutId);
+                syncAlphaAdminLoginCredentialField();
+                syncAlphaAdminAccessVisibility();
             }
-            syncAlphaAdminLoginCredentialField();
         }
         
         let allMemos = [];
@@ -1527,8 +1565,10 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             }
             const mode = document.querySelector('input[name="loginType"]:checked')?.value || 'pin';
             if (mode === 'pin') {
-                input.placeholder = 'Enter 6-Digit PIN';
-                input.setAttribute('maxlength', '6');
+                input.placeholder = 'Enter your PIN';
+                // Keep login backward-compatible with legacy credentials longer than six digits.
+                // New PIN length rules remain enforced when credentials are created or changed.
+                input.setAttribute('maxlength', '128');
                 input.setAttribute('inputmode', 'numeric');
             } else {
                 input.placeholder = 'Enter your password';
@@ -1545,8 +1585,8 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 return;
             }
             if (type === 'pin') {
-                input.placeholder = 'Enter 6-Digit PIN';
-                input.setAttribute('maxlength', '6');
+                input.placeholder = inputId === 'loginCredential' ? 'Enter your PIN' : 'Enter 6-Digit PIN';
+                input.setAttribute('maxlength', '128');
                 input.setAttribute('inputmode', 'numeric');
             } else {
                 input.placeholder = inputId === 'loginCredential' ? 'Enter your password' : 'Enter password (10+ characters)';
@@ -1999,7 +2039,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 document.getElementById('tabSettings').classList.remove('hidden');
                 document.getElementById('btnSettings').classList.add('active');
             } else if (tabName === 'adminMgmt') {
-                if (!ALPHA_ADMIN_NAME || localStorage.getItem('loggedInUser') !== ALPHA_ADMIN_NAME) {
+                if (!isAlphaAdmin()) {
                     customAlert("Only the configured Alpha Admin can access User Management.", "Permission Denied"); return;
                 }
                 document.getElementById('tabSettings').classList.remove('hidden');
@@ -2191,9 +2231,13 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             const user = localStorage.getItem('loggedInUser');
             if (user) {
                 document.getElementById('appBrand').innerText = 'REGIONAL HEADQUARTERS SUPPORT UNIT';
-                document.getElementById('loginPage').classList.add('hidden'); document.getElementById('registerPage').classList.add('hidden'); document.getElementById('appLayout').classList.remove('hidden'); document.getElementById('mainTopBar').classList.remove('hidden'); document.getElementById('btnAdminMgmt').classList.add('hidden');
-                document.getElementById('settingsUserMgmtBtn').classList.toggle('hidden', user !== ALPHA_ADMIN_NAME);
-                document.getElementById('settingsBackupAdminCard')?.classList.toggle('hidden', user.toLowerCase() !== String(ALPHA_ADMIN_NAME || '').toLowerCase());
+                document.getElementById('loginPage').classList.add('hidden');
+                document.getElementById('registerPage').classList.add('hidden');
+                document.getElementById('appLayout').classList.remove('hidden');
+                document.getElementById('mainTopBar').classList.remove('hidden');
+                // User Management is visible only to the configured Alpha Admin.
+                // Compare normalized identities because the backend accepts usernames case-insensitively.
+                syncAlphaAdminAccessVisibility();
                 scheduleSessionExpiry();
                 startSpadesSessionHeartbeat();
                 resetIdleTimer();
@@ -2235,13 +2279,11 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             const user = document.getElementById('loginUsername').value.trim();
             const cred = document.getElementById('loginCredential').value;
             const credentialMode = document.querySelector('input[name="loginType"]:checked')?.value || 'pin';
-            const isAlphaLogin = isAlphaAdminLoginName(user);
             if (!user || !cred) return customAlert('Enter your username and PIN/password.', 'Authentication Error');
             if (cred.length > 128) return customAlert('Your credential must not exceed 128 characters.', 'Authentication Error');
-            // Alpha Admin credentials may be a legacy PIN or a longer password.
-            // The administrator credential is verified on the server using Script Properties.
-            if (!isAlphaLogin && credentialMode === 'pin' && !/^\d{4,6}$/.test(cred)) return customAlert('Enter your existing 4–6 digit PIN. New PINs must contain 6 digits.', 'Authentication Error');
-            if (!isAlphaLogin && credentialMode === 'password' && (cred.length < 4 || cred.length > 128)) return customAlert('Enter your existing password (4–128 characters). New passwords must contain at least 10 characters.', 'Authentication Error');
+            // Do not enforce new-credential creation rules during login. Existing accounts
+            // may still have legacy PINs/passwords of different lengths; the backend hash/legacy
+            // verifier is authoritative. New PIN/password rules remain enforced at creation/change.
             const credentialInput = document.getElementById('loginCredential');
             const loginButton = document.querySelector('#loginPage .rhsu-login-submit');
             const previousText = loginButton?.textContent;
@@ -2288,6 +2330,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 scheduleSessionExpiry();
                 localStorage.setItem('userRole', result.role || 'Regular User');
                 localStorage.setItem('canEdit', result.role === 'Admin' || result.role === 'Alpha Admin' ? 'Yes' : 'No');
+                if (String(result.role || '').trim().toLowerCase() === 'alpha admin') setCachedAlphaAdminName(storedUser);
                 sessionAdminPass = ''; sessionAdminPassExpiresAt = 0;
                 sessionStorage.removeItem('systemAnnouncementSeen');
                 credentialInput.value = '';
@@ -2886,7 +2929,19 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         function isAlphaAdmin() {
             const current = String(localStorage.getItem('loggedInUser') || '').trim().toLowerCase();
             const configured = String(ALPHA_ADMIN_NAME || '').trim().toLowerCase();
-            return !!current && !!configured && current === configured;
+            const hasSession = !!localStorage.getItem('loggedCred');
+            const serverRole = String(localStorage.getItem('userRole') || '').trim().toLowerCase();
+            // This is a UI visibility hint only. The Apps Script backend still validates
+            // the signed session and the separate elevated token for every restricted action.
+            return !!current && (!!configured && current === configured || (hasSession && serverRole === 'alpha admin'));
+        }
+
+        function syncAlphaAdminAccessVisibility() {
+            const alphaAdmin = isAlphaAdmin();
+            // User Management is intentionally nested in Settings, never shown in the sidebar.
+            document.getElementById('btnAdminMgmt')?.classList.add('hidden');
+            document.getElementById('settingsUserMgmtBtn')?.classList.toggle('hidden', !alphaAdmin);
+            document.getElementById('settingsBackupAdminCard')?.classList.toggle('hidden', !alphaAdmin);
         }
 
         function canManagePersonnel() {
@@ -5195,14 +5250,13 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 window.setTimeout(() => loader.remove(), 650);
             }
 
-            window.addEventListener('load', async () => {
+            document.addEventListener('DOMContentLoaded', async () => {
                 const caption = document.getElementById('spadesLoaderCaption');
                 const percent = document.getElementById('spadesLoaderPercent');
                 const stages = [
-                    ['ESTABLISHING SECURE CONNECTION', '24%'],
-                    ['RESTORING USER SESSION', '58%'],
-                    ['LOADING WORKSPACE MODULES', '86%'],
-                    ['WORKSPACE READY', '100%']
+                    ['ESTABLISHING SECURE CONNECTION', '30%'],
+                    ['RESTORING USER SESSION', '65%'],
+                    ['LOADING WORKSPACE MODULES', '100%']
                 ];
                 let stage = 0;
                 const stageTimer = window.setInterval(() => {
@@ -5213,52 +5267,53 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                     } else {
                         window.clearInterval(stageTimer);
                     }
-                }, 260);
+                }, 150);
 
-                try {
-                    await Promise.race([
-                        loadAlphaAdminIdentity(),
-                        new Promise(resolve => window.setTimeout(resolve, 4500))
-                    ]);
-                    const storedUser = localStorage.getItem('loggedInUser') || '';
-                    const storedToken = localStorage.getItem('loggedCred') || '';
-                    if (storedUser && storedToken) {
-                        try {
-                            const validationResponse = await Promise.race([
-                                fetch(API_URL, {method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'validate_session',username:storedUser,credential:storedToken})}),
-                                new Promise((_, reject) => window.setTimeout(() => reject(new Error('Session validation timed out.')), 6000))
-                            ]);
-                            const validation = await validationResponse.json();
-                            if (!validation?.success) {
-                                ['loggedInUser','loggedCred','loggedSessionExpiresAt','userRole','canEdit'].forEach(key => localStorage.removeItem(key));
-                                sessionAdminPass = ''; sessionAdminPassExpiresAt = 0;
-                            } else {
-                                localStorage.setItem('loggedSessionExpiresAt', String(validation.expiresAt || ''));
-                                scheduleSessionExpiry();
-                                localStorage.setItem('userRole', validation.role || 'Regular User');
-                            }
-                        } catch (validationError) {
-                            // Fail closed on a refresh if the backend cannot validate the bearer token.
+                // Identity lookup is a non-blocking UI bootstrap. A cached public username
+                // is available immediately; validate_session returns the authoritative role.
+                loadAlphaAdminIdentity();
+                const storedUser = localStorage.getItem('loggedInUser') || '';
+                const storedToken = localStorage.getItem('loggedCred') || '';
+                if (storedUser && storedToken) {
+                    try {
+                        const validationResponse = await Promise.race([
+                            fetch(API_URL, {
+                                method:'POST',
+                                headers:{'Content-Type':'text/plain;charset=utf-8'},
+                                cache:'no-store',
+                                body:JSON.stringify({action:'validate_session',username:storedUser,credential:storedToken})
+                            }),
+                            new Promise((_, reject) => window.setTimeout(() => reject(new Error('Session validation timed out.')), 6000))
+                        ]);
+                        const validation = await validationResponse.json();
+                        if (!validation?.success) {
                             ['loggedInUser','loggedCred','loggedSessionExpiresAt','userRole','canEdit'].forEach(key => localStorage.removeItem(key));
                             sessionAdminPass = ''; sessionAdminPassExpiresAt = 0;
-                            console.warn('Stored SPADES session could not be validated.', validationError);
+                        } else {
+                            localStorage.setItem('loggedSessionExpiresAt', String(validation.expiresAt || ''));
+                            scheduleSessionExpiry();
+                            localStorage.setItem('userRole', validation.role || 'Regular User');
+                            if (validation.isAlphaAdmin) setCachedAlphaAdminName(validation.username || storedUser);
                         }
-                    } else if (storedUser || storedToken) {
+                    } catch (validationError) {
+                        // Fail closed when a saved bearer token cannot be verified.
                         ['loggedInUser','loggedCred','loggedSessionExpiresAt','userRole','canEdit'].forEach(key => localStorage.removeItem(key));
+                        sessionAdminPass = ''; sessionAdminPassExpiresAt = 0;
+                        console.warn('Stored SPADES session could not be validated.', validationError);
                     }
-                } catch (error) {
-                    console.warn('Alpha Admin identity could not be loaded during startup.', error);
-                } finally {
-                    checkAuth();
-                    const minimumDisplay = 950;
-                    const remaining = Math.max(0, minimumDisplay - (performance.now() - startedAt));
-                    window.setTimeout(() => {
-                        window.clearInterval(stageTimer);
-                        if (caption) caption.textContent = 'WORKSPACE READY';
-                        if (percent) percent.textContent = '100%';
-                        dismissBootLoader();
-                    }, remaining);
+                } else if (storedUser || storedToken) {
+                    ['loggedInUser','loggedCred','loggedSessionExpiresAt','userRole','canEdit'].forEach(key => localStorage.removeItem(key));
                 }
+
+                checkAuth();
+                const minimumDisplay = 420;
+                const remaining = Math.max(0, minimumDisplay - (performance.now() - startedAt));
+                window.setTimeout(() => {
+                    window.clearInterval(stageTimer);
+                    if (caption) caption.textContent = 'WORKSPACE READY';
+                    if (percent) percent.textContent = '100%';
+                    dismissBootLoader();
+                }, remaining);
             }, { once: true });
 
             // Safety release if an unexpected script error interrupts startup.
@@ -7172,7 +7227,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         }
         function userHasAccess(pageKey) {
             const user = localStorage.getItem('loggedInUser') || '';
-            if (user === ALPHA_ADMIN_NAME || pageKey === 'matrixCompliances') return true;
+            if (isAlphaAdmin() || pageKey === 'matrixCompliances') return true;
             const allowed = userAccessMap[user];
             if (!Array.isArray(allowed) || !allowed.length) return true; // empty = full access
             return allowed.includes(pageKey);
@@ -7181,12 +7236,19 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             // Hide sidebar nav buttons for pages the user is not allowed to access.
             const navMap = {
                 'dashboard':'btnDashboard', 'home':'btnHome', 'personnel':'btnPersonnel',
-                'activityManagement':'btnActivityManagement', 'matrixCompliances':'btnMatrixCompliances', 'usersChat':'btnUsersChat', 'settings':'btnSettings',
-                'adminMgmt':'btnAdminMgmt'
+                'activityManagement':'btnActivityManagement', 'matrixCompliances':'btnMatrixCompliances', 'usersChat':'btnUsersChat', 'settings':'btnSettings'
             };
             Object.keys(navMap).forEach(key => {
                 const btn = document.getElementById(navMap[key]);
-                if (btn) btn.style.display = userHasAccess(key) ? '' : 'none';
+                if (!btn) return;
+                if (key === 'adminMgmt') {
+                    // Keep this route exclusively available to Alpha Admin; the .hidden
+                    // class controls visibility so no stale inline display rule can override it.
+                    btn.classList.toggle('hidden', !isAlphaAdmin());
+                    btn.style.removeProperty('display');
+                    return;
+                }
+                btn.style.display = userHasAccess(key) ? '' : 'none';
             });
         }
 
