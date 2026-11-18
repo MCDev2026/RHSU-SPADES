@@ -82,7 +82,7 @@
 </div>
 <div class="rhsu-login-field">
 <label for="loginCredential">PIN / Password</label>
-<input autocomplete="current-password" id="loginCredential" maxlength="6" placeholder="Enter 6-Digit PIN" type="password"/>
+<input autocomplete="current-password" id="loginCredential" maxlength="128" placeholder="Enter your PIN or password" type="password"/>
 </div>
 <button class="rhsu-login-submit" onclick="loginUser()">Login</button>
 <div class="rhsu-login-create">New user? <span class="link" onclick="toggleAuthViews('registerPage')">Create an Account</span></div>
@@ -112,7 +112,7 @@
 <label><input checked="" name="regType" onchange="toggleInputType('regCredential', 'pin')" type="radio" value="pin"/> Set PIN</label>
 <label><input name="regType" onchange="toggleInputType('regCredential', 'password')" type="radio" value="password"/> Set Password</label>
 </div>
-<input id="regCredential" maxlength="6" placeholder="Create 6-Digit PIN" type="password"/>
+<input id="regCredential" inputmode="numeric" maxlength="6" placeholder="Create 6-Digit PIN" type="password"/>
 </div>
 </div>
 <button onclick="registerUser()">Register</button>
@@ -543,7 +543,7 @@
 </div>
 <!-- USER INFORMATION MODAL -->
 <div aria-labelledby="viewProfileName" aria-modal="true" class="modal-overlay hidden um-user-info-overlay" id="userProfileViewModal" onclick="if(event.target===this)closeUserProfileView()" role="dialog" style="z-index:3350;">
-<div class="modal-content glass-panel pf-view-modal um-user-info-modal modal-uniform-shell"><header class="modal-uniform-header um-user-info-cover" id="viewCoverBanner"><div class="modal-uniform-header-copy"><span class="modal-uniform-kicker">USER MANAGEMENT</span><h2>User Information</h2><p>Account identity and registered profile details</p></div><button aria-label="Close user information" class="action-btn icon-action-btn matrix-compliance-modal-close modal-uniform-close" onclick="closeUserProfileView()" title="Close" type="button"><i aria-hidden="true" class="fi fi-rr-cross-small"></i></button></header>
+<div class="modal-content glass-panel pf-view-modal um-user-info-modal modal-uniform-shell"><header class="modal-uniform-header um-user-info-cover" id="viewCoverBanner"><div class="modal-uniform-header-copy"><span class="modal-uniform-kicker">USER MANAGEMENT</span><h2>User Information</h2><p>Account identity and registered profile details</p></div><button aria-label="Close user information" class="action-btn icon-action-btn modal-uniform-close" onclick="closeUserProfileView()" title="Close" type="button"><i aria-hidden="true" class="fi fi-rr-cross-small"></i></button></header>
 <div class="um-user-info-body">
 <section aria-label="Account identity" class="um-user-info-identity">
 <div class="um-user-info-avatar pf-avatar-wrap">
@@ -988,7 +988,7 @@
 </div>
 <div class="settings-section glass-panel">
 <h3>Security</h3>
-<div class="setting-row"><span>Auto Logout (Inactivity)</span><select id="setAutoLogout" onchange="saveSettings()"><option value="Never">Never</option><option value="15">15 min</option><option value="30">30 min</option><option value="60">1 hour</option></select></div>
+<div class="setting-row"><span>Auto Logout (Inactivity)</span><select id="setAutoLogout" onchange="saveSettings()"><option value="15">15 min</option><option value="30" selected>30 min (Recommended)</option><option value="60">1 hour (Maximum)</option></select></div>
 <div class="setting-row"><span>Confirm Before Logout</span><label class="switch"><input id="setConfirmLogout" onchange="saveSettings()" type="checkbox"/><span class="slider"></span></label></div>
 </div>
 <div class="settings-section glass-panel">
@@ -1019,8 +1019,26 @@
 <button class="action-btn approve-btn settings-user-management-open" id="settingsUserMgmtBtn" onclick="switchTab('adminMgmt')" type="button"><i aria-hidden="true" class="fi fi-rr-users-gear"></i><span>Open User Management</span></button>
 </div>
 </div>
+<div class="settings-section glass-panel settings-user-management-card hidden" id="settingsBackupAdminCard">
+<h3>Backup &amp; Recovery</h3>
+<div class="settings-user-management-content">
+<div><div style="font-size:14px;font-weight:600;color:var(--text-main);">Protect the SPADES database</div><div style="font-size:12px;color:var(--text-muted);margin-top:4px;">Configure daily Google Drive backups, create manual snapshots, and prepare a separate recovery copy.</div></div>
+<button class="action-btn approve-btn settings-user-management-open" onclick="requestSpadesBackupManager()" type="button"><i aria-hidden="true" class="fi fi-rr-shield-check"></i><span>Open Backup Manager</span></button>
 </div>
 </div>
+</div>
+</div>
+<!-- SPADES BACKUP MANAGER MODAL -->
+<div aria-labelledby="spadesBackupModalTitle" aria-modal="true" class="modal-overlay hidden" id="spadesBackupManagerModal" onclick="if(event.target===this)this.classList.add('hidden')" role="dialog">
+<div class="modal-content glass-panel modal-uniform-shell spades-backup-manager-modal"><header class="modal-uniform-header"><div class="modal-uniform-header-copy"><span class="modal-uniform-kicker">SYSTEM PROTECTION</span><h2 id="spadesBackupModalTitle">Backup &amp; Recovery</h2><p>Manage protected database snapshots and prepare a recovery copy.</p></div><button aria-label="Close Backup Manager" class="action-btn icon-action-btn modal-uniform-close" onclick="document.getElementById('spadesBackupManagerModal').classList.add('hidden')" title="Close" type="button"><i aria-hidden="true" class="fi fi-rr-cross-small"></i></button></header>
+<div class="spades-backup-manager-body">
+<p class="spades-backup-security-note"><i aria-hidden="true" class="fi fi-rr-lock"></i> Only Alpha Admin can manage backups. The live database is not replaced when a recovery copy is prepared.</p>
+<div class="spades-backup-actions"><button class="action-btn approve-btn" id="spadesSetupBackupScheduleBtn" onclick="configureSpadesDailyBackupFromUI()" type="button">Enable Daily Backup</button><button class="action-btn" id="spadesCreateBackupBtn" onclick="createSpadesBackupNow()" type="button">Create Backup Now</button></div>
+<div class="spades-backup-status" id="spadesBackupStatus" role="status">Backup manager ready.</div>
+<label class="spades-backup-select-label" for="spadesBackupSelect">Available backups</label><select id="spadesBackupSelect"><option value="">Select a backup…</option></select>
+<div class="spades-backup-list" id="spadesBackupList"></div>
+<div class="spades-backup-recovery-actions"><button class="action-btn approve-btn" onclick="prepareSpadesRecoveryCopy()" type="button">Prepare Recovery Copy</button><button class="action-btn" onclick="loadSpadesBackupList()" type="button">Refresh Backup List</button></div>
+</div></div></div>
 <!-- USER MANAGEMENT SUB-PAGE -->
 <div class="hidden user-management-page" id="tabAdminMgmt">
 <div class="um-page-header">
@@ -1094,13 +1112,13 @@
 <div aria-atomic="false" aria-live="polite" id="incomingChatContainer"></div>
 <!-- MODALS -->
 <div class="modal-overlay hidden" id="systemAnnouncementModal" style="z-index: 1000;">
-<div class="modal-content glass-panel modal-uniform-shell" style="max-width: 450px;"><header class="modal-uniform-header"><div class="modal-uniform-header-copy"><span class="modal-uniform-kicker">DASHBOARD</span><h2>System Announcement</h2><p>Important system notices and updates for SPADES users.</p></div><button aria-label="Close announcement" class="action-btn icon-action-btn matrix-compliance-modal-close modal-uniform-close" onclick="closeAnnouncementModal()" title="Close announcement" type="button"><i aria-hidden="true" class="fi fi-rr-cross-small"></i></button></header>
+<div class="modal-content glass-panel modal-uniform-shell" style="max-width: 450px;"><header class="modal-uniform-header"><div class="modal-uniform-header-copy"><span class="modal-uniform-kicker">DASHBOARD</span><h2>System Announcement</h2><p>Important system notices and updates for SPADES users.</p></div><button aria-label="Close announcement" class="action-btn icon-action-btn modal-uniform-close" onclick="closeAnnouncementModal()" title="Close announcement" type="button"><i aria-hidden="true" class="fi fi-rr-cross-small"></i></button></header>
 <p id="globalAnnouncementMsg" style="font-size: 15px; margin-bottom: 25px; line-height: 1.6; white-space: pre-wrap; text-align: left;"></p>
 <button onclick="closeAnnouncementModal()">Understood</button>
 </div>
 </div>
 <div aria-labelledby="archivedPersonnelDetailsName" aria-modal="true" class="modal-overlay hidden" id="archivedPersonnelDetailsModal" role="dialog" style="z-index: 2050;">
-<div class="modal-content glass-panel modal-uniform-shell" style="max-width:560px;text-align:left;"><header class="modal-uniform-header"><div class="modal-uniform-header-copy"><span class="modal-uniform-kicker">PERSONNEL MANAGEMENT</span><h2 id="archivedPersonnelDetailsName">Archived Personnel</h2><p>Review the archived personnel record and manage its current status.</p></div><button aria-label="Close archived personnel details" class="action-btn icon-action-btn matrix-compliance-modal-close modal-uniform-close" onclick="closeArchivedPersonnelDetails()" title="Close archived personnel details" type="button"><i aria-hidden="true" class="fi fi-rr-cross-small"></i></button></header>
+<div class="modal-content glass-panel modal-uniform-shell" style="max-width:560px;text-align:left;"><header class="modal-uniform-header"><div class="modal-uniform-header-copy"><span class="modal-uniform-kicker">PERSONNEL MANAGEMENT</span><h2 id="archivedPersonnelDetailsName">Archived Personnel</h2><p>Review the archived personnel record and manage its current status.</p></div><button aria-label="Close archived personnel details" class="action-btn icon-action-btn modal-uniform-close" onclick="closeArchivedPersonnelDetails()" title="Close archived personnel details" type="button"><i aria-hidden="true" class="fi fi-rr-cross-small"></i></button></header>
 <div class="activity-details-grid" id="archivedPersonnelDetailsContent" style="margin-bottom:18px;"></div>
 <label for="archivedPersonnelStatus" style="display:block;font-weight:600;margin-bottom:7px;">Personnel Status</label>
 <select id="archivedPersonnelStatus" style="width:100%;margin-bottom:8px;padding:10px;border:1px solid var(--border-color);border-radius:8px;"></select>
@@ -1112,7 +1130,7 @@
 </div>
 </div>
 <div class="modal-overlay hidden" id="customConfirmModal" style="z-index: 2000;">
-<div class="modal-content glass-panel modal-uniform-shell"><header class="modal-uniform-header"><div class="modal-uniform-header-copy"><span class="modal-uniform-kicker">SYSTEM CONFIRMATION</span><h2 id="customConfirmTitle">Confirm Action</h2><p>Review this request before proceeding.</p></div><button aria-label="Cancel confirmation" class="action-btn icon-action-btn matrix-compliance-modal-close modal-uniform-close" onclick="document.getElementById('customConfirmNoBtn').click()" title="Cancel confirmation" type="button"><i aria-hidden="true" class="fi fi-rr-cross-small"></i></button></header>
+<div class="modal-content glass-panel modal-uniform-shell"><header class="modal-uniform-header"><div class="modal-uniform-header-copy"><span class="modal-uniform-kicker">SYSTEM CONFIRMATION</span><h2 id="customConfirmTitle">Confirm Action</h2><p>Review this request before proceeding.</p></div><button aria-label="Cancel confirmation" class="action-btn icon-action-btn modal-uniform-close" onclick="document.getElementById('customConfirmNoBtn').click()" title="Cancel confirmation" type="button"><i aria-hidden="true" class="fi fi-rr-cross-small"></i></button></header>
 <p id="customConfirmMessage" style="font-size: 15px; margin-bottom: 20px;"></p>
 <div style="display: flex; gap: 10px;">
 <button class="approve-btn" id="customConfirmYesBtn" style="flex: 1;">Yes</button>
@@ -1121,7 +1139,7 @@
 </div>
 </div>
 <div aria-labelledby="memoControlNumberTitle" aria-modal="true" class="modal-overlay hidden" id="memoControlNumberModal" role="dialog" style="z-index: 2100;">
-<div class="modal-content glass-panel modal-uniform-shell" style="max-width: 480px; text-align: center;"><header class="modal-uniform-header"><div class="modal-uniform-header-copy"><span class="modal-uniform-kicker">MEMO DATABASE</span><h2 id="memoControlNumberTitle">Memorandum Submitted</h2><p>Your memorandum was submitted successfully. Your generated control number is:</p></div><button aria-label="Close memo submission confirmation" class="action-btn icon-action-btn matrix-compliance-modal-close modal-uniform-close" onclick="closeMemoControlNumberModal()" title="Close confirmation" type="button"><i aria-hidden="true" class="fi fi-rr-cross-small"></i></button></header>
+<div class="modal-content glass-panel modal-uniform-shell" style="max-width: 480px; text-align: center;"><header class="modal-uniform-header"><div class="modal-uniform-header-copy"><span class="modal-uniform-kicker">MEMO DATABASE</span><h2 id="memoControlNumberTitle">Memorandum Submitted</h2><p>Your memorandum was submitted successfully. Your generated control number is:</p></div><button aria-label="Close memo submission confirmation" class="action-btn icon-action-btn modal-uniform-close" onclick="closeMemoControlNumberModal()" title="Close confirmation" type="button"><i aria-hidden="true" class="fi fi-rr-cross-small"></i></button></header>
 <div aria-hidden="true" style="font-size: 36px; line-height: 1; margin-bottom: 12px; color: var(--primary);">✓</div>
 
 
@@ -1134,7 +1152,7 @@
 </div>
 </div>
 <div class="modal-overlay hidden spades-form-modal" id="memoSubmissionModal">
-<div class="modal-content glass-panel modal-large spades-polished-modal modal-uniform-shell"><header class="modal-uniform-header"><div class="modal-uniform-header-copy"><span class="modal-uniform-kicker">MEMO DATABASE</span><h2>Submit New Memo</h2><p>Enter the memorandum details below to create a new record.</p></div><button aria-label="Close memo form" class="action-btn icon-action-btn matrix-compliance-modal-close modal-uniform-close" onclick="closeMemoModal()" title="Close memo form" type="button"><i aria-hidden="true" class="fi fi-rr-cross-small"></i></button></header>
+<div class="modal-content glass-panel modal-large spades-polished-modal modal-uniform-shell"><header class="modal-uniform-header"><div class="modal-uniform-header-copy"><span class="modal-uniform-kicker">MEMO DATABASE</span><h2>Submit New Memo</h2><p>Enter the memorandum details below to create a new record.</p></div><button aria-label="Close memo form" class="action-btn icon-action-btn modal-uniform-close" onclick="closeMemoModal()" title="Close memo form" type="button"><i aria-hidden="true" class="fi fi-rr-cross-small"></i></button></header>
 <form class="spades-modal-form" id="memoForm" style="display:flex;gap:12px;margin-top:18px;margin-bottom:18px;flex-wrap:wrap;">
 <select id="memoClassification" style="padding: 12px; border-radius: 6px; border: 1px solid var(--border-color); background: white; margin: 0; min-width: 200px;">
 <option value="A">Admin</option>
@@ -1175,7 +1193,7 @@
 </div>
 </div>
 <div aria-describedby="adminCredentialDescription" aria-labelledby="adminCredentialTitle" aria-modal="true" class="modal-overlay hidden" id="adminModal" role="dialog">
-<div class="modal-content glass-panel alpha-credential-modal modal-uniform-shell"><header class="modal-uniform-header"><div class="modal-uniform-header-copy"><span class="modal-uniform-kicker">USER MANAGEMENT</span><h2 id="adminCredentialTitle">Verify Alpha Admin</h2><p id="adminCredentialDescription">Confirm your Alpha Admin credential to open User Management.</p></div><button aria-label="Close credential verification" class="action-btn icon-action-btn matrix-compliance-modal-close modal-uniform-close" onclick="closeAdminModal()" title="Close credential verification" type="button"><i aria-hidden="true" class="fi fi-rr-cross-small"></i></button></header>
+<div class="modal-content glass-panel alpha-credential-modal modal-uniform-shell"><header class="modal-uniform-header"><div class="modal-uniform-header-copy"><span class="modal-uniform-kicker">USER MANAGEMENT</span><h2 id="adminCredentialTitle">Verify Alpha Admin</h2><p id="adminCredentialDescription">Confirm your Alpha Admin credential to open User Management.</p></div><button aria-label="Close credential verification" class="action-btn icon-action-btn modal-uniform-close" onclick="closeAdminModal()" title="Close credential verification" type="button"><i aria-hidden="true" class="fi fi-rr-cross-small"></i></button></header>
 <label class="alpha-credential-label" for="adminPassInput">Alpha Admin credential</label>
 <div class="alpha-credential-input-wrap"><input aria-label="Alpha Admin credential" autocomplete="current-password" id="adminPassInput" placeholder="Enter your PIN or password" type="password"/><button aria-label="Show credential" aria-pressed="false" class="alpha-credential-eye" id="toggleAdminCredentialVisibility" onclick="toggleAdminCredentialVisibility()" type="button"><svg aria-hidden="true" viewbox="0 0 24 24"><path d="M2.5 12s3.4-6.5 9.5-6.5 9.5 6.5 9.5 6.5-3.4 6.5-9.5 6.5S2.5 12 2.5 12Z"></path><circle cx="12" cy="12" r="3"></circle></svg></button></div>
 <p class="alpha-credential-footnote"><span aria-hidden="true">🔒</span> Your credential is verified securely by the system. It is not stored in this page.</p>
@@ -1183,7 +1201,7 @@
 </div>
 </div>
 <div class="modal-overlay hidden" id="actionModal">
-<div class="modal-content glass-panel modal-uniform-shell"><header class="modal-uniform-header"><div class="modal-uniform-header-copy"><span class="modal-uniform-kicker">MEMO DATABASE</span><h2 id="actionModalTitle">Password Validation Required</h2><p>Verify your credentials and complete the selected memo action.</p></div><button aria-label="Close memo action" class="action-btn icon-action-btn matrix-compliance-modal-close modal-uniform-close" onclick="closeActionModal()" title="Close memo action" type="button"><i aria-hidden="true" class="fi fi-rr-cross-small"></i></button></header>
+<div class="modal-content glass-panel modal-uniform-shell"><header class="modal-uniform-header"><div class="modal-uniform-header-copy"><span class="modal-uniform-kicker">MEMO DATABASE</span><h2 id="actionModalTitle">Password Validation Required</h2><p>Verify your credentials and complete the selected memo action.</p></div><button aria-label="Close memo action" class="action-btn icon-action-btn modal-uniform-close" onclick="closeActionModal()" title="Close memo action" type="button"><i aria-hidden="true" class="fi fi-rr-cross-small"></i></button></header>
 <input id="actionAdminPass" placeholder="Enter Password" style="margin-bottom: 10px; background: white;" type="password"/>
 <input class="hidden" id="actionNewSubject" placeholder="New Subject (For Edits Only)" style="background: white; margin-bottom: 10px;" type="text"/>
 <select class="hidden" id="actionNewStatus" style="background: white; margin-bottom: 10px;">
@@ -1228,7 +1246,7 @@
 </div>
 </div>
 <div aria-describedby="personnelModalDescription" aria-labelledby="personnelModalTitle" aria-modal="true" class="modal-overlay hidden spades-form-modal personnel-modal" id="personnelModal" onclick="if(event.target===this)closePersonnelModal()" role="dialog">
-<div class="modal-content glass-panel modal-large spades-polished-modal personnel-modal-panel modal-uniform-shell"><header class="modal-uniform-header"><div class="modal-uniform-header-copy"><span class="modal-uniform-kicker">PERSONNEL MANAGEMENT</span><h2 id="personnelModalTitle">Add Personnel</h2><p id="personnelModalDescription">Enter the personnel's identity, assignment, and current status.</p></div><button aria-label="Close personnel form" class="action-btn icon-action-btn matrix-compliance-modal-close modal-uniform-close" onclick="closePersonnelModal()" title="Close" type="button"><i aria-hidden="true" class="fi fi-rr-cross-small"></i></button></header>
+<div class="modal-content glass-panel modal-large spades-polished-modal personnel-modal-panel modal-uniform-shell"><header class="modal-uniform-header"><div class="modal-uniform-header-copy"><span class="modal-uniform-kicker">PERSONNEL MANAGEMENT</span><h2 id="personnelModalTitle">Add Personnel</h2><p id="personnelModalDescription">Enter the personnel's identity, assignment, and current status.</p></div><button aria-label="Close personnel form" class="action-btn icon-action-btn modal-uniform-close" onclick="closePersonnelModal()" title="Close" type="button"><i aria-hidden="true" class="fi fi-rr-cross-small"></i></button></header>
 <div class="personnel-form-scroll">
 <div class="personnel-form-section-title">PERSONNEL INFORMATION</div>
 <div class="personnel-form-grid">
@@ -1302,7 +1320,7 @@
 </div>
 <!-- ACTIVITY DATA MODAL -->
 <div aria-labelledby="activityDataModalTitle" aria-modal="true" class="modal-overlay hidden" id="activityDataModal" onclick="if(event.target===this)closeActivityDataModal()" role="dialog" style="z-index:2200;">
-<div class="modal-content glass-panel activity-data-modal modal-uniform-shell"><header class="modal-uniform-header"><div class="modal-uniform-header-copy"><span class="modal-uniform-kicker">ACTIVITY MANAGEMENT</span><h2 id="activityDataModalTitle">Activity Records</h2><p>Search, review, and manage scheduled activities.</p></div><button aria-label="Close activity records" class="action-btn icon-action-btn matrix-compliance-modal-close modal-uniform-close" onclick="closeActivityDataModal()" title="Close activity records" type="button"><i aria-hidden="true" class="fi fi-rr-cross-small"></i></button></header>
+<div class="modal-content glass-panel activity-data-modal modal-uniform-shell"><header class="modal-uniform-header"><div class="modal-uniform-header-copy"><span class="modal-uniform-kicker">ACTIVITY MANAGEMENT</span><h2 id="activityDataModalTitle">Activity Records</h2><p>Search, review, and manage scheduled activities.</p></div><button aria-label="Close activity records" class="action-btn icon-action-btn modal-uniform-close" onclick="closeActivityDataModal()" title="Close activity records" type="button"><i aria-hidden="true" class="fi fi-rr-cross-small"></i></button></header>
 <div class="activity-toolbar activity-toolbar-redesigned"><input aria-label="Search activities" class="activity-search" id="activitySearch" oninput="filterActivities()" placeholder="Search activities..." type="text"/></div>
 <div class="table-wrapper activity-data-table-wrap"><table aria-label="Activity records" id="activityTable">
 <colgroup>
@@ -1315,7 +1333,7 @@
 </div>
 </div>
 <div aria-labelledby="activityModalTitle" aria-modal="true" class="modal-overlay hidden" id="activityModal" onclick="if(event.target===this)closeActivityModal()" role="dialog">
-<div class="modal-content glass-panel modal-large activity-edit-modal modal-uniform-shell" style="font-family:inherit;max-width:820px;width:calc(100% - 30px);"><header class="modal-uniform-header"><div class="modal-uniform-header-copy"><span class="modal-uniform-kicker">ACTIVITY MANAGEMENT</span><h2 id="activityModalTitle">Add Activity</h2><p>Enter the activity details, schedule, and coordination information.</p></div><button aria-label="Close activity form" class="action-btn icon-action-btn matrix-compliance-modal-close modal-uniform-close" onclick="closeActivityModal()" title="Close" type="button"><i aria-hidden="true" class="fi fi-rr-cross-small"></i></button></header>
+<div class="modal-content glass-panel modal-large activity-edit-modal modal-uniform-shell" style="font-family:inherit;max-width:820px;width:calc(100% - 30px);"><header class="modal-uniform-header"><div class="modal-uniform-header-copy"><span class="modal-uniform-kicker">ACTIVITY MANAGEMENT</span><h2 id="activityModalTitle">Add Activity</h2><p>Enter the activity details, schedule, and coordination information.</p></div><button aria-label="Close activity form" class="action-btn icon-action-btn modal-uniform-close" onclick="closeActivityModal()" title="Close" type="button"><i aria-hidden="true" class="fi fi-rr-cross-small"></i></button></header>
 <div class="activity-form-grid">
 <div class="full-width activity-form-field">
 <label>Date / Schedule</label>
@@ -1388,7 +1406,7 @@
 </div>
 </div>
 <div class="modal-overlay hidden" id="activityDetailsModal">
-<div class="modal-content glass-panel modal-large activity-details-modal modal-uniform-shell"><header class="modal-uniform-header"><div class="modal-uniform-header-copy"><span class="modal-uniform-kicker">ACTIVITY MANAGEMENT</span><h2 id="activityDetailsTitle">Activity Details</h2><p>Schedule, venue, and office coordination information</p></div><button aria-label="Close" class="action-btn icon-action-btn matrix-compliance-modal-close modal-uniform-close" onclick="closeActivityDetails()" title="Close activity details" type="button"><i aria-hidden="true" class="fi fi-rr-cross-small"></i></button></header>
+<div class="modal-content glass-panel modal-large activity-details-modal modal-uniform-shell"><header class="modal-uniform-header"><div class="modal-uniform-header-copy"><span class="modal-uniform-kicker">ACTIVITY MANAGEMENT</span><h2 id="activityDetailsTitle">Activity Details</h2><p>Schedule, venue, and office coordination information</p></div><button aria-label="Close" class="action-btn icon-action-btn modal-uniform-close" onclick="closeActivityDetails()" title="Close activity details" type="button"><i aria-hidden="true" class="fi fi-rr-cross-small"></i></button></header>
 <div class="activity-details-content" id="activityDetailsContent"></div>
 <div class="activity-details-footer" id="activityDetailsFooter">
 <button class="approve-btn" id="activityDetailsEditBtn" onclick="editActivityFromDetails()" type="button">Edit Activity</button>
@@ -1396,7 +1414,7 @@
 </div>
 </div>
 <div class="modal-overlay hidden" id="activityReminderModal">
-<div class="modal-content glass-panel modal-uniform-shell" style="max-width:520px;text-align:left;"><header class="modal-uniform-header"><div class="modal-uniform-header-copy"><span class="modal-uniform-kicker">ACTIVITY MANAGEMENT</span><h2 id="activityReminderTitle">Upcoming Activity</h2><p>Review the upcoming activity and its schedule.</p></div><button aria-label="Close reminder" class="action-btn icon-action-btn matrix-compliance-modal-close modal-uniform-close" onclick="closeActivityReminder()" title="Close" type="button"><i aria-hidden="true" class="fi fi-rr-cross-small"></i></button></header>
+<div class="modal-content glass-panel modal-uniform-shell" style="max-width:520px;text-align:left;"><header class="modal-uniform-header"><div class="modal-uniform-header-copy"><span class="modal-uniform-kicker">ACTIVITY MANAGEMENT</span><h2 id="activityReminderTitle">Upcoming Activity</h2><p>Review the upcoming activity and its schedule.</p></div><button aria-label="Close reminder" class="action-btn icon-action-btn modal-uniform-close" onclick="closeActivityReminder()" title="Close" type="button"><i aria-hidden="true" class="fi fi-rr-cross-small"></i></button></header>
 <div id="activityReminderMessage" style="font-size:14px;line-height:1.6;color:var(--text-main);"></div>
 <div style="display:flex;gap:10px;margin-top:20px;flex-wrap:wrap;">
 <button class="action-btn" onclick="snoozeActivityReminder(10)" style="flex:1;min-width:120px;margin:0;" type="button">Snooze 10 min</button>
@@ -1411,7 +1429,7 @@
 <script defer="" src="script/tooltip-layer.js"></script>
 <!-- DUTY SEQUENCE MODAL -->
 <div aria-modal="true" class="modal-overlay hidden" id="dutySequenceModal" onclick="if(event.target===this)closeDutySequenceModal()" role="dialog" style="z-index:2200;">
-<div class="modal-content glass-panel modal-large modal-uniform-shell" style="max-width:560px;text-align:left;"><header class="modal-uniform-header"><div class="modal-uniform-header-copy"><span class="modal-uniform-kicker">PERSONNEL MANAGEMENT</span><h2>Modify Duty Sequence</h2><p>Arrange the personnel assigned to the duty office rotation.</p></div><button aria-label="Close duty sequence" class="action-btn icon-action-btn matrix-compliance-modal-close modal-uniform-close" onclick="closeDutySequenceModal()" title="Close" type="button"><i aria-hidden="true" class="fi fi-rr-cross-small"></i></button></header>
+<div class="modal-content glass-panel modal-large modal-uniform-shell" style="max-width:560px;text-align:left;"><header class="modal-uniform-header"><div class="modal-uniform-header-copy"><span class="modal-uniform-kicker">PERSONNEL MANAGEMENT</span><h2>Modify Duty Sequence</h2><p>Arrange the personnel assigned to the duty office rotation.</p></div><button aria-label="Close duty sequence" class="action-btn icon-action-btn modal-uniform-close" onclick="closeDutySequenceModal()" title="Close" type="button"><i aria-hidden="true" class="fi fi-rr-cross-small"></i></button></header>
 <p style="font-size:13px;color:var(--text-muted);margin:0 0 12px;">Drag or use the arrows to reorder. Mondays–Thursdays rotate through this sequence; Fridays (Duty Supply), Saturdays (Duty RBand), and Sundays (Duty Water Operator) are persistent.</p>
 <div class="duty-sequence-add-row"><label for="dutyPersonnelToAdd">Add personnel to sequence</label><div class="duty-sequence-add-controls"><select aria-label="Select personnel to add to duty sequence" id="dutyPersonnelToAdd"><option value="">Select active personnel…</option></select><button aria-label="Duty Office · Add Personnel to Duty Sequence" class="action-btn approve-btn" data-spades-action-key="duty-office-add-personnel" id="dutySequenceAddPersonnelBtn" onclick="addDutyPersonnelToSequence()" style="margin:0;color:white;" title="Duty Office · Add Personnel to Duty Sequence" type="button">＋ Add</button></div><small>Choose active personnel, then use the arrows or drag handles to set the rotation order.</small></div>
 <div class="duty-sequence-search-wrap"><label for="dutySequenceSearch">Find personnel in the rotation</label><input aria-label="Search duty sequence" autocomplete="off" id="dutySequenceSearch" oninput="filterDutySequenceList()" placeholder="Search by rank or name…" type="search"/></div>
@@ -1425,7 +1443,7 @@
 </div>
 <!-- BMI RECORD MODAL -->
 <div aria-modal="true" class="modal-overlay hidden spades-form-modal" id="bmiRecordModal" onclick="if(event.target===this)closeBmiModal()" role="dialog" style="z-index:2200;">
-<div class="modal-content glass-panel modal-large spades-polished-modal modal-uniform-shell" style="max-width:640px;text-align:left;max-height:90vh;overflow-y:auto;"><header class="modal-uniform-header"><div class="modal-uniform-header-copy"><span class="modal-uniform-kicker">PERSONNEL MANAGEMENT</span><h2 id="bmiModalTitle">Add BMI Record</h2><p>Enter or update the personnel member’s BMI record.</p></div><button aria-label="Close BMI record form" class="action-btn icon-action-btn matrix-compliance-modal-close modal-uniform-close" onclick="closeBmiModal()" title="Close" type="button"><i aria-hidden="true" class="fi fi-rr-cross-small"></i></button></header>
+<div class="modal-content glass-panel modal-large spades-polished-modal modal-uniform-shell" style="max-width:640px;text-align:left;max-height:90vh;overflow-y:auto;"><header class="modal-uniform-header"><div class="modal-uniform-header-copy"><span class="modal-uniform-kicker">PERSONNEL MANAGEMENT</span><h2 id="bmiModalTitle">Add BMI Record</h2><p>Enter or update the personnel member’s BMI record.</p></div><button aria-label="Close BMI record form" class="action-btn icon-action-btn modal-uniform-close" onclick="closeBmiModal()" title="Close" type="button"><i aria-hidden="true" class="fi fi-rr-cross-small"></i></button></header>
 <div class="auth-grid" style="grid-template-columns:1fr 1fr;gap:12px;">
 <div class="full-width">
 <label style="font-size:13px;font-weight:600;">Personnel</label>
@@ -1483,7 +1501,7 @@
 </div>
 <!-- SQUAD MODAL -->
 <div aria-modal="true" class="modal-overlay hidden spades-form-modal" id="squadModal" onclick="if(event.target===this)closeSquadModal()" role="dialog" style="z-index:2200;">
-<div class="modal-content glass-panel modal-large spades-polished-modal modal-uniform-shell" style="max-width:640px;text-align:left;max-height:90vh;overflow-y:auto;"><header class="modal-uniform-header"><div class="modal-uniform-header-copy"><span class="modal-uniform-kicker">PERSONNEL MANAGEMENT</span><h2 id="squadModalTitle">Create Squad</h2><p>Create a squad and assign its personnel members.</p></div><button aria-label="Close squad form" class="action-btn icon-action-btn matrix-compliance-modal-close modal-uniform-close" onclick="closeSquadModal()" title="Close" type="button"><i aria-hidden="true" class="fi fi-rr-cross-small"></i></button></header>
+<div class="modal-content glass-panel modal-large spades-polished-modal modal-uniform-shell" style="max-width:640px;text-align:left;max-height:90vh;overflow-y:auto;"><header class="modal-uniform-header"><div class="modal-uniform-header-copy"><span class="modal-uniform-kicker">PERSONNEL MANAGEMENT</span><h2 id="squadModalTitle">Create Squad</h2><p>Create a squad and assign its personnel members.</p></div><button aria-label="Close squad form" class="action-btn icon-action-btn modal-uniform-close" onclick="closeSquadModal()" title="Close" type="button"><i aria-hidden="true" class="fi fi-rr-cross-small"></i></button></header>
 <div style="display:flex;flex-direction:column;gap:12px;">
 <div>
 <label style="font-size:13px;font-weight:600;">Squad Name</label>
@@ -1515,7 +1533,7 @@
 </div>
 <!-- LEAVE ENTRY MODAL -->
 <div aria-modal="true" class="modal-overlay hidden spades-form-modal" id="leaveEntryModal" onclick="if(event.target===this)closeLeaveModal()" role="dialog" style="z-index:2200;">
-<div class="modal-content glass-panel modal-large spades-polished-modal modal-uniform-shell" style="max-width:600px;text-align:left;max-height:90vh;overflow-y:auto;"><header class="modal-uniform-header"><div class="modal-uniform-header-copy"><span class="modal-uniform-kicker">PERSONNEL MANAGEMENT</span><h2>Add Leave Entry</h2><p>Record the personnel leave details and dates.</p></div><button aria-label="Close leave form" class="action-btn icon-action-btn matrix-compliance-modal-close modal-uniform-close" onclick="closeLeaveModal()" title="Close" type="button"><i aria-hidden="true" class="fi fi-rr-cross-small"></i></button></header>
+<div class="modal-content glass-panel modal-large spades-polished-modal modal-uniform-shell" style="max-width:600px;text-align:left;max-height:90vh;overflow-y:auto;"><header class="modal-uniform-header"><div class="modal-uniform-header-copy"><span class="modal-uniform-kicker">PERSONNEL MANAGEMENT</span><h2>Add Leave Entry</h2><p>Record the personnel leave details and dates.</p></div><button aria-label="Close leave form" class="action-btn icon-action-btn modal-uniform-close" onclick="closeLeaveModal()" title="Close" type="button"><i aria-hidden="true" class="fi fi-rr-cross-small"></i></button></header>
 <div style="display:flex;flex-direction:column;gap:12px;">
 <div>
 <label style="font-size:13px;font-weight:600;">Name of Personnel</label>
@@ -1568,7 +1586,7 @@
 </div>
 <!-- AREA MODAL -->
 <div aria-modal="true" class="modal-overlay hidden spades-form-modal" id="areaModal" onclick="if(event.target===this)closeAreaModal()" role="dialog" style="z-index:2200;">
-<div class="modal-content glass-panel modal-large spades-polished-modal modal-uniform-shell" style="max-width:600px;text-align:left;max-height:90vh;overflow-y:auto;"><header class="modal-uniform-header"><div class="modal-uniform-header-copy"><span class="modal-uniform-kicker">PERSONNEL MANAGEMENT</span><h2 id="areaModalTitle">Add Area of Responsibility</h2><p>Create or update an area of responsibility and assign personnel.</p></div><button aria-label="Close area form" class="action-btn icon-action-btn matrix-compliance-modal-close modal-uniform-close" onclick="closeAreaModal()" title="Close" type="button"><i aria-hidden="true" class="fi fi-rr-cross-small"></i></button></header>
+<div class="modal-content glass-panel modal-large spades-polished-modal modal-uniform-shell" style="max-width:600px;text-align:left;max-height:90vh;overflow-y:auto;"><header class="modal-uniform-header"><div class="modal-uniform-header-copy"><span class="modal-uniform-kicker">PERSONNEL MANAGEMENT</span><h2 id="areaModalTitle">Add Area of Responsibility</h2><p>Create or update an area of responsibility and assign personnel.</p></div><button aria-label="Close area form" class="action-btn icon-action-btn modal-uniform-close" onclick="closeAreaModal()" title="Close" type="button"><i aria-hidden="true" class="fi fi-rr-cross-small"></i></button></header>
 <div style="display:flex;flex-direction:column;gap:12px;">
 <div>
 <label style="font-size:13px;font-weight:600;">Area Name</label>
@@ -1600,7 +1618,7 @@
 </div>
 <!-- AREA DETAILS MODAL -->
 <div aria-modal="true" class="modal-overlay hidden" id="areaDetailsModal" onclick="if(event.target===this)closeAreaDetailsModal()" role="dialog" style="z-index:2200;">
-<div class="modal-content glass-panel modal-uniform-shell" style="max-width:520px;text-align:left;max-height:85vh;overflow-y:auto;"><header class="modal-uniform-header"><div class="modal-uniform-header-copy"><span class="modal-uniform-kicker">PERSONNEL MANAGEMENT</span><h2 id="areaDetailsTitle">Area Details</h2><p>Review the designated personnel assigned to this area.</p></div><button aria-label="Close area details" class="action-btn icon-action-btn matrix-compliance-modal-close modal-uniform-close" onclick="closeAreaDetailsModal()" title="Close" type="button"><i aria-hidden="true" class="fi fi-rr-cross-small"></i></button></header>
+<div class="modal-content glass-panel modal-uniform-shell" style="max-width:520px;text-align:left;max-height:85vh;overflow-y:auto;"><header class="modal-uniform-header"><div class="modal-uniform-header-copy"><span class="modal-uniform-kicker">PERSONNEL MANAGEMENT</span><h2 id="areaDetailsTitle">Area Details</h2><p>Review the designated personnel assigned to this area.</p></div><button aria-label="Close area details" class="action-btn icon-action-btn modal-uniform-close" onclick="closeAreaDetailsModal()" title="Close" type="button"><i aria-hidden="true" class="fi fi-rr-cross-small"></i></button></header>
 <div id="areaDetailsCamp" style="font-size:13px;color:var(--text-muted);margin-bottom:10px;"></div>
 <h4 style="margin:0 0 10px;font-size:14px;color:var(--primary);">Designated Personnel In-Charge</h4>
 <div id="areaDetailsPersonnel" style="display:flex;flex-direction:column;gap:8px;"></div>
@@ -1612,7 +1630,7 @@
 </div>
 <!-- USER ACCESS MODAL -->
 <div aria-labelledby="userAccessModalTitle" aria-modal="true" class="modal-overlay hidden um-access-overlay" id="userAccessModal" onclick="if(event.target===this)closeUserAccessModal()" role="dialog">
-<div class="modal-content glass-panel um-access-modal modal-uniform-shell"><header class="modal-uniform-header"><div class="modal-uniform-header-copy"><span class="modal-uniform-kicker">USER MANAGEMENT</span><h2 id="userAccessModalTitle">Allowed Access</h2><p>Configure page access and Personnel Management actions for the selected account.</p></div><button aria-label="Close Allowed Access" class="action-btn icon-action-btn matrix-compliance-modal-close modal-uniform-close" onclick="closeUserAccessModal()" title="Close" type="button"><i aria-hidden="true" class="fi fi-rr-cross-small"></i></button></header>
+<div class="modal-content glass-panel um-access-modal modal-uniform-shell"><header class="modal-uniform-header"><div class="modal-uniform-header-copy"><span class="modal-uniform-kicker">USER MANAGEMENT</span><h2 id="userAccessModalTitle">Allowed Access</h2><p>Configure page access and Personnel Management actions for the selected account.</p></div><button aria-label="Close Allowed Access" class="action-btn icon-action-btn modal-uniform-close" onclick="closeUserAccessModal()" title="Close" type="button"><i aria-hidden="true" class="fi fi-rr-cross-small"></i></button></header>
 <div class="um-access-target">User: <strong id="userAccessUsername"></strong></div>
 <section aria-labelledby="umPageAccessTitle" class="um-page-access-section"><div class="um-permissions-heading"><div><h3 id="umPageAccessTitle">Page Access</h3><p>Select the pages this account can open. If no pages are selected, the existing full page-access default is retained.</p></div></div><div class="um-page-access-list" id="userAccessCheckboxes"></div></section>
 <section aria-labelledby="userPersonnelPermissionsTitle" class="um-personnel-permissions">
@@ -1625,7 +1643,7 @@
 </div>
 <!-- SQUAD DETAILS MODAL -->
 <div aria-modal="true" class="modal-overlay hidden" id="squadDetailsModal" onclick="if(event.target===this)closeSquadDetailsModal()" role="dialog" style="z-index:2200;">
-<div class="modal-content glass-panel modal-uniform-shell" style="max-width:520px;text-align:left;max-height:85vh;overflow-y:auto;"><header class="modal-uniform-header"><div class="modal-uniform-header-copy"><span class="modal-uniform-kicker">PERSONNEL MANAGEMENT</span><h2 id="squadDetailsTitle">Squad Details</h2><p>Review the squad leader and assigned members.</p></div><button aria-label="Close squad details" class="action-btn icon-action-btn matrix-compliance-modal-close modal-uniform-close" onclick="closeSquadDetailsModal()" title="Close" type="button"><i aria-hidden="true" class="fi fi-rr-cross-small"></i></button></header>
+<div class="modal-content glass-panel modal-uniform-shell" style="max-width:520px;text-align:left;max-height:85vh;overflow-y:auto;"><header class="modal-uniform-header"><div class="modal-uniform-header-copy"><span class="modal-uniform-kicker">PERSONNEL MANAGEMENT</span><h2 id="squadDetailsTitle">Squad Details</h2><p>Review the squad leader and assigned members.</p></div><button aria-label="Close squad details" class="action-btn icon-action-btn modal-uniform-close" onclick="closeSquadDetailsModal()" title="Close" type="button"><i aria-hidden="true" class="fi fi-rr-cross-small"></i></button></header>
 <div id="squadDetailsLeader" style="font-size:13px;color:var(--text-muted);margin-bottom:12px;"></div>
 <h4 style="margin:0 0 10px;font-size:14px;color:var(--primary);">Squad Members</h4>
 <div id="squadDetailsMembers" style="display:flex;flex-direction:column;gap:8px;"></div>
@@ -1637,7 +1655,7 @@
 </div>
 <!-- PERSONNEL PROFILE CARD MODAL -->
 <div aria-modal="true" class="modal-overlay hidden" id="personnelProfileModal" onclick="if(event.target===this)closePersonnelProfile()" role="dialog" style="z-index:2200;">
-<div class="modal-content glass-panel profile-card-modal modal-uniform-shell"><header class="modal-uniform-header"><div class="modal-uniform-header-copy"><span class="modal-uniform-kicker">PERSONNEL MANAGEMENT</span><h2>Personnel Profile</h2><p>Review personnel details and available record actions.</p></div><button aria-label="Close personnel profile" class="action-btn icon-action-btn matrix-compliance-modal-close modal-uniform-close" onclick="closePersonnelProfile()" title="Close personnel profile" type="button"><i aria-hidden="true" class="fi fi-rr-cross-small"></i></button></header>
+<div class="modal-content glass-panel profile-card-modal modal-uniform-shell"><header class="modal-uniform-header"><div class="modal-uniform-header-copy"><span class="modal-uniform-kicker">PERSONNEL MANAGEMENT</span><h2>Personnel Profile</h2><p>Review personnel details and available record actions.</p></div><button aria-label="Close personnel profile" class="action-btn icon-action-btn modal-uniform-close" onclick="closePersonnelProfile()" title="Close personnel profile" type="button"><i aria-hidden="true" class="fi fi-rr-cross-small"></i></button></header>
 <div class="profile-card-avatar" id="profileCardAvatar">U</div>
 <div class="profile-card-name-row">
 <h3 class="profile-card-name" id="profileCardName">Name</h3>
@@ -1658,7 +1676,7 @@
 </div>
 <!-- PERSONNEL FOLDER BROWSER MODAL -->
 <div aria-modal="true" class="modal-overlay hidden" id="personnelFolderBrowserModal" onclick="if(event.target===this)closePersonnelFolderBrowser()" role="dialog" style="z-index:2300;">
-<div class="modal-content glass-panel profile-card-modal modal-uniform-shell" style="max-width:640px;"><header class="modal-uniform-header"><div class="modal-uniform-header-copy"><span class="modal-uniform-kicker">PERSONNEL MANAGEMENT</span><h2 id="folderBrowserTitle">Personnel Folder</h2><p>Browse and manage documents associated with this personnel record.</p></div><button aria-label="Close folder browser" class="action-btn icon-action-btn matrix-compliance-modal-close modal-uniform-close" onclick="closePersonnelFolderBrowser()" title="Close personnel folder" type="button"><i aria-hidden="true" class="fi fi-rr-cross-small"></i></button></header>
+<div class="modal-content glass-panel profile-card-modal modal-uniform-shell" style="max-width:640px;"><header class="modal-uniform-header"><div class="modal-uniform-header-copy"><span class="modal-uniform-kicker">PERSONNEL MANAGEMENT</span><h2 id="folderBrowserTitle">Personnel Folder</h2><p>Browse and manage documents associated with this personnel record.</p></div><button aria-label="Close folder browser" class="action-btn icon-action-btn modal-uniform-close" onclick="closePersonnelFolderBrowser()" title="Close personnel folder" type="button"><i aria-hidden="true" class="fi fi-rr-cross-small"></i></button></header>
 <div id="folderBrowserList" style="padding:16px 24px;min-height:200px;max-height:400px;overflow-y:auto;"></div>
 <div style="padding:0 24px 20px 24px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
 <input id="personnelFolderFileInput" multiple="" onchange="document.getElementById('folderBrowserStatus').textContent = this.files.length + ' file(s) selected';" style="display:none;" type="file"/>

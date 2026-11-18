@@ -12919,3 +12919,74 @@ body #matrixComplianceModal .modal-content > .matrix-compliance-modal-header > .
   transition: color .18s ease, background-color .18s ease,
     border-color .18s ease, box-shadow .18s ease !important;
 }
+
+/* =====================================================================
+   FINAL SOURCE-TEMPLATE ALIGNMENT — MATCH THE RENDERED ADD COMPLIANCE HEADER
+   The rendered Matrix header reserves 66px on the right and uses a 32px
+   close control anchored 17px from the top/right. Apply that same geometry
+   to every shared modal header while keeping hover motion disabled.
+   ===================================================================== */
+body .modal-overlay .modal-content > :first-child:not(.profile-card-avatar):not(.profile-card-name):not(.profile-card-designation):not(.profile-card-meta).modal-uniform-header,
+body .profile-settings-overlay .modal-content > :first-child:not(.profile-card-avatar):not(.profile-card-name):not(.profile-card-designation):not(.profile-card-meta).modal-uniform-header {
+  position: relative !important;
+  align-items: flex-start !important;
+  gap: 12px !important;
+  padding-right: 66px !important;
+}
+body .modal-overlay .modal-content > header.modal-uniform-header > button.modal-uniform-close,
+body .profile-settings-overlay .modal-content > header.modal-uniform-header > button.modal-uniform-close {
+  position: absolute !important;
+  top: 17px !important;
+  right: 17px !important;
+  inset-inline: auto 17px !important;
+  display: grid !important;
+  place-items: center !important;
+  flex: 0 0 32px !important;
+  width: 32px !important;
+  min-width: 32px !important;
+  max-width: 32px !important;
+  height: 32px !important;
+  min-height: 32px !important;
+  max-height: 32px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border-radius: 11px !important;
+  transform: none !important;
+  animation: none !important;
+}
+body .modal-overlay .modal-content > header.modal-uniform-header > button.modal-uniform-close:is(:hover, :active, :focus-visible),
+body .profile-settings-overlay .modal-content > header.modal-uniform-header > button.modal-uniform-close:is(:hover, :active, :focus-visible) {
+  top: 17px !important;
+  right: 17px !important;
+  transform: none !important;
+  animation: none !important;
+}
+@media (max-width: 760px) {
+  body .modal-overlay .modal-content > :first-child:not(.profile-card-avatar):not(.profile-card-name):not(.profile-card-designation):not(.profile-card-meta).modal-uniform-header,
+  body .profile-settings-overlay .modal-content > :first-child:not(.profile-card-avatar):not(.profile-card-name):not(.profile-card-designation):not(.profile-card-meta).modal-uniform-header {
+    padding-right: 66px !important;
+  }
+  body .modal-overlay .modal-content > header.modal-uniform-header > button.modal-uniform-close,
+  body .profile-settings-overlay .modal-content > header.modal-uniform-header > button.modal-uniform-close {
+    top: 17px !important;
+    right: 17px !important;
+  }
+}
+
+
+/* PHASE 1 — Secure Backup & Recovery panel */
+.spades-backup-manager-modal { width:min(720px,calc(100vw - 28px)); max-height:min(86vh,820px); overflow:auto; }
+.spades-backup-manager-body { display:flex; flex-direction:column; gap:14px; padding:20px; }
+.spades-backup-security-note { display:flex; gap:9px; align-items:flex-start; margin:0; padding:12px 14px; border:1px solid var(--border-color); border-radius:12px; color:var(--text-muted); background:var(--surface-2,rgba(100,116,139,.07)); font-size:12px; line-height:1.55; }
+.spades-backup-security-note i { color:var(--primary); }
+.spades-backup-actions,.spades-backup-recovery-actions { display:flex; gap:10px; flex-wrap:wrap; }
+.spades-backup-status { padding:10px 12px; border-radius:10px; background:var(--surface-2,rgba(100,116,139,.07)); color:var(--text-muted); font-size:12px; }
+.spades-backup-select-label { font-size:12px; font-weight:700; color:var(--text-main); margin-bottom:-8px; }
+#spadesBackupSelect { width:100%; min-height:42px; border:1px solid var(--border-color); border-radius:10px; padding:9px 12px; background:var(--card-bg); color:var(--text-main); }
+.spades-backup-list { display:flex; flex-direction:column; gap:8px; max-height:230px; overflow:auto; }
+.spades-backup-row { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:10px 12px; border:1px solid var(--border-color); border-radius:10px; background:var(--card-bg); }
+.spades-backup-row > div { min-width:0; display:flex; flex-direction:column; gap:4px; }
+.spades-backup-row strong { color:var(--text-main); font-size:12px; overflow-wrap:anywhere; }
+.spades-backup-row small,.spades-backup-row > span { color:var(--text-muted); font-size:11px; }
+.spades-backup-empty { padding:20px; text-align:center; color:var(--text-muted); font-size:12px; border:1px dashed var(--border-color); border-radius:10px; }
+@media(max-width:600px) { .spades-backup-manager-body { padding:14px; } .spades-backup-actions > button,.spades-backup-recovery-actions > button { flex:1 1 100%; } .spades-backup-row { align-items:flex-start; flex-direction:column; } }

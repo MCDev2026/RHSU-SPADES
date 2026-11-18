@@ -158,10 +158,60 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         let ALPHA_ADMIN_NAME = ''; // Loaded from backend Script Properties; no Alpha Admin credential is stored in frontend source.
 
         let sessionAdminPass = "";
+        let sessionAdminPassExpiresAt = 0;
+        let sessionAdminPassTimer = null;
+        function hasFreshAlphaStepUp() {
+            if (!sessionAdminPass || !sessionAdminPassExpiresAt || Date.now() >= sessionAdminPassExpiresAt) {
+                sessionAdminPass = ''; sessionAdminPassExpiresAt = 0;
+                if (sessionAdminPassTimer) clearTimeout(sessionAdminPassTimer);
+                sessionAdminPassTimer = null;
+                return false;
+            }
+            return true;
+        }
+        function activateAlphaStepUpToken(data) {
+            if (!data || !data.adminToken) throw new Error('The administrator verification did not return a valid elevated session.');
+            sessionAdminPass = String(data.adminToken);
+            sessionAdminPassExpiresAt = Number(data.elevatedUntil || (Date.now() + 15 * 60 * 1000));
+            if (sessionAdminPassTimer) clearTimeout(sessionAdminPassTimer);
+            sessionAdminPassTimer = window.setTimeout(() => {
+                sessionAdminPass = ''; sessionAdminPassExpiresAt = 0; sessionAdminPassTimer = null;
+                if (document.getElementById('tabAdminMgmt') && !document.getElementById('tabAdminMgmt').classList.contains('hidden')) {
+                    customAlert('Your elevated administrator verification has expired. Verify again to continue administrative actions.', 'Verification Expired');
+                    switchTab('settings');
+                }
+            }, Math.max(0, sessionAdminPassExpiresAt - Date.now()));
+            return sessionAdminPass;
+        }
+        async function ensureAlphaStepUpToken(password) {
+            if (hasFreshAlphaStepUp()) return sessionAdminPass;
+            const activeUser = localStorage.getItem('loggedInUser') || '';
+            if (!password) throw new Error('Enter your Alpha Admin credential to continue.');
+            const response = await fetch(API_URL, {
+                method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
+                body:JSON.stringify({action:'verify_admin',username:activeUser,password,sessionToken:localStorage.getItem('loggedCred') || '',issueStepUp:true})
+            });
+            const result = await response.json();
+            if (!result || !result.success || !result.adminToken) throw new Error(result?.error || 'Alpha Admin verification failed.');
+            return activateAlphaStepUpToken(result);
+        }
+
         let adminUsersCache = [];
         let alphaAdminConfigLoaded = false;
         let pendingAdminAction = null;
         let actionTargetControl = null;
+
+        async function spadesAuthenticatedRead(action, extra = {}) {
+            const username = localStorage.getItem('loggedInUser') || '';
+            const sessionToken = localStorage.getItem('loggedCred') || '';
+            if (!username || !sessionToken) throw new Error('Your session has expired. Please sign in again.');
+            return fetch(API_URL, {
+                method: 'POST',
+                headers: {'Content-Type':'text/plain;charset=utf-8'},
+                cache: 'no-store',
+                body: JSON.stringify({action, username, userName:username, credential:sessionToken, ...extra})
+            });
+        }
 
         async function loadAlphaAdminIdentity() {
             try {
@@ -173,13 +223,14 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 } else {
                     ALPHA_ADMIN_NAME = '';
                     alphaAdminConfigLoaded = false;
-                    console.warn('Alpha Admin Script Properties are not configured. Set ALPHA_ADMIN_USERNAME and ALPHA_ADMIN_CREDENTIAL in Apps Script Project Settings.');
+                    console.warn('Alpha Admin Script Properties are not configured. Set ALPHA_ADMIN_USERNAME and ALPHA_ADMIN_CREDENTIAL or ALPHA_ADMIN_CREDENTIAL_HASH in Apps Script Project Settings.');
                 }
             } catch (error) {
                 ALPHA_ADMIN_NAME = '';
                 alphaAdminConfigLoaded = false;
                 console.error('Unable to load Alpha Admin identity from backend.', error);
             }
+            syncAlphaAdminLoginCredentialField();
         }
         
         let allMemos = [];
@@ -189,6 +240,8 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         let MEMOS_PER_PAGE = 10;
         let activityRefreshTimer = null;
         let autoLogoutTimer = null;
+        let sessionExpiryTimer = null;
+        let sessionHeartbeatTimer = null;
         const NOTIFICATION_SOUNDS = [
             { file: 'Notif1.mp3', label: 'Notif1 (Default)' },
             { file: 'Notif2.mp3', label: 'Notif2' },
@@ -198,7 +251,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             // ,{ file: 'Alert.mp3', label: 'Alert' }
         ];
         const DEFAULT_NOTIFICATION_SOUND = 'Notif1.mp3';
-        const DEFAULT_USER_SETTINGS = { theme: 'Light', sidebar: 'Collapsed', tableDisplay: 'Comfortable', liveNotif: true, notifSound: true, notificationSound: DEFAULT_NOTIFICATION_SOUND, recordsPerPage: '10', rememberSearch: false, showChatbot: true, autoOpenChatbot: false, autoLogout: 'Never', confirmLogout: true, fontSize: 'Default', reducedMotion: false, highContrast: false, autoRefresh: true, refreshInterval: '60', confirmActions: true, language: 'English', dateFormat: 'US', time24: false };
+        const DEFAULT_USER_SETTINGS = { theme: 'Light', sidebar: 'Collapsed', tableDisplay: 'Comfortable', liveNotif: true, notifSound: true, notificationSound: DEFAULT_NOTIFICATION_SOUND, recordsPerPage: '10', rememberSearch: false, showChatbot: true, autoOpenChatbot: false, autoLogout: '30', confirmLogout: true, fontSize: 'Default', reducedMotion: false, highContrast: false, autoRefresh: true, refreshInterval: '60', confirmActions: true, language: 'English', dateFormat: 'US', time24: false };
         let userSettings = { ...DEFAULT_USER_SETTINGS };
         let lastLogCount = 0;
         let liveActivityLogs = [];
@@ -360,7 +413,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 setTableDisplay: userSettings.tableDisplay || 'Comfortable',
                 setNotificationSound: getValidNotificationSound(userSettings.notificationSound),
                 setRecordsPage: userSettings.recordsPerPage || '10',
-                setAutoLogout: userSettings.autoLogout || 'Never',
+                setAutoLogout: ['15','30','60'].includes(String(userSettings.autoLogout)) ? String(userSettings.autoLogout) : '30',
                 setFontSize: userSettings.fontSize || 'Default',
                 setRefreshInterval: userSettings.refreshInterval || '60',
                 setLanguage: userSettings.language || 'English',
@@ -401,7 +454,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             userSettings.rememberSearch = document.getElementById('setRemSearch').checked;
             userSettings.showChatbot = document.getElementById('setShowChat').checked;
             userSettings.autoOpenChatbot = document.getElementById('setAutoChat').checked;
-            userSettings.autoLogout = document.getElementById('setAutoLogout').value;
+            userSettings.autoLogout = ['15','30','60'].includes(String(document.getElementById('setAutoLogout').value)) ? document.getElementById('setAutoLogout').value : '30';
             userSettings.confirmLogout = document.getElementById('setConfirmLogout').checked;
             userSettings.fontSize = document.getElementById('setFontSize').value;
             userSettings.reducedMotion = document.getElementById('setReducedMotion').checked;
@@ -476,12 +529,11 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         function resetIdleTimer() {
             if (autoLogoutTimer) clearTimeout(autoLogoutTimer);
             if (!localStorage.getItem('loggedInUser')) return;
-            if (userSettings.autoLogout !== 'Never') {
-                let minutes = parseInt(userSettings.autoLogout, 10);
-                if (!isNaN(minutes) && minutes > 0) {
-                    autoLogoutTimer = setTimeout(() => { customAlert("Your session has expired due to inactivity.", "Session Expired"); logoutUser(true); }, minutes * 60000);
-                }
-            }
+            // Security policy: a signed-in browser tab may remain idle for at most 60 minutes.
+            let minutes = parseInt(userSettings.autoLogout, 10);
+            if (!Number.isFinite(minutes) || minutes <= 0) minutes = 30;
+            minutes = Math.min(60, Math.max(15, minutes));
+            autoLogoutTimer = setTimeout(() => { customAlert("Your session has expired due to inactivity. Please sign in again.", "Session Expired"); logoutUser(true); }, minutes * 60000);
         }
 
         function toggleNav() {
@@ -646,11 +698,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             if (user === ALPHA_ADMIN_NAME) return;
 
             try {
-                await fetch(API_URL, {
-                    method: 'POST',
-                    mode: 'no-cors',
-                    body: JSON.stringify({ action: 'log_activity', user: user, actionText: actionText })
-                });
+                await spadesAuthenticatedRead('log_activity', {actionText});
                 // Refresh after the backend has had time to append the log; the normal polling
                 // timer continues to keep every user's dashboard current.
                 setTimeout(fetchActivityLogs, 1200);
@@ -660,7 +708,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         async function fetchActivityLogs() {
             try {
                 // Cache-busting ensures every poll asks the backend for the latest log dataset.
-                const res = await fetch(API_URL + "?action=get_activity_logs&_ts=" + Date.now(), { cache: 'no-store' });
+                const res = await spadesAuthenticatedRead('get_activity_logs');
                 const logs = await res.json();
                 liveActivityLogs = sortActivityLogsLatestFirst(logs);
 
@@ -1463,7 +1511,51 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         }
 
         function toggleAuthViews(viewId) { document.getElementById('loginPage').classList.add('hidden'); document.getElementById('registerPage').classList.add('hidden'); document.getElementById('appLayout').classList.add('hidden'); document.getElementById('mainTopBar').classList.add('hidden'); document.getElementById(viewId).classList.remove('hidden'); }
-        function toggleInputType(inputId, type) { const input = document.getElementById(inputId); if (type === 'pin') { input.placeholder = "Enter 6-Digit PIN"; input.setAttribute("maxlength", "6"); } else { input.placeholder = "Enter Password"; input.removeAttribute("maxlength"); } input.value = ""; }
+        function isAlphaAdminLoginName(value) { const configured = String(ALPHA_ADMIN_NAME || '').trim(); return !!configured && String(value || '').trim().toLowerCase() === configured.toLowerCase(); }
+        function syncAlphaAdminLoginCredentialField() {
+            const input = document.getElementById('loginCredential');
+            const usernameInput = document.getElementById('loginUsername');
+            if (!input || !usernameInput) return;
+            if (isAlphaAdminLoginName(usernameInput.value)) {
+                // Alpha Admin may use a legacy PIN or a longer password. Do not
+                // let the default PIN-mode maxlength truncate the credential.
+                input.placeholder = 'Enter Alpha Admin PIN or password';
+                input.setAttribute('maxlength', '128');
+                input.removeAttribute('inputmode');
+                input.setAttribute('autocomplete', 'current-password');
+                return;
+            }
+            const mode = document.querySelector('input[name="loginType"]:checked')?.value || 'pin';
+            if (mode === 'pin') {
+                input.placeholder = 'Enter 6-Digit PIN';
+                input.setAttribute('maxlength', '6');
+                input.setAttribute('inputmode', 'numeric');
+            } else {
+                input.placeholder = 'Enter your password';
+                input.setAttribute('maxlength', '128');
+                input.removeAttribute('inputmode');
+            }
+        }
+        function toggleInputType(inputId, type) {
+            const input = document.getElementById(inputId);
+            if (!input) return;
+            if (inputId === 'loginCredential' && isAlphaAdminLoginName(document.getElementById('loginUsername')?.value)) {
+                syncAlphaAdminLoginCredentialField();
+                input.value = '';
+                return;
+            }
+            if (type === 'pin') {
+                input.placeholder = 'Enter 6-Digit PIN';
+                input.setAttribute('maxlength', '6');
+                input.setAttribute('inputmode', 'numeric');
+            } else {
+                input.placeholder = inputId === 'loginCredential' ? 'Enter your password' : 'Enter password (10+ characters)';
+                input.setAttribute('maxlength', '128');
+                input.removeAttribute('inputmode');
+            }
+            input.value = '';
+        }
+        document.getElementById('loginUsername')?.addEventListener('input', syncAlphaAdminLoginCredentialField);
 
         // Google Drive may return different redirects for view links. Prefer its image thumbnail
         // endpoint, then retry the direct view URL so uploaded avatars render reliably in <img> tags.
@@ -1717,7 +1809,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         }
         async function viewUserProfile(username) {
             try {
-                const res = await fetch(`${API_URL}?action=get_user_profile&username=${encodeURIComponent(username)}`);
+                const res = await spadesAuthenticatedRead('get_user_profile', {targetUsername:username});
                 const data = await res.json();
                 if (!data || !data.success || !data.profile) { customAlert('Profile not found.', 'Error'); return; }
                 const p = data.profile;
@@ -1758,7 +1850,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
 
         async function populateProfileData() {
             const currentUser = localStorage.getItem('loggedInUser') || 'Unknown';
-            if (!Array.isArray(allMemos) || allMemos.length === 0) {
+            if ((!Array.isArray(allMemos) || allMemos.length === 0) && typeof userHasAccess === 'function' && userHasAccess('home')) {
                 try { await loadData(); } catch (loadMemoError) { console.warn('Could not refresh profile memo list:', loadMemoError); }
             }
             document.getElementById('profUsername').innerText = currentUser;
@@ -1782,7 +1874,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             applyProfileCover(getCachedProfilePhotoUrl(currentUser, 'cover'));
             
             try {
-                const res = await fetch(`${API_URL}?action=get_profile&username=${encodeURIComponent(currentUser)}&_ts=${Date.now()}`, { cache: 'no-store' }); const data = await res.json();
+                const res = await spadesAuthenticatedRead('get_profile'); const data = await res.json();
                 if (data.success && data.profile) {
                     const updateField = (id, val) => { const el = document.getElementById(id); el.innerText = val || 'Not Available'; if(val) el.style.color = 'var(--text-main)'; };
                     updateField('profRank', data.profile.rank); updateField('profFirstName', data.profile.firstName); updateField('profMiddleName', data.profile.middleName); updateField('profLastName', data.profile.lastName); updateField('profQlf', data.profile.qlf); updateField('profEmail', data.profile.email);
@@ -1912,7 +2004,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 }
                 document.getElementById('tabSettings').classList.remove('hidden');
                 document.getElementById('btnSettings').classList.add('active');
-                if (sessionAdminPass === "") {
+                if (!hasFreshAlphaStepUp()) {
                     pendingAdminAction = 'open_mgmt';
                     document.getElementById('adminModal').classList.remove('hidden');
                     document.getElementById('adminPassInput').value = "";
@@ -2017,7 +2109,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 else if (tabName === 'personnel') await loadAllPersonnelManagementData(true);
                 else if (tabName === 'activityManagement') await loadActivities();
                 else if (tabName === 'profile') await populateProfileData();
-                else if (tabName === 'adminMgmt' && isAlphaAdmin() && sessionAdminPass) await loadAdminUsers();
+                else if (tabName === 'adminMgmt' && isAlphaAdmin() && hasFreshAlphaStepUp()) await loadAdminUsers();
                 await fetchActivityLogs();
             } catch (error) {
                 console.warn('Automatic data refresh failed; the current view remains available.', error);
@@ -2048,12 +2140,63 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             }
         });
 
+        async function heartbeatSpadesSession() {
+            const username = localStorage.getItem('loggedInUser') || '';
+            const token = localStorage.getItem('loggedCred') || '';
+            if (!username || !token) return;
+            try {
+                const response = await fetch(API_URL, {
+                    method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
+                    body:JSON.stringify({action:'validate_session',username,credential:token})
+                });
+                const result = await response.json();
+                if (!result || !result.success) {
+                    customAlert(result?.error || 'Your sign-in session is no longer valid. Please sign in again.', 'Session Expired');
+                    logoutUser(true);
+                } else if (result.expiresAt) {
+                    localStorage.setItem('loggedSessionExpiresAt', String(result.expiresAt));
+                    scheduleSessionExpiry();
+                }
+            } catch (error) {
+                // A temporary connection failure is retried on the next heartbeat; do not log the user out on a network blip.
+                console.warn('SPADES session heartbeat could not reach the server.', error);
+            }
+        }
+
+        function startSpadesSessionHeartbeat() {
+            if (sessionHeartbeatTimer) clearInterval(sessionHeartbeatTimer);
+            sessionHeartbeatTimer = null;
+            if (!localStorage.getItem('loggedInUser')) return;
+            sessionHeartbeatTimer = window.setInterval(heartbeatSpadesSession, 5 * 60 * 1000);
+        }
+
+        function scheduleSessionExpiry() {
+            if (sessionExpiryTimer) clearTimeout(sessionExpiryTimer);
+            sessionExpiryTimer = null;
+            const expiry = Number(localStorage.getItem('loggedSessionExpiresAt') || 0);
+            if (!expiry) return;
+            const remaining = expiry - Date.now();
+            if (remaining <= 0) {
+                customAlert('Your sign-in session has expired. Please sign in again.', 'Session Expired');
+                logoutUser(true);
+                return;
+            }
+            sessionExpiryTimer = window.setTimeout(() => {
+                customAlert('Your sign-in session has expired. Please sign in again.', 'Session Expired');
+                logoutUser(true);
+            }, Math.min(remaining, 2147483000));
+        }
+
         function checkAuth() {
             const user = localStorage.getItem('loggedInUser');
             if (user) {
                 document.getElementById('appBrand').innerText = 'REGIONAL HEADQUARTERS SUPPORT UNIT';
                 document.getElementById('loginPage').classList.add('hidden'); document.getElementById('registerPage').classList.add('hidden'); document.getElementById('appLayout').classList.remove('hidden'); document.getElementById('mainTopBar').classList.remove('hidden'); document.getElementById('btnAdminMgmt').classList.add('hidden');
                 document.getElementById('settingsUserMgmtBtn').classList.toggle('hidden', user !== ALPHA_ADMIN_NAME);
+                document.getElementById('settingsBackupAdminCard')?.classList.toggle('hidden', user.toLowerCase() !== String(ALPHA_ADMIN_NAME || '').toLowerCase());
+                scheduleSessionExpiry();
+                startSpadesSessionHeartbeat();
+                resetIdleTimer();
                 document.getElementById('btnPersonnel').classList.remove('hidden');
                 loadSettings();
                 if (userSettings.autoOpenChatbot && userSettings.showChatbot) document.getElementById('chatbot-window').classList.remove('hidden'); else document.getElementById('chatbot-window').classList.add('hidden');
@@ -2090,66 +2233,79 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
 
         async function loginUser() {
             const user = document.getElementById('loginUsername').value.trim();
-            const cred = document.getElementById('loginCredential').value.trim();
-            if (!user || !cred) return customAlert('Enter Username and PIN/Password.', 'Authentication Error');
+            const cred = document.getElementById('loginCredential').value;
+            const credentialMode = document.querySelector('input[name="loginType"]:checked')?.value || 'pin';
+            const isAlphaLogin = isAlphaAdminLoginName(user);
+            if (!user || !cred) return customAlert('Enter your username and PIN/password.', 'Authentication Error');
+            if (cred.length > 128) return customAlert('Your credential must not exceed 128 characters.', 'Authentication Error');
+            // Alpha Admin credentials may be a legacy PIN or a longer password.
+            // The administrator credential is verified on the server using Script Properties.
+            if (!isAlphaLogin && credentialMode === 'pin' && !/^\d{4,6}$/.test(cred)) return customAlert('Enter your existing 4–6 digit PIN. New PINs must contain 6 digits.', 'Authentication Error');
+            if (!isAlphaLogin && credentialMode === 'password' && (cred.length < 4 || cred.length > 128)) return customAlert('Enter your existing password (4–128 characters). New passwords must contain at least 10 characters.', 'Authentication Error');
             const credentialInput = document.getElementById('loginCredential');
-            credentialInput.value = 'Logging in…';
-
-            // Alpha Admin credentials are verified only by the backend Script Properties.
-            const isAlphaLogin = !!ALPHA_ADMIN_NAME && user.toLowerCase() === ALPHA_ADMIN_NAME.toLowerCase();
-            if (isAlphaLogin) {
-                try {
-                    const response = await fetch(API_URL, {method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'verify_admin',username:user,password:cred})});
-                    const result = await response.json();
-                    if (!result.success) {
-                        customAlert(result.error || 'Invalid Alpha Admin credential.', 'Authentication Error');
-                        credentialInput.value = '';
-                        return;
-                    }
-                    localStorage.setItem('loggedInUser', ALPHA_ADMIN_NAME);
-                    localStorage.setItem('loggedCred', cred);
-                    localStorage.setItem('userRole', 'Admin');
-                    localStorage.setItem('canEdit', 'Yes');
-                    sessionAdminPass = cred;
-                    sessionStorage.removeItem('systemAnnouncementSeen');
-                    credentialInput.value = '';
-                    logActivity('logged into the system as Alpha Admin.');
-                    checkAuth();
-                    return;
-                } catch (error) {
-                    console.error('Alpha Admin verification failed.', error);
-                    customAlert('Could not verify Alpha Admin credentials. Check the connection.', 'Authentication Error');
-                    credentialInput.value = '';
-                    return;
-                }
-            }
-
+            const loginButton = document.querySelector('#loginPage .rhsu-login-submit');
+            const previousText = loginButton?.textContent;
+            const controller = new AbortController();
+            const timeoutId = window.setTimeout(() => controller.abort(), 45000);
+            credentialInput.disabled = true;
+            if (loginButton) { loginButton.disabled = true; loginButton.textContent = 'Connecting…'; }
             try {
                 const response = await fetch(API_URL, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                    body: JSON.stringify({ action: 'login', username: user, pin: cred })
+                    method:'POST',
+                    mode:'cors',
+                    cache:'no-store',
+                    redirect:'follow',
+                    headers:{'Content-Type':'text/plain;charset=utf-8'},
+                    body:JSON.stringify({action:'login',username:user,pin:cred,credentialType:credentialMode}),
+                    signal:controller.signal
                 });
-                if (!response.ok) throw new Error(`Login request failed (${response.status})`);
-                const result = await response.json();
-                if (result.success) {
-                    const assignedRole = result.role || (result.canEdit ? 'Admin' : 'Regular User');
-                    const storedUser = result.username || result.name || user;
-                    localStorage.setItem('loggedInUser', storedUser);
-                    localStorage.setItem('loggedCred', cred);
-                    localStorage.setItem('userRole', assignedRole);
-                    localStorage.setItem('canEdit', assignedRole === 'Admin' ? 'Yes' : 'No');
-                    sessionStorage.removeItem('systemAnnouncementSeen');
-                    credentialInput.value = '';
-                    logActivity('logged into the system.');
-                    checkAuth();
-                } else {
-                    customAlert(result.error || 'Invalid credentials', 'Error');
-                    credentialInput.value = '';
+                const responseText = await response.text();
+                let result;
+                try {
+                    result = JSON.parse(responseText);
+                } catch (parseError) {
+                    console.error('SPADES login endpoint returned a non-JSON response.', {
+                        status:response.status,
+                        redirected:response.redirected,
+                        contentType:response.headers.get('content-type') || 'unknown',
+                        responsePreview:String(responseText || '').slice(0, 240)
+                    });
+                    throw new Error('The Apps Script endpoint did not return a valid SPADES JSON response. Confirm that the latest Code.gs was saved and deployed to the same Web App URL used by this website.');
                 }
-            } catch (error) {
-                customAlert('Network error during login.', 'Error');
+                if (!response.ok) {
+                    throw new Error(result?.error || ('SPADES login request failed with HTTP ' + response.status + '.'));
+                }
+                if (!result || !result.success || !result.sessionToken) {
+                    customAlert(result?.error || 'Invalid username or credential.', 'Authentication Error');
+                    credentialInput.value = '';
+                    return;
+                }
+                const storedUser = String(result.username || user);
+                localStorage.setItem('loggedInUser', storedUser);
+                // Store only the server-issued expiring session token, never the PIN/password.
+                localStorage.setItem('loggedCred', result.sessionToken);
+                localStorage.setItem('loggedSessionExpiresAt', String(result.expiresAt || ''));
+                scheduleSessionExpiry();
+                localStorage.setItem('userRole', result.role || 'Regular User');
+                localStorage.setItem('canEdit', result.role === 'Admin' || result.role === 'Alpha Admin' ? 'Yes' : 'No');
+                sessionAdminPass = ''; sessionAdminPassExpiresAt = 0;
+                sessionStorage.removeItem('systemAnnouncementSeen');
                 credentialInput.value = '';
+                logActivity('logged into the system.');
+                checkAuth();
+            } catch (error) {
+                console.error('SPADES login request failed:', error);
+                let message = String(error && error.message || 'Unknown connection error.');
+                if (error && error.name === 'AbortError') {
+                    message = 'The SPADES login request timed out after 45 seconds. Check the Apps Script execution log and confirm the latest Web App deployment is active.';
+                } else if (error instanceof TypeError || /failed to fetch|load failed|networkerror/i.test(message)) {
+                    message = 'The browser could not reach the SPADES Apps Script endpoint. Check internet access, Web App deployment access, and whether API_URL in script/app.js matches the current Web App /exec URL.';
+                }
+                customAlert(message, 'Authentication Connection Error');
+            } finally {
+                window.clearTimeout(timeoutId);
+                credentialInput.disabled = false;
+                if (loginButton) { loginButton.disabled = false; loginButton.textContent = previousText || 'Login'; }
             }
         }
 
@@ -2163,10 +2319,13 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             const email = field('regEmail')?.value?.trim() || '';
             const username = field('regUsername')?.value?.trim() || '';
             const cred = field('regCredential')?.value || '';
-            if (!rank || !firstName || !lastName || !email || !username || cred.trim().length < 4) return customAlert('Please complete all required fields and enter a credential with at least 4 characters.', 'Registration');
+            const credentialType = document.querySelector('input[name="regType"]:checked')?.value || 'pin';
+            if (!rank || !firstName || !lastName || !email || !username || !cred) return customAlert('Please complete all required fields.', 'Registration');
+            if (credentialType === 'pin' && !/^\d{6}$/.test(cred)) return customAlert('A new PIN must contain exactly 6 digits.', 'Registration');
+            if (credentialType === 'password' && (cred.length < 10 || cred.length > 128 || [/[a-z]/.test(cred),/[A-Z]/.test(cred),/\d/.test(cred),/[^A-Za-z0-9]/.test(cred)].filter(Boolean).length < 3)) return customAlert('Use a password of 10–128 characters with at least three character types.', 'Registration');
             if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return customAlert('Please enter a valid email address.', 'Registration');
             if (username.length < 3 || /[\u0000-\u001f]/.test(username)) return customAlert('Username must contain at least 3 characters and no control characters.', 'Registration');
-            const payload = { action: 'register', rank, firstName, middleName, lastName, qlf, email, username, pin: cred.trim() };
+            const payload = { action: 'register', rank, firstName, middleName, lastName, qlf, email, username, pin: cred, credentialType };
             const submitButton = document.querySelector('#registerPage button[onclick="registerUser()"]');
             const previousText = submitButton?.textContent;
             if (submitButton) { submitButton.disabled = true; submitButton.textContent = 'Creating account…'; }
@@ -2192,12 +2351,16 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         function attemptLogout() { if (userSettings.confirmLogout) { customConfirm("Are you sure you want to log out of the system?", (confirmed) => { if (confirmed) logoutUser(false); }); } else { logoutUser(false); } }
         function logoutUser(force = false) {
             const currentUser = localStorage.getItem('loggedInUser');
+            const currentToken = localStorage.getItem('loggedCred') || '';
+            if (currentUser && currentToken) {
+                fetch(API_URL, {method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'logout_session',username:currentUser,credential:currentToken})}).catch(() => {});
+            }
             persistUserSettings(currentUser);
             if (!force) logActivity("logged out of the system.");
 
             // End the authenticated session and remove the page route. The route is
             // intentionally retained during refresh, but must never survive logout.
-            ['loggedInUser', 'loggedCred', 'userRole', 'canEdit'].forEach(key => localStorage.removeItem(key));
+            ['loggedInUser', 'loggedCred', 'loggedSessionExpiresAt', 'userRole', 'canEdit'].forEach(key => localStorage.removeItem(key));
             try {
                 const cleanUrl = `${window.location.pathname}${window.location.search}`;
                 window.history.replaceState({}, '', cleanUrl);
@@ -2212,7 +2375,8 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             document.body.classList.remove('profile-modal-open', 'spades-modal-stack-open');
             if (window.SPADESModalStack?.refresh) window.SPADESModalStack.refresh();
 
-            sessionAdminPass = '';
+            sessionAdminPass = ''; sessionAdminPassExpiresAt = 0;
+            if (sessionAdminPassTimer) clearTimeout(sessionAdminPassTimer); sessionAdminPassTimer = null;
             pendingAdminAction = null;
             pendingAction = null;
             liveActivityLogs = [];
@@ -2221,6 +2385,8 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             if (activityRefreshTimer) { clearInterval(activityRefreshTimer); activityRefreshTimer = null; }
             if (activityReminderTimer) { clearInterval(activityReminderTimer); activityReminderTimer = null; }
             if (autoLogoutTimer) { clearTimeout(autoLogoutTimer); autoLogoutTimer = null; }
+            if (sessionExpiryTimer) { clearTimeout(sessionExpiryTimer); sessionExpiryTimer = null; }
+            if (sessionHeartbeatTimer) { clearInterval(sessionHeartbeatTimer); sessionHeartbeatTimer = null; }
             sessionStorage.removeItem('systemAnnouncementSeen');
             stopChatNotificationMonitor();
             const incomingChatContainer = document.getElementById('incomingChatContainer');
@@ -2396,7 +2562,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             const payload = {
                 action: 'update_profile', username: oldUsername,
                 currentCredential: localStorage.getItem('loggedCred') || '',
-                newUsername, newCredential: newCred
+                newUsername, newCredential: newCred, newCredentialType: (/^\d{6}$/.test(newCred) ? 'pin' : (newCred ? 'password' : ''))
             };
             const saveButton = document.querySelector('#securitySettingsModal .profile-primary-action');
             const originalText = saveButton?.innerHTML;
@@ -2407,9 +2573,10 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 });
                 const data = await response.json();
                 if (!data || !data.success) return customAlert(data?.error || 'The backend rejected the account changes.', 'Error');
-                if (newCred) {
-                    localStorage.setItem('loggedCred', newCred);
-                    if (isAlpha) sessionAdminPass = newCred;
+                if (newCred || newUsername) {
+                    customAlert('Your sign-in details were updated. Please sign in again using your updated username and credential.', 'Security Updated');
+                    logoutUser(true);
+                    return;
                 }
                 if (newUsername && data.username) {
                     const confirmedUsername = String(data.username);
@@ -2481,26 +2648,109 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         async function verifyAdmin() {
             const input = document.getElementById('adminPassInput');
             const pass = input.value;
-            if (!pass.trim()) { input.focus(); return; }
+            if (!pass) { input.focus(); return; }
             const activeUser = localStorage.getItem('loggedInUser') || '';
-            if (!pass) return;
-            if (!ALPHA_ADMIN_NAME || activeUser !== ALPHA_ADMIN_NAME) return customAlert('Alpha Admin authentication is not available for this session.', 'Permission Denied');
+            if (!ALPHA_ADMIN_NAME || activeUser.toLowerCase() !== ALPHA_ADMIN_NAME.toLowerCase()) return customAlert('Alpha Admin authentication is not available for this session.', 'Permission Denied');
             const verifyButton = document.getElementById('verifyAdminButton');
             input.disabled = true;
             if (verifyButton) { verifyButton.disabled = true; verifyButton.textContent = 'Verifying…'; }
             try {
-                const res = await fetch(API_URL, {method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'verify_admin',username:activeUser,password:pass})});
+                const res = await fetch(API_URL, {method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'verify_admin',username:activeUser,password:pass,sessionToken:localStorage.getItem('loggedCred') || '',issueStepUp:true})});
                 const data = await res.json();
-                if (data.success) {
-                    sessionAdminPass = pass;
+                if (data.success && data.adminToken) {
+                    // The elevated token lives only in memory and expires after 15 minutes.
+                    activateAlphaStepUpToken(data);
                     document.getElementById('adminModal').classList.add('hidden');
                     input.value = ''; input.type = 'password';
                     const toggle = document.getElementById('toggleAdminCredentialVisibility');
-                    if (toggle) { toggle.setAttribute('aria-label', 'Show credential'); toggle.setAttribute('aria-pressed', 'false'); toggle.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.4-6.5 9.5-6.5 9.5 6.5 9.5 6.5-3.4 6.5-9.5 6.5S2.5 12 2.5 12Z"/><circle cx="12" cy="12" r="3"/></svg>'; }
-                    if (pendingAdminAction === 'open_mgmt') { showAdminMgmtTab(); pendingAdminAction = null; }
+                    if (toggle) { toggle.setAttribute('aria-label', 'Show credential'); toggle.setAttribute('aria-pressed', 'false'); }
+                    const action = pendingAdminAction; pendingAdminAction = null;
+                    if (action === 'open_mgmt') showAdminMgmtTab();
+                    else if (action === 'backup_manager') openSpadesBackupManager();
                 } else { customAlert(data.error || 'Incorrect Alpha Admin credential.', 'Error'); input.value = ''; }
             } catch (error) { customAlert('Could not verify Alpha Admin credentials. Check the connection.', 'Error'); input.value = ''; }
-            finally { input.disabled = false; const verifyButton = document.getElementById('verifyAdminButton'); if (verifyButton) { verifyButton.disabled = false; verifyButton.innerHTML = '<span aria-hidden="true">&#128273;</span> Verify and Continue'; } }
+            finally { input.disabled = false; const verifyButton = document.getElementById('verifyAdminButton'); if (verifyButton) { verifyButton.disabled = false; verifyButton.innerHTML = '<span aria-hidden="true">🔑</span> Verify and Continue'; } }
+        }
+
+
+        async function requestSpadesBackupManager() {
+            if (!isAlphaAdmin()) return customAlert('Only Alpha Admin can manage system backups.', 'Permission Denied');
+            pendingAdminAction = 'backup_manager';
+            const title = document.getElementById('adminCredentialTitle');
+            const description = document.getElementById('adminCredentialDescription');
+            if (title) title.textContent = 'Verify Alpha Admin';
+            if (description) description.textContent = 'Confirm your Alpha Admin credential to manage system backups and recovery copies.';
+            const input = document.getElementById('adminPassInput');
+            if (input) { input.value = ''; input.disabled = false; input.focus(); }
+            document.getElementById('adminModal')?.classList.remove('hidden');
+        }
+
+        function openSpadesBackupManager() {
+            document.getElementById('spadesBackupManagerModal')?.classList.remove('hidden');
+            loadSpadesBackupList();
+        }
+
+        async function spadesBackupRequest(action, extra = {}) {
+            if (!hasFreshAlphaStepUp()) throw new Error('Your administrator verification has expired. Please verify again.');
+            const username = localStorage.getItem('loggedInUser') || '';
+            const response = await fetch(API_URL, {method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action,userName:username,password:sessionAdminPass,...extra})});
+            if (!response.ok) throw new Error('The server could not complete the backup request.');
+            const result = await response.json();
+            if (!result || !result.success) throw new Error(result?.error || 'The backup request was rejected.');
+            return result;
+        }
+
+        async function loadSpadesBackupList() {
+            const select = document.getElementById('spadesBackupSelect');
+            const list = document.getElementById('spadesBackupList');
+            const status = document.getElementById('spadesBackupStatus');
+            if (status) status.textContent = 'Loading protected backup records…';
+            try {
+                const result = await spadesBackupRequest('get_spades_backups');
+                const backups = Array.isArray(result.backups) ? result.backups : [];
+                if (select) select.innerHTML = '<option value="">Select a backup…</option>' + backups.map(item => `<option value="${escapeAttr(item.id)}">${escapeHtml(item.name)} · ${escapeHtml(new Date(item.createdAt).toLocaleString())}</option>`).join('');
+                if (list) list.innerHTML = backups.length ? backups.map(item => `<div class="spades-backup-row"><div><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(new Date(item.createdAt).toLocaleString())} · ${formatFolderBytes(item.size)}</small></div><span>Stored privately</span></div>`).join('') : '<div class="spades-backup-empty">No backup files found yet. Configure the daily schedule or create the first backup.</div>';
+                if (status) status.textContent = `${backups.length} backup(s) available. The system retains the latest 30 scheduled/manual backups.`;
+            } catch (error) { if (status) status.textContent = error.message; if (list) list.innerHTML = '<div class="spades-backup-empty">Backup list unavailable.</div>'; }
+        }
+
+        async function createSpadesBackupNow() {
+            const button = document.getElementById('spadesCreateBackupBtn');
+            if (button) { button.disabled = true; button.textContent = 'Creating backup…'; }
+            try {
+                const result = await spadesBackupRequest('create_spades_backup');
+                if (result.backup?.url) { const status = document.getElementById('spadesBackupStatus'); if (status) status.textContent = `Backup created: ${result.backup.name}`; }
+                await loadSpadesBackupList();
+                customAlert('A new SPADES backup was created successfully.', 'Backup Complete');
+            } catch (error) { customAlert(error.message, 'Backup Error'); }
+            finally { if (button) { button.disabled = false; button.textContent = 'Create Backup Now'; } }
+        }
+
+        async function configureSpadesDailyBackupFromUI() {
+            const button = document.getElementById('spadesSetupBackupScheduleBtn');
+            if (button) { button.disabled = true; button.textContent = 'Configuring…'; }
+            try {
+                const result = await spadesBackupRequest('setup_spades_daily_backup');
+                const status = document.getElementById('spadesBackupStatus');
+                if (status) status.textContent = result.schedule || 'Daily backup schedule configured.';
+                customAlert('Daily automatic backups are now scheduled.', 'Backup Schedule');
+            } catch (error) { customAlert(error.message, 'Backup Error'); }
+            finally { if (button) { button.disabled = false; button.textContent = 'Enable Daily Backup'; } }
+        }
+
+        async function prepareSpadesRecoveryCopy() {
+            const backupId = document.getElementById('spadesBackupSelect')?.value || '';
+            if (!backupId) return customAlert('Select a backup first.', 'Recovery');
+            customConfirm('Create a separate recovery spreadsheet from this backup? The live SPADES database will remain unchanged.', async confirmed => {
+                if (!confirmed) return;
+                try {
+                    const result = await spadesBackupRequest('create_spades_recovery_copy', {backupId});
+                    const url = result.recovery?.url || '';
+                    if (url) window.open(url, '_blank', 'noopener,noreferrer');
+                    customAlert('A separate recovery copy was prepared. Verify its contents before using it as a replacement database.', 'Recovery Copy Ready');
+                    await loadSpadesBackupList();
+                } catch (error) { customAlert(error.message, 'Recovery Error'); }
+            });
         }
 
         async function loadAdminUsers() {
@@ -3018,7 +3268,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             try {
                 // Keep the original single backend request. All summaries, filters and
                 // table data are derived from this one in-memory dataset.
-                const res = await fetch(API_URL + "?action=get_personnel");
+                const res = await spadesAuthenticatedRead('get_personnel');
                 const data = await res.json();
                 if (!data.success) throw new Error(data.error || 'Unable to load personnel');
 
@@ -4199,7 +4449,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
 
         async function loadActivities() {
             try {
-                const res = await fetch(API_URL + '?action=get_activities');
+                const res = await spadesAuthenticatedRead('get_activities');
                 const data = await res.json();
                 if (!data.success) throw new Error(data.error || 'Unable to load activities.');
                 allActivities = Array.isArray(data.activities) ? data.activities : [];
@@ -4494,14 +4744,19 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         async function loadExecutiveDashboard() {
             // Preload the complete Personnel Management data set even when the user stays
             // on the Dashboard. Operational summaries must not depend on opening each tab.
-            try { await Promise.allSettled([loadData(), loadAllPersonnelManagementData(true), loadActivities(), loadMatrixCompliances(), fetchActivityLogs()]); }
-            catch (e) {}
+            try {
+                const tasks = [loadMatrixCompliances(), fetchActivityLogs()];
+                if (typeof userHasAccess !== 'function' || userHasAccess('home')) tasks.push(loadData());
+                if (typeof userHasAccess !== 'function' || userHasAccess('personnel')) tasks.push(loadAllPersonnelManagementData(true));
+                if (typeof userHasAccess !== 'function' || userHasAccess('activityManagement')) tasks.push(loadActivities());
+                await Promise.allSettled(tasks);
+            } catch (e) {}
             renderExecutiveDashboard();
         }
 
         async function loadData() {
             try {
-                const response = await fetch(API_URL + "?action=get_memos"); let data = await response.json();
+                const response = await spadesAuthenticatedRead('get_memos'); let data = await response.json();
                 const tableBody = document.getElementById('dataTable'); tableBody.innerHTML = "";
                 
                 if(!data || data.length === 0) { tableBody.innerHTML = "<tr><td colspan='8' style='text-align:center;'>No memos found.</td></tr>"; document.getElementById('memoPagination').classList.add('hidden'); updateDashboard(); return; }
@@ -4732,8 +4987,8 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             const passInput = document.getElementById('actionAdminPass');
             const confirmBtn = document.getElementById('actionConfirmBtn');
             if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.innerText = 'Confirm'; }
-            passInput.value = sessionAdminPass || localStorage.getItem('loggedCred') || "";
-            passInput.placeholder = sessionAdminPass ? "Master Password" : "Enter Password";
+            passInput.value = hasFreshAlphaStepUp() ? sessionAdminPass : (isAlphaAdmin() ? "" : (localStorage.getItem('loggedCred') || ""));
+            passInput.placeholder = hasFreshAlphaStepUp() ? "Verified Admin Session" : "Enter Password";
             
             document.getElementById('actionNewSubject').value = currentSubject;
             document.getElementById('actionNewStatus').value = currentStatus;
@@ -4755,9 +5010,9 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         function closeActionModal() { document.getElementById('actionModal').classList.add('hidden'); pendingAction = null; actionTargetControl = null; document.getElementById('actionNewSubject').classList.add('hidden'); document.getElementById('actionNewStatus').classList.add('hidden'); document.getElementById('actionOfficeDestinationWrapper').classList.add('hidden'); setOfficeDestination('actionNewOfficeDestination', 'actionNewOfficeDestinationOther', ""); }
         
         async function executeAction() {
-            const pass = document.getElementById('actionAdminPass').value;
+            let pass = document.getElementById('actionAdminPass').value;
             const confirmBtn = document.getElementById('actionConfirmBtn');
-            if (!pass) {
+            if (!pass && !hasFreshAlphaStepUp()) {
                 if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.innerText = 'Confirm'; }
                 return customAlert("Please enter password.", "Error");
             }
@@ -4773,6 +5028,9 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             const currentUser = localStorage.getItem('loggedInUser');
 
             try {
+                // Alpha Admin memo operations use the same elevated token required
+                // by the other sensitive administrator endpoints.
+                if (isAlphaAdmin()) pass = await ensureAlphaStepUpToken(pass);
                 if (pendingAction === 'edit') { 
                     const newSubject = document.getElementById('actionNewSubject').value.trim(); 
                     const newStatus = document.getElementById('actionNewStatus').value;
@@ -4816,6 +5074,9 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             } catch (err) {
                 if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.innerText = 'Confirm'; }
                 customAlert(err.message || 'Unable to complete the requested action.', 'Error');
+            } finally {
+                const passInput = document.getElementById('actionAdminPass');
+                if (passInput && isAlphaAdmin()) passInput.value = '';
             }
         }
 
@@ -4889,8 +5150,8 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             const passInput = document.getElementById('actionAdminPass');
             const confirmBtn = document.getElementById('actionConfirmBtn');
             if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.innerText = 'Confirm'; }
-            passInput.value = sessionAdminPass || localStorage.getItem('loggedCred') || "";
-            passInput.placeholder = sessionAdminPass ? "Master Password" : "Enter Password";
+            passInput.value = hasFreshAlphaStepUp() ? sessionAdminPass : (isAlphaAdmin() ? "" : (localStorage.getItem('loggedCred') || ""));
+            passInput.placeholder = hasFreshAlphaStepUp() ? "Verified Admin Session" : "Enter Password";
         }
 
         function batchDelete() {
@@ -4913,8 +5174,8 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             const passInput = document.getElementById('actionAdminPass');
             const confirmBtn = document.getElementById('actionConfirmBtn');
             if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.innerText = 'Confirm'; }
-            passInput.value = sessionAdminPass || localStorage.getItem('loggedCred') || "";
-            passInput.placeholder = sessionAdminPass ? "Master Password" : "Enter Password";
+            passInput.value = hasFreshAlphaStepUp() ? sessionAdminPass : (isAlphaAdmin() ? "" : (localStorage.getItem('loggedCred') || ""));
+            passInput.placeholder = hasFreshAlphaStepUp() ? "Verified Admin Session" : "Enter Password";
         }
 
         // Restore the authenticated session on refresh while keeping the login screen
@@ -4955,12 +5216,36 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 }, 260);
 
                 try {
-                    // Avoid leaving the loader indefinitely visible if the identity
-                    // endpoint is temporarily slow; normal session restoration can proceed.
                     await Promise.race([
                         loadAlphaAdminIdentity(),
                         new Promise(resolve => window.setTimeout(resolve, 4500))
                     ]);
+                    const storedUser = localStorage.getItem('loggedInUser') || '';
+                    const storedToken = localStorage.getItem('loggedCred') || '';
+                    if (storedUser && storedToken) {
+                        try {
+                            const validationResponse = await Promise.race([
+                                fetch(API_URL, {method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'validate_session',username:storedUser,credential:storedToken})}),
+                                new Promise((_, reject) => window.setTimeout(() => reject(new Error('Session validation timed out.')), 6000))
+                            ]);
+                            const validation = await validationResponse.json();
+                            if (!validation?.success) {
+                                ['loggedInUser','loggedCred','loggedSessionExpiresAt','userRole','canEdit'].forEach(key => localStorage.removeItem(key));
+                                sessionAdminPass = ''; sessionAdminPassExpiresAt = 0;
+                            } else {
+                                localStorage.setItem('loggedSessionExpiresAt', String(validation.expiresAt || ''));
+                                scheduleSessionExpiry();
+                                localStorage.setItem('userRole', validation.role || 'Regular User');
+                            }
+                        } catch (validationError) {
+                            // Fail closed on a refresh if the backend cannot validate the bearer token.
+                            ['loggedInUser','loggedCred','loggedSessionExpiresAt','userRole','canEdit'].forEach(key => localStorage.removeItem(key));
+                            sessionAdminPass = ''; sessionAdminPassExpiresAt = 0;
+                            console.warn('Stored SPADES session could not be validated.', validationError);
+                        }
+                    } else if (storedUser || storedToken) {
+                        ['loggedInUser','loggedCred','loggedSessionExpiresAt','userRole','canEdit'].forEach(key => localStorage.removeItem(key));
+                    }
                 } catch (error) {
                     console.warn('Alpha Admin identity could not be loaded during startup.', error);
                 } finally {
@@ -5142,7 +5427,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         async function loadDutySequence() {
             let loaded = true;
             try {
-                const res = await fetch(API_URL + "?action=get_duty_sequence&_ts=" + Date.now(), {cache:'no-store'});
+                const res = await spadesAuthenticatedRead('get_duty_sequence');
                 if (!res.ok) throw new Error(`Request failed (${res.status})`);
                 const data = await res.json();
                 if (data.success && Array.isArray(data.sequence)) dutySequence = data.sequence;
@@ -5469,7 +5754,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         async function loadBmiRecords() {
             let loaded = true;
             try {
-                const res = await fetch(API_URL + "?action=get_bmi_records&_ts=" + Date.now(), {cache:'no-store'});
+                const res = await spadesAuthenticatedRead('get_bmi_records');
                 if (!res.ok) throw new Error(`Request failed (${res.status})`);
                 const data = await res.json();
                 if (!data || data.success !== true || !Array.isArray(data.records)) throw new Error((data && data.error) || 'Invalid BMI response');
@@ -5484,8 +5769,15 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             return loaded;
         }
         function currentBmiPeriod() {
-            const now = new Date();
-            return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+            // Keep the browser period identical to Apps Script, which stores BMI
+            // periods in Asia/Manila. This avoids month-boundary mismatches when
+            // a workstation/browser is configured for another timezone.
+            const parts = new Intl.DateTimeFormat('en-CA', {
+                timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit'
+            }).formatToParts(new Date());
+            const year = parts.find(part => part.type === 'year')?.value || '';
+            const month = parts.find(part => part.type === 'month')?.value || '';
+            return year && month ? `${year}-${month}` : '';
         }
         function selectedBmiPeriod() {
             const sel = document.getElementById('bmiPeriodSelect');
@@ -5810,47 +6102,73 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 customAlert('The selected BMI record could not be found. Please refresh the table.', 'Record Not Found');
                 return;
             }
-            const isCurrentMonthRecord = !!(selectedRecord && String(selectedRecord.period || '').trim() === currentBmiPeriod());
-            const operation = isCurrentMonthRecord ? 'edit' : 'add';
-            if (!canPersonnelAction('bmi', operation)) { customAlert(`You do not have permission to ${operation} BMI records.`, "Permission Denied"); return; }
-            if (!allPersonnel || !allPersonnel.length) { loadPersonnel(); customAlert("Personnel data is still loading. Please try again in a moment.", "Loading"); return; }
 
-            // Historical records are never overwritten. Opening one pre-fills the
-            // form, while saving creates a separate entry for the current month.
-            bmiEditingId = isCurrentMonthRecord ? selectedRecord.id : null;
-            document.getElementById('bmiModalTitle').innerText = isCurrentMonthRecord
+            // A historical row is a read-only source for the current month. If a
+            // current-month row already exists for the same personnel member,
+            // open that row for editing instead of attempting a duplicate add.
+            const currentPeriod = currentBmiPeriod();
+            const selectedPersonName = selectedRecord ? personnelFullName(selectedRecord) : '';
+            const selectedIsCurrent = !!(selectedRecord && String(selectedRecord.period || '').trim() === currentPeriod);
+            const matchingCurrentRecord = selectedRecord && !selectedIsCurrent
+                ? bmiRecords.find(r => personnelFullName(r) === selectedPersonName && String(r.period || '').trim() === currentPeriod) || null
+                : null;
+            const currentRecord = selectedIsCurrent ? selectedRecord : matchingCurrentRecord;
+            const seedRecord = currentRecord || selectedRecord || null;
+            const operation = currentRecord ? 'edit' : 'add';
+
+            if (!canPersonnelAction('bmi', operation)) {
+                customAlert(`You do not have permission to ${operation} BMI records.`, 'Permission Denied');
+                return;
+            }
+            if (!allPersonnel || !allPersonnel.length) {
+                loadPersonnel();
+                customAlert('Personnel data is still loading. Please try again in a moment.', 'Loading');
+                return;
+            }
+
+            // Only a current-month row receives an editing ID. Historical rows
+            // remain untouched and can only seed a separate current-month entry.
+            bmiEditingId = currentRecord ? currentRecord.id : null;
+            document.getElementById('bmiModalTitle').innerText = currentRecord
                 ? 'Edit Current Month BMI Record'
                 : (selectedRecord ? 'Create Current Month Entry from Historical Record' : 'Add BMI Record');
+
             const sel = document.getElementById('bmiPersonnelSelect');
             sel.innerHTML = '<option value="">Select personnel...</option>' + allPersonnel.map((p, i) =>
                 `<option value="${i}">${escapeHtml(personnelFullName(p))}</option>`).join('');
-            // Reset fields
-            ['bmiAge','bmiHeight','bmiWeight','bmiWaist','bmiHip','bmiWrist'].forEach(id => { const el=document.getElementById(id); if(el) el.value=''; });
-            const bmiAddLbl = document.getElementById('bmiPersonnelSelectedLabel');
-            if (bmiAddLbl) { bmiAddLbl.style.display = 'none'; bmiAddLbl.innerText = ''; }
-            const bmiAddSrch = document.getElementById('bmiPersonnelSearch'); if (bmiAddSrch) bmiAddSrch.value = '';
-            const bmiAddFlt = document.getElementById('bmiPersonnelSectionFilter'); if (bmiAddFlt) bmiAddFlt.value = '';
+
+            // Reset the form before applying the selected/current record values.
+            ['bmiAge','bmiHeight','bmiWeight','bmiWaist','bmiHip','bmiWrist'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.value = '';
+            });
+            const selectedLabel = document.getElementById('bmiPersonnelSelectedLabel');
+            if (selectedLabel) { selectedLabel.style.display = 'none'; selectedLabel.innerText = ''; }
+            const searchInput = document.getElementById('bmiPersonnelSearch');
+            if (searchInput) searchInput.value = '';
+            const sectionFilter = document.getElementById('bmiPersonnelSectionFilter');
+            if (sectionFilter) sectionFilter.value = '';
             if (sel) sel.value = '';
             renderBmiPersonnelList();
-            const now = new Date();
-            const periodInput = document.getElementById('bmiPeriodInput');
-            if (periodInput) periodInput.value = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
-            if (selectedRecord) {
-                const rec = selectedRecord;
-                {
-                    const idx = allPersonnel.findIndex(p => personnelFullName(p) === personnelFullName(rec));
-                    if (idx >= 0) sel.value = idx;
-                    const selectedLabel = document.getElementById('bmiPersonnelSelectedLabel');
-                    if (selectedLabel) { selectedLabel.style.display = 'block'; selectedLabel.innerText = 'Selected: ' + personnelFullName(rec); }
-                    document.getElementById('bmiPeriodInput').value = currentBmiPeriod();
-                    document.getElementById('bmiPeriodInput').readOnly = true;
-                    document.getElementById('bmiAge').value = rec.age ?? '';
-                    document.getElementById('bmiHeight').value = rec.height ?? '';
-                    document.getElementById('bmiWeight').value = rec.weight ?? '';
-                    document.getElementById('bmiWaist').value = rec.waist ?? '';
-                    document.getElementById('bmiHip').value = rec.hip ?? '';
-                    document.getElementById('bmiWrist').value = rec.wrist ?? '';
+
+            if (seedRecord) {
+                const idx = allPersonnel.findIndex(p => personnelFullName(p) === selectedPersonName);
+                if (idx >= 0 && sel) sel.value = String(idx);
+                if (selectedLabel) {
+                    selectedLabel.style.display = 'block';
+                    selectedLabel.innerText = 'Selected: ' + selectedPersonName;
                 }
+                ['age','height','weight','waist','hip','wrist'].forEach(key => {
+                    const el = document.getElementById('bmi' + key.charAt(0).toUpperCase() + key.slice(1));
+                    if (el) el.value = seedRecord[key] ?? '';
+                });
+                renderBmiPersonnelList();
+            }
+
+            const periodInput = document.getElementById('bmiPeriodInput');
+            if (periodInput) {
+                periodInput.value = currentPeriod;
+                periodInput.readOnly = true;
             }
             recalcBmi();
             document.getElementById('bmiRecordModal').classList.remove('hidden');
@@ -5954,7 +6272,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         async function loadSquads() {
             let loaded = true;
             try {
-                const res = await fetch(API_URL + "?action=get_squads&_ts=" + Date.now(), {cache:'no-store'});
+                const res = await spadesAuthenticatedRead('get_squads');
                 if (!res.ok) throw new Error(`Request failed (${res.status})`);
                 const data = await res.json();
                 if (!data || data.success !== true || !Array.isArray(data.squads)) throw new Error((data && data.error) || 'Invalid Squadding response');
@@ -6204,7 +6522,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         async function loadLeaveEntries() {
             let loaded = true;
             try {
-                const res = await fetch(API_URL + "?action=get_leave_entries&_ts=" + Date.now(), {cache:'no-store'});
+                const res = await spadesAuthenticatedRead('get_leave_entries');
                 if (!res.ok) throw new Error(`Request failed (${res.status})`);
                 const data = await res.json();
                 if (!data || data.success !== true || !Array.isArray(data.entries)) throw new Error((data && data.error) || 'Invalid Leave Management response');
@@ -6540,7 +6858,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         async function loadAreas() {
             let loaded = true;
             try {
-                const res = await fetch(API_URL + "?action=get_areas&_ts=" + Date.now(), {cache:'no-store'});
+                const res = await spadesAuthenticatedRead('get_areas');
                 if (!res.ok) throw new Error(`Request failed (${res.status})`);
                 const data = await res.json();
                 if (!data || data.success !== true || !Array.isArray(data.areas)) throw new Error((data && data.error) || 'Invalid Areas response');
@@ -6975,7 +7293,8 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 try {
                     const response = await fetch(API_URL, {method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({
                         action:'set_user_restriction', username, restricted:!!restrict,
-                        userName:localStorage.getItem('loggedInUser') || '', credential:localStorage.getItem('loggedCred') || ''
+                        userName:localStorage.getItem('loggedInUser') || '', password:sessionAdminPass,
+                        credential:localStorage.getItem('loggedCred') || ''
                     })});
                     const result = await response.json();
                     if (!result.success) { customAlert(result.error || 'Could not update this account restriction.', 'Error'); return; }
