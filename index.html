@@ -215,14 +215,8 @@
 </div>
 <div class="exec-hero-footer">
 <div class="exec-hero-action-intro">
-<span class="exec-hero-action-kicker">DASHBOARD SHORTCUTS</span>
-<span class="exec-hero-action-hint">Frequently used dashboard actions</span>
-</div>
-<div class="dashboard-quick-access" id="dashboardQuickAccess">
-<button aria-controls="dashboardQuickAccessPanel" aria-expanded="false" class="dashboard-quick-access-trigger" id="dashboardQuickAccessBtn" onclick="toggleDashboardQuickAccess()" onkeydown="dashboardQuickAccessKeydown(event)" type="button">
-<i aria-hidden="true" class="fi fi-rr-bolt"></i><span>QUICK ACCESS</span><i aria-hidden="true" class="fi fi-rr-angle-small-down dashboard-quick-access-chevron"></i>
-</button>
-<div aria-hidden="true" aria-label="Quick access shortcuts" class="dashboard-quick-access-panel hidden" id="dashboardQuickAccessPanel" onkeydown="dashboardQuickAccessKeydown(event)" role="menu"></div>
+<span class="exec-hero-action-kicker">PRIMARY ACTIONS</span>
+<span class="exec-hero-action-hint">Create a memo or activity, or open Personnel</span>
 </div>
 <div class="exec-hero-actions">
 <button aria-label="Dashboard: Create Memo" class="rhsu-dashboard-action-btn" data-spades-action-key="dashboard-memo-create" data-tooltip="Dashboard · Create Memo" id="dashboardAddMemoBtn" onclick="dashboardAddMemo()" title="Dashboard · Create Memo" type="button"><span aria-hidden="true" class="dashboard-action-icon"><i class="fi fi-rr-plus"></i></span><span class="dashboard-action-label">Add Memo</span></button>
@@ -944,6 +938,7 @@
 <thead><tr>
 <th scope="col">Compliance</th>
 <th scope="col">Target Date</th>
+<th scope="col">Target Time</th>
 <th scope="col">Office In-charge</th>
 <th scope="col">Action Taken</th>
 <th scope="col">Recurrence</th>
@@ -951,7 +946,7 @@
 <th scope="col">Last Updated</th>
 <th class="matrix-compliance-actions-heading" scope="col">Actions</th>
 </tr></thead>
-<tbody id="matrixComplianceTableBody"><tr><td class="matrix-compliance-empty" colspan="8">Open Matrix of Compliances to load the register…</td></tr></tbody>
+<tbody id="matrixComplianceTableBody"><tr><td class="matrix-compliance-empty" colspan="9">Open Matrix of Compliances to load the register…</td></tr></tbody>
 </table>
 </div>
 <div aria-label="Compliance records pagination" class="pagination-container matrix-compliance-pagination hidden" id="matrixCompliancePagination">
@@ -1421,13 +1416,15 @@
 </div>
 </div>
 </div>
+<div aria-labelledby="activityDayListTitle" aria-modal="true" class="modal-overlay hidden" id="activityDayListModal" onclick="if(event.target===this)closeActivityDayList()" role="dialog">
+<div class="modal-content glass-panel modal-uniform-shell activity-day-list-modal"><header class="modal-uniform-header"><div class="modal-uniform-header-copy"><span class="modal-uniform-kicker">ACTIVITY MANAGEMENT</span><h2 id="activityDayListTitle">Scheduled Activities</h2><p>All activities scheduled for the selected date.</p></div><button aria-label="Close daily activities" class="action-btn icon-action-btn modal-uniform-close" onclick="closeActivityDayList()" title="Close" type="button"><i aria-hidden="true" class="fi fi-rr-cross-small"></i></button></header><div class="activity-day-list-body" id="activityDayListBody"></div></div>
+</div>
 <div class="modal-overlay hidden" id="activityReminderModal">
-<div class="modal-content glass-panel modal-uniform-shell" style="max-width:520px;text-align:left;"><header class="modal-uniform-header"><div class="modal-uniform-header-copy"><span class="modal-uniform-kicker">ACTIVITY MANAGEMENT</span><h2 id="activityReminderTitle">Upcoming Activity</h2><p>Review the upcoming activity and its schedule.</p></div><button aria-label="Close reminder" class="action-btn icon-action-btn modal-uniform-close" onclick="closeActivityReminder()" title="Close" type="button"><i aria-hidden="true" class="fi fi-rr-cross-small"></i></button></header>
+<div class="modal-content glass-panel modal-uniform-shell scheduled-alert-modal" style="max-width:520px;text-align:left;"><header class="modal-uniform-header"><div class="modal-uniform-header-copy"><span class="modal-uniform-kicker">SPADES SCHEDULE REMINDER</span><h2 id="activityReminderTitle">Upcoming Schedule</h2><p id="activityReminderSubtitle">Advance reminder</p></div><button aria-label="Close reminder" class="action-btn icon-action-btn modal-uniform-close" onclick="closeActivityReminder()" title="Close" type="button"><i aria-hidden="true" class="fi fi-rr-cross-small"></i></button></header>
 <div id="activityReminderMessage" style="font-size:14px;line-height:1.6;color:var(--text-main);"></div>
-<div style="display:flex;gap:10px;margin-top:20px;flex-wrap:wrap;">
-<button class="action-btn" onclick="snoozeActivityReminder(10)" style="flex:1;min-width:120px;margin:0;" type="button">Snooze 10 min</button>
-<button class="delete-btn" onclick="stopActivityReminder()" style="flex:1;min-width:120px;margin:0;color:white;" type="button">Stop Alerts</button>
-<button class="approve-btn" onclick="closeActivityReminder()" style="flex:1;min-width:120px;margin:0;color:white;" type="button">Dismiss</button>
+<div class="scheduled-alert-modal-actions" style="display:flex;gap:10px;margin-top:20px;flex-wrap:wrap;">
+<button class="approve-btn" id="activityReminderOpenBtn" onclick="openActivityReminderRecord()" style="flex:1;min-width:150px;margin:0;color:white;" type="button">Open Record</button>
+<button class="action-btn" onclick="closeActivityReminder()" style="flex:1;min-width:110px;margin:0;" type="button">Dismiss</button>
 </div>
 </div>
 </div>
@@ -1705,11 +1702,15 @@
 <label class="matrix-compliance-field" for="matrixComplianceText"><span>Compliance <b aria-hidden="true">*</b></span><textarea id="matrixComplianceText" maxlength="2000" placeholder="Describe the required compliance…" required="" rows="3"></textarea></label>
 <div class="matrix-compliance-form-grid">
 <label class="matrix-compliance-field" for="matrixComplianceTargetDate"><span>Target Date <b aria-hidden="true">*</b></span><input id="matrixComplianceTargetDate" required="" type="date"/></label>
-<label class="matrix-compliance-field" for="matrixComplianceOfficeInCharge"><span>Office In-charge <b aria-hidden="true">*</b></span><input id="matrixComplianceOfficeInCharge" maxlength="250" placeholder="Office responsible for submission" required="" type="text"/></label>
+<label class="matrix-compliance-field" for="matrixComplianceTargetTime"><span>Target Time <small>(optional)</small></span><input id="matrixComplianceTargetTime" type="time"/><small class="matrix-compliance-field-hint">Set an exact time to enable 3-hour and 1-hour reminders. Existing date-only records remain unchanged.</small></label>
 </div>
 <div class="matrix-compliance-form-grid">
+<label class="matrix-compliance-field" for="matrixComplianceOfficeInCharge"><span>Office In-charge <b aria-hidden="true">*</b></span><input id="matrixComplianceOfficeInCharge" maxlength="250" placeholder="Office responsible for submission" required="" type="text"/></label>
 <label class="matrix-compliance-field" for="matrixComplianceFrequency"><span>Recurring Schedule</span><select id="matrixComplianceFrequency" onchange="toggleMatrixComplianceRepeatUntil()"><option value="None">Does not repeat</option><option value="Daily">Daily</option><option value="Weekly">Weekly</option><option value="Monthly">Monthly</option><option value="Quarterly">Quarterly</option><option value="Semestral">Semestral</option><option value="Annually">Annually</option></select></label>
+</div>
+<div class="matrix-compliance-form-grid">
 <label class="matrix-compliance-field" for="matrixComplianceRepeatUntil"><span>Repeat Until <small>(Optional)</small></span><input id="matrixComplianceRepeatUntil" type="date"/><small class="matrix-compliance-field-hint">Leave blank to continue the recurring schedule indefinitely.</small></label>
+<span aria-hidden="true"></span>
 </div>
 <label class="matrix-compliance-field" for="matrixComplianceActionTaken"><span>Action Taken</span><textarea id="matrixComplianceActionTaken" maxlength="4000" placeholder="Record the actions already taken, updates, or remarks…" rows="4"></textarea></label>
 <div class="matrix-compliance-form-footer">

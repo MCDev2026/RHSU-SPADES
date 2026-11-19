@@ -337,8 +337,11 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         let activityEditId = null;
         let activityReminderTimer = null;
         let activeActivityReminder = null;
-        const ACTIVITY_REMINDER_OFFSETS = [12 * 60 * 60 * 1000, 6 * 60 * 60 * 1000, 1 * 60 * 60 * 1000];
-        const ACTIVITY_REMINDER_LABELS = { [12 * 60 * 60 * 1000]:'12 hours', [6 * 60 * 60 * 1000]:'6 hours', [1 * 60 * 60 * 1000]:'1 hour' };
+        let scheduledAlertQueue = [];
+        let scheduledAlertQueueKeys = new Set();
+        let scheduledAlertPollInFlight = false;
+        let scheduledAlertClientId = '';
+        const SCHEDULED_ALERT_POLL_MS = 60000;
         const ACTIVITY_VENUES = ["PRO 1 Auditorium","PRO 1 Grandstand","PRO 1 Parade Ground","PRO 1 Firing Range","PRO 1 Conference Room"];
 
 
@@ -769,81 +772,205 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             } catch (err) {}
         }
 
-        function activityReminderKey(activity, offset) {
-            return `rhsuActivityReminder:${activity.id}:${activity.date}:${activity.time}:${offset}`;
+        function getScheduledAlertClientId() {
+            if (scheduledAlertClientId) return scheduledAlertClientId;
+            try {
+                scheduledAlertClientId = sessionStorage.getItem('spadesScheduledAlertClientId') || '';
+                if (!scheduledAlertClientId) {
+                    scheduledAlertClientId = 'tab-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 12);
+                    sessionStorage.setItem('spadesScheduledAlertClientId', scheduledAlertClientId);
+                }
+            } catch (error) {
+                scheduledAlertClientId = 'tab-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 12);
+            }
+            return scheduledAlertClientId;
         }
 
-        function activityReminderStoppedKey(activity) {
-            return `rhsuActivityReminderStopped:${activity.id}:${activity.date}:${activity.time}`;
+        async function acknowledgeScheduledAlert(alert) {
+            if (!alert || !alert.alertKey) return;
+            try {
+                const response = await fetch(API_URL, {
+                    method:'POST', mode:'cors',
+                    headers:{'Content-Type':'text/plain;charset=utf-8'},
+                    body:JSON.stringify({
+                        action:'ack_scheduled_alerts',
+                        ...chatCredentialPayload(),
+                        clientId:getScheduledAlertClientId(),
+                        alertKeys:[String(alert.alertKey)]
+                    })
+                });
+                const result = await response.json();
+                if (!response.ok || !result.success) console.debug('Scheduled alert acknowledgement was deferred.');
+            } catch (error) {
+                console.debug('Scheduled alert acknowledgement:', error);
+            }
         }
 
-        function parseActivityDateTime(activity) {
-            const dateKey = String(activity.date || '').slice(0,10);
-            const timeKey = activityTimeForInput(activity.time);
-            if (!dateKey || !timeKey) return NaN;
-            const d = new Date(`${dateKey}T${timeKey}:00`);
-            return d.getTime();
+        function scheduledAlertDateText(value) {
+            const raw = String(value || '').slice(0, 10);
+            const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+            if (!match) return raw || 'Date not specified';
+            const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+            return Number.isNaN(date.getTime()) ? raw : date.toLocaleDateString(undefined, {year:'numeric', month:'long', day:'numeric'});
         }
 
-        function checkActivityReminders() {
-            if (!localStorage.getItem('loggedInUser')) return;
-            const now = Date.now();
+        function notifyBrowserForScheduledAlert(alert) {
+            if (typeof Notification !== 'function' || Notification.permission !== 'granted') return;
+            try {
+                const title = `${alert.recordType || 'SPADES'} Reminder: ${alert.title || 'Upcoming schedule'}`;
+                const body = `${alert.alertLabel || 'Advance reminder'} · ${scheduledAlertDateText(alert.occurrenceDate)} at ${formatActivityTime(alert.scheduledTime || '')}`;
+                const notification = new Notification(title, {body, tag:String(alert.alertKey || ''), renotify:false});
+                notification.onclick = () => {
+                    try { window.focus(); } catch (_) {}
+                    openScheduledAlertRecord(alert);
+                    notification.close();
+                };
+            } catch (error) {
+                console.debug('Browser notification unavailable:', error);
+            }
+        }
 
-            for (const activity of (Array.isArray(allActivities) ? allActivities : [])) {
-                if (String(activity.status || '').toLowerCase() !== 'recurring') continue;
-                const start = parseActivityDateTime(activity);
-                if (!Number.isFinite(start) || start <= now) continue;
-
-                const stoppedKey = activityReminderStoppedKey(activity);
-                if (localStorage.getItem(stoppedKey) === 'true') continue;
-
-                for (const offset of ACTIVITY_REMINDER_OFFSETS) {
-                    const reminderAt = start - offset;
-                    const key = activityReminderKey(activity, offset);
-                    const snoozeUntil = Number(localStorage.getItem(`${key}:snoozeUntil`) || 0);
-
-                    if (now < reminderAt || now > start || localStorage.getItem(key) === 'shown') continue;
-                    if (snoozeUntil && now < snoozeUntil) continue;
-
-                    localStorage.setItem(key, 'shown');
-                    activeActivityReminder = { activity, offset, key };
-                    document.getElementById('activityReminderTitle').innerText = activity.activityTitle || 'Upcoming Activity';
-                    document.getElementById('activityReminderMessage').innerHTML =
-                        `<div><strong>${escapeHtml(ACTIVITY_REMINDER_LABELS[offset] || '')} before the scheduled activity.</strong></div>
-                         <div style="margin-top:8px;"><strong>Date:</strong> ${escapeHtml(activity.date)}</div>
-                         <div><strong>Time:</strong> ${escapeHtml(formatActivityTime(activity.time))}</div>
-                         <div><strong>Venue:</strong> ${escapeHtml(activity.assignedVenue)}</div>
-                         <div><strong>Requesting Office:</strong> ${escapeHtml(activity.requestingOffice)}</div>`;
-                    document.getElementById('activityReminderModal').classList.remove('hidden');
+        async function pollScheduledAlerts() {
+            if (scheduledAlertPollInFlight || activeActivityReminder || scheduledAlertQueue.length || !localStorage.getItem('loggedInUser') || !localStorage.getItem('loggedCred')) return;
+            scheduledAlertPollInFlight = true;
+            try {
+                const response = await fetch(API_URL, {
+                    method:'POST', mode:'cors',
+                    headers:{'Content-Type':'text/plain;charset=utf-8'},
+                    body:JSON.stringify({action:'get_scheduled_alerts', ...chatCredentialPayload(), clientId:getScheduledAlertClientId()})
+                });
+                const result = await response.json();
+                if (!response.ok || !result.success) {
+                    if (result && result.error && /session|sign in|active/i.test(String(result.error))) {
+                        console.debug('Scheduled alerts paused:', result.error);
+                        stopActivityReminderMonitor();
+                    }
                     return;
                 }
+                const alerts = Array.isArray(result.alerts) ? result.alerts : [];
+                alerts.forEach(alert => {
+                    const key = String(alert.alertKey || '');
+                    if (!key || scheduledAlertQueueKeys.has(key) || (activeActivityReminder && activeActivityReminder.alertKey === key)) return;
+                    scheduledAlertQueueKeys.add(key);
+                    scheduledAlertQueue.push(alert);
+                    notifyBrowserForScheduledAlert(alert);
+                });
+                showNextScheduledAlert();
+            } catch (error) {
+                // Schedule checking is background work; never interrupt normal SPADES use.
+                console.debug('Scheduled alert polling:', error);
+            } finally {
+                scheduledAlertPollInFlight = false;
             }
         }
 
-        function closeActivityReminder() {
-            document.getElementById('activityReminderModal').classList.add('hidden');
+        function showNextScheduledAlert() {
+            if (activeActivityReminder || !scheduledAlertQueue.length || !localStorage.getItem('loggedInUser')) return;
+            const modal = document.getElementById('activityReminderModal');
+            const title = document.getElementById('activityReminderTitle');
+            const subtitle = document.getElementById('activityReminderSubtitle');
+            const message = document.getElementById('activityReminderMessage');
+            const openButton = document.getElementById('activityReminderOpenBtn');
+            if (!modal || !title || !message) return;
+            const alert = scheduledAlertQueue.shift();
+            activeActivityReminder = alert;
+            const source = String(alert.recordType || 'Schedule');
+            title.textContent = String(alert.title || (source + ' Reminder'));
+            if (subtitle) subtitle.textContent = `${source} reminder · ${String(alert.alertLabel || '')}`;
+            message.innerHTML = `<div class="scheduled-alert-level">${escapeHtml(alert.alertLabel || 'ADVANCE REMINDER')}</div>
+                <p class="scheduled-alert-copy">${source === 'Compliance' ? 'This compliance requirement is approaching its target time.' : 'This activity is approaching its scheduled start time.'}</p>
+                <div class="scheduled-alert-detail"><span>Scheduled Date</span><strong>${escapeHtml(scheduledAlertDateText(alert.occurrenceDate))}</strong></div>
+                <div class="scheduled-alert-detail"><span>Scheduled Time</span><strong>${escapeHtml(formatActivityTime(alert.scheduledTime || '') || 'Not specified')}</strong></div>
+                <div class="scheduled-alert-detail"><span>${source === 'Compliance' ? 'Office In-charge' : 'Assigned Venue'}</span><strong>${escapeHtml(alert.detail || 'Not specified')}</strong></div>`;
+            if (openButton) openButton.textContent = source === 'Compliance' ? 'Open Compliance' : 'Open Activity';
+            modal.classList.remove('hidden');
+            modal.setAttribute('aria-hidden', 'false');
+            window.SPADESModalStack?.bringToFront(modal);
+            // Claim is acknowledged as soon as the alert is visibly presented in this tab.
+            acknowledgeScheduledAlert(alert);
+            try { if (typeof playNotificationSound === 'function') playNotificationSound(); } catch (_) {}
+        }
+
+        function closeActivityReminder(deferQueue = false) {
+            const modal = document.getElementById('activityReminderModal');
+            if (modal) {
+                modal.classList.add('hidden');
+                modal.setAttribute('aria-hidden', 'true');
+            }
+            // Keep the alert key in this tab's in-memory seen set after dismissal/open;
+            // a failed acknowledgement must not cause repeated modal prompts in the same session.
             activeActivityReminder = null;
+            window.SPADESModalStack?.refresh();
+            if (!deferQueue) window.setTimeout(() => {
+                if (scheduledAlertQueue.length) showNextScheduledAlert();
+                else pollScheduledAlerts();
+            }, 180);
         }
 
-        function snoozeActivityReminder(minutes = 10) {
-            if (activeActivityReminder) {
-                localStorage.setItem(`${activeActivityReminder.key}:snoozeUntil`, String(Date.now() + minutes * 60 * 1000));
-                localStorage.removeItem(activeActivityReminder.key);
+        async function openActivityReminderRecord() {
+            const alert = activeActivityReminder;
+            if (!alert) return closeActivityReminder();
+            closeActivityReminder(true);
+            if (String(alert.recordType || '').toLowerCase() === 'compliance') {
+                switchTab('matrixCompliances');
+                window.requestAnimationFrame(async () => {
+                    if (!(matrixComplianceRecords || []).some(record => String(record.id) === String(alert.recordId))) await loadMatrixCompliances();
+                    const search = document.getElementById('matrixComplianceSearch');
+                    if (search && search.value) search.value = '';
+                    const recordIndex = (matrixComplianceRecords || []).findIndex(record => String(record.id) === String(alert.recordId));
+                    if (recordIndex >= 0) {
+                        currentMatrixCompliancePage = Math.floor(recordIndex / MATRIX_COMPLIANCES_PER_PAGE) + 1;
+                        renderMatrixCompliances();
+                    }
+                    const tbody = document.getElementById('matrixComplianceTableBody');
+                    const row = tbody ? Array.from(tbody.querySelectorAll('tr')).find(item => String(item.dataset.matrixComplianceId || '') === String(alert.recordId)) : null;
+                    if (row) {
+                        row.scrollIntoView({behavior:'smooth', block:'center'});
+                        row.classList.add('scheduled-alert-row-highlight');
+                        window.setTimeout(() => row.classList.remove('scheduled-alert-row-highlight'), 4500);
+                    } else {
+                        customAlert('The compliance record is no longer available in the register.', 'Record Unavailable');
+                    }
+                    window.setTimeout(() => scheduledAlertQueue.length ? showNextScheduledAlert() : pollScheduledAlerts(), 500);
+                });
+                return;
             }
-            closeActivityReminder();
-        }
-
-        function stopActivityReminder() {
-            if (activeActivityReminder) {
-                localStorage.setItem(activityReminderStoppedKey(activeActivityReminder.activity), 'true');
-            }
-            closeActivityReminder();
+            switchTab('activityManagement');
+            window.requestAnimationFrame(async () => {
+                if (!(allActivities || []).some(activity => String(activity.id) === String(alert.recordId))) await loadActivities();
+                const activity = (allActivities || []).find(item => String(item.id) === String(alert.recordId));
+                if (activity) showActivityDetails(activity.id, false);
+                else customAlert('The scheduled activity is no longer available. Refresh Activity Management to review the latest records.', 'Record Unavailable');
+                window.setTimeout(() => scheduledAlertQueue.length ? showNextScheduledAlert() : pollScheduledAlerts(), 500);
+            });
         }
 
         function startActivityReminderMonitor() {
+            if (activityReminderTimer) return;
+            pollScheduledAlerts();
+            activityReminderTimer = setInterval(pollScheduledAlerts, SCHEDULED_ALERT_POLL_MS);
+        }
+
+        function stopActivityReminderMonitor() {
             if (activityReminderTimer) clearInterval(activityReminderTimer);
-            checkActivityReminders();
-            activityReminderTimer = setInterval(checkActivityReminders, 30000);
+            activityReminderTimer = null;
+            scheduledAlertQueue = [];
+            scheduledAlertQueueKeys.clear();
+            activeActivityReminder = null;
+            const modal = document.getElementById('activityReminderModal');
+            if (modal) modal.classList.add('hidden');
+        }
+
+        function openScheduledAlertRecord(alert) {
+            if (!alert) return;
+            // Browser-native notification clicks use the same authorized in-app route.
+            if (activeActivityReminder && String(activeActivityReminder.alertKey) === String(alert.alertKey)) {
+                openActivityReminderRecord();
+                return;
+            }
+            scheduledAlertQueue = scheduledAlertQueue.filter(item => String(item.alertKey) !== String(alert.alertKey));
+            activeActivityReminder = alert;
+            openActivityReminderRecord();
         }
 
         function chatCredentialPayload() {
@@ -1589,7 +1716,8 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                     username: localStorage.getItem('loggedInUser') || '',
                     credential: localStorage.getItem('loggedCred') || '',
                     message: text,
-                    history: chatbotHistory.slice(-8)
+                    history: chatbotHistory.slice(-8),
+                    currentPage: getCurrentSpadesPageKey()
                 };
                 const response = await fetch(API_URL, {
                     method: 'POST', mode: 'cors',
@@ -1626,10 +1754,36 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             }
         }
 
+        function getCurrentSpadesPageKey() {
+            const routes = [
+                ['dashboard','tabDashboard'],['home','tabHome'],['personnel','tabPersonnel'],
+                ['activityManagement','tabActivityManagement'],['matrixCompliances','tabMatrixCompliances'],
+                ['usersChat','tabUsersChat'],['settings','tabSettings'],['myProfile','tabProfile'],
+                ['adminMgmt','tabAdminMgmt']
+            ];
+            const current = routes.find(([, id]) => { const el = document.getElementById(id); return el && !el.classList.contains('hidden'); });
+            if (!current) return 'unknown';
+            // Include the selected Personnel Management sub-page so the AI can
+            // tailor steps to Personnel List, BMI, Squadding, and other sections.
+            if (current[0] === 'personnel') return 'personnel:' + String(currentPersonnelSubPage || 'list');
+            return current[0];
+        }
+
         function getChatbotResponse(query) {
+            if (query.includes('quick access') || query.includes('gear icon')) return 'The Dashboard Quick Access button and its dedicated panel have been removed. Use the main navigation menu and the existing Dashboard action buttons to reach available functions.';
+            if (query.includes('week view') || query.includes('weekly view')) return 'Activity Management uses Month View only. Weekly recurring activities are still supported; only the calendar Week View display has been removed.';
+            if (query.includes('alert') || query.includes('reminder') || query.includes('notification')) return 'SPADES provides separate in-app reminders at the 3-hour and 1-hour thresholds for eligible scheduled Activities and Matrix of Compliances records. Activity alerts require a valid activity time; Compliance alerts require an explicitly saved Target Time. Alerts run while you are signed in with SPADES open; browser notifications also require prior browser permission.';
+            if (query.includes('compliance')) return 'Open Matrix of Compliances to view the shared compliance calendar and register. Add or edit a record using its Target Date, responsible Office In-charge, and recurrence fields. Target Time is optional; only a saved exact time enables 3-hour and 1-hour reminders. Existing date-only records remain unchanged.';
+            if (query.includes('my files') || query.includes('file browser') || query.includes('upload file')) return 'Open My Files to manage your account workspace, or use the relevant Personnel File Browser for a personnel folder. You can upload, preview, download, and manage supported files. JPEG, PNG, and WebP images are optimized only when a valid smaller output is produced; other file types upload unchanged.';
+            if (query.includes('bmi')) return 'Open Personnel Management, then BMI Monitoring. Use the available personnel list and month-specific BMI entries, subject to your account permissions.';
+            if (query.includes('leave')) return 'Open Personnel Management, then Leave Management to review or manage leave entries available to your account.';
+            if (query.includes('squad')) return 'Open Personnel Management, then Squadding to review the existing squad assignments and related records.';
+            if (query.includes('area of responsibilit') || query.includes('aor')) return 'Open Personnel Management, then Area of Responsibilities to review assigned areas and personnel. Editing and deletion remain subject to record ownership and permissions.';
+            if (query.includes('filter by section') || query.includes('section filter')) return 'Open Personnel Management, then Personnel List. Use the Filter by Section dropdown alongside the existing search and filters. All Sections restores the complete list for the currently selected Active or Archive view.';
+            if (query.includes('compress') || query.includes('upload image') || query.includes('file size')) return 'My Files and supported file-upload interfaces safely optimize JPEG, PNG, and WebP images when the optimized file validates and is smaller. Other formats, including PDF and Office documents, are uploaded unchanged to protect their contents.';
             if (query.includes('memo') || query.includes('control number')) return 'Open Memo Database to encode or review memorandums. Choose Create New Memo, complete the required fields, and submit. After saving, copy the generated control number and use search or filters to locate existing records. Only users with the appropriate permissions can edit or delete records.';
             if (query.includes('duty office') || query.includes('duty sequence')) return 'Go to Personnel Management, then Duty Office. Authorized personnel can open Modify Duty Sequence to search the rotation, add active personnel, remove a name from the rotation, and change order before saving.';
-            if (query.includes('activity')) return 'Open Activity Management to review the monthly calendar. Use Add Activity to encode a schedule and View Data to search, review, or manage activity records, subject to your permissions.';
+            if (query.includes('activity')) return 'Open Activity Management to review the Month View calendar. Event cards show the activity title, time where available, and status; use + MORE to open all activities for a date. Add Activity creates a schedule, and View Data opens existing records. Eligible timed activities have 3-hour and 1-hour in-app reminders while SPADES is open and you are signed in. Weekly recurrence remains supported.';
             if (query.includes('personnel')) return 'Open Personnel Management and choose the relevant sub-page, such as Personnel List, Duty Office, BMI Monitoring, Squadding, Leave Management, or Area of Responsibilities.';
             if (query.includes('admin') || query.includes('user management') || query.includes('permission')) return 'User Management is reserved for the configured Alpha Admin. Access and editing options elsewhere depend on your assigned role and permissions.';
             if (query.includes('profile') || query.includes('password') || query.includes('pin') || query.includes('cover photo')) return 'Open My Profile to review your information. Use Profile Settings or Security & Authentication to update supported account settings. The profile banner can be changed from the Change Cover button.';
@@ -2355,7 +2509,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 if (typeof window.requestIdleCallback === 'function') window.requestIdleCallback(startPostLoginTasks, {timeout: 1200});
                 else window.setTimeout(startPostLoginTasks, 260);
             } else {
-                if (activityReminderTimer) clearInterval(activityReminderTimer);
+                stopActivityReminderMonitor();
                 stopChatNotificationMonitor();
                 toggleAuthViews('loginPage');
             }
@@ -2521,7 +2675,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             lastLogCount = 0;
             if (activityLogRefreshTimer) { clearInterval(activityLogRefreshTimer); activityLogRefreshTimer = null; }
             if (activityRefreshTimer) { clearInterval(activityRefreshTimer); activityRefreshTimer = null; }
-            if (activityReminderTimer) { clearInterval(activityReminderTimer); activityReminderTimer = null; }
+            stopActivityReminderMonitor();
             if (autoLogoutTimer) { clearTimeout(autoLogoutTimer); autoLogoutTimer = null; }
             if (sessionExpiryTimer) { clearTimeout(sessionExpiryTimer); sessionExpiryTimer = null; }
             if (sessionHeartbeatTimer) { clearInterval(sessionHeartbeatTimer); sessionHeartbeatTimer = null; }
@@ -2759,93 +2913,6 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 if (activityPage && !activityPage.classList.contains('hidden')) openActivityModal();
             });
         }
-        function getDashboardQuickAccessItems() {
-            const signedInUser = localStorage.getItem('loggedInUser') || '';
-            const permissionsReady = typeof userAccessMapLoadedFor === 'undefined' || userAccessMapLoadedFor === signedInUser;
-            const pageAllowed = key => key === 'matrixCompliances' ? true : (permissionsReady && (typeof userHasAccess !== 'function' || userHasAccess(key)));
-            const personnelAllowed = pageAllowed('personnel');
-            const items = [
-                {id:'add-memo', label:'Add Memo', icon:'plus', visible:pageAllowed('home')},
-                {id:'memo-database', label:'Memo Database', icon:'document', visible:pageAllowed('home')},
-                {id:'add-personnel', label:'Add Personnel', icon:'user-add', visible:personnelAllowed && canPersonnelAction('list','add')},
-                {id:'personnel-list', label:'Personnel List', icon:'users', visible:personnelAllowed},
-                {id:'bmi-monitoring', label:'BMI Monitoring', icon:'activity', visible:personnelAllowed},
-                {id:'leave-management', label:'Leave Management', icon:'calendar', visible:personnelAllowed},
-                {id:'add-activity', label:'Add Activity', icon:'calendar-plus', visible:pageAllowed('activityManagement') && canManageActivities()},
-                {id:'matrix-compliances', label:'Matrix of Compliances', icon:'table', visible:pageAllowed('matrixCompliances')},
-                {id:'my-files', label:'My Files', icon:'folder', visible:!!localStorage.getItem('loggedInUser')},
-                {id:'user-management', label:'User Management', icon:'settings', visible:isAlphaAdmin()}
-            ];
-            return items.filter(item => item.visible);
-        }
-
-        function renderDashboardQuickAccess() {
-            const panel = document.getElementById('dashboardQuickAccessPanel');
-            if (!panel) return;
-            const icons = {
-                plus:'fi-rr-plus', document:'fi-rr-document', 'user-add':'fi-rr-user-add', users:'fi-rr-users',
-                activity:'fi-rr-heart-rate', calendar:'fi-rr-calendar', 'calendar-plus':'fi-rr-calendar-plus',
-                table:'fi-rr-table-list', folder:'fi-rr-folder-open', settings:'fi-rr-settings'
-            };
-            const items = getDashboardQuickAccessItems();
-            panel.innerHTML = items.map(item => `<button class="dashboard-quick-access-item" data-quick-access="${escapeAttr(item.id)}" onclick="runDashboardQuickAccess('${escapeAttr(item.id)}')" role="menuitem" type="button"><i aria-hidden="true" class="fi ${icons[item.icon] || 'fi-rr-apps'}"></i><span>${escapeHtml(item.label)}</span><i aria-hidden="true" class="fi fi-rr-angle-small-right dashboard-quick-access-arrow"></i></button>`).join('') || '<span class="dashboard-quick-access-empty">No shortcuts are available for this account.</span>';
-        }
-
-        function toggleDashboardQuickAccess(forceOpen) {
-            const panel = document.getElementById('dashboardQuickAccessPanel');
-            const button = document.getElementById('dashboardQuickAccessBtn');
-            if (!panel || !button) return;
-            const open = typeof forceOpen === 'boolean' ? forceOpen : panel.classList.contains('hidden');
-            if (open) renderDashboardQuickAccess();
-            panel.classList.toggle('hidden', !open);
-            panel.setAttribute('aria-hidden', open ? 'false' : 'true');
-            button.setAttribute('aria-expanded', open ? 'true' : 'false');
-            button.classList.toggle('is-open', open);
-            if (open) {
-                if (!toggleDashboardQuickAccess._outsideHandler) {
-                    toggleDashboardQuickAccess._outsideHandler = event => {
-                        const root = document.getElementById('dashboardQuickAccess');
-                        if (root && !root.contains(event.target)) toggleDashboardQuickAccess(false);
-                    };
-                    document.addEventListener('pointerdown', toggleDashboardQuickAccess._outsideHandler, true);
-                }
-                window.requestAnimationFrame(() => panel.querySelector('button')?.focus({preventScroll:true}));
-            }
-        }
-
-        function dashboardQuickAccessKeydown(event) {
-            if (event && event.key === 'Escape') {
-                toggleDashboardQuickAccess(false);
-                document.getElementById('dashboardQuickAccessBtn')?.focus({preventScroll:true});
-            }
-        }
-
-        function runDashboardQuickAccess(action) {
-            toggleDashboardQuickAccess(false);
-            const openPersonnel = sub => {
-                switchTab('personnel');
-                window.requestAnimationFrame(() => {
-                    const page = document.getElementById('tabPersonnel');
-                    if (!page || page.classList.contains('hidden')) return;
-                    switchPersonnelSubPage(sub === 'add' ? 'list' : (sub || 'list'));
-                    if (sub === 'add') openPersonnelModal();
-                });
-            };
-            switch (action) {
-                case 'add-memo': dashboardAddMemo(); break;
-                case 'memo-database': switchTab('home'); break;
-                case 'add-personnel': openPersonnel('add'); break;
-                case 'personnel-list': openPersonnel('list'); break;
-                case 'bmi-monitoring': openPersonnel('bmi'); break;
-                case 'leave-management': openPersonnel('leave'); break;
-                case 'add-activity': dashboardAddActivity(); break;
-                case 'matrix-compliances': switchTab('matrixCompliances'); break;
-                case 'my-files': openMyFilesModal(); break;
-                case 'user-management': if (isAlphaAdmin()) switchTab('adminMgmt'); else customAlert('Only Alpha Admin can access User Management.', 'Permission Denied'); break;
-                default: break;
-            }
-        }
-
         function closeMemoModal() { document.getElementById('memoSubmissionModal').classList.add('hidden'); }
         function toggleAdminCredentialVisibility() {
             const input = document.getElementById('adminPassInput');
@@ -3287,7 +3354,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             const currentUser = localStorage.getItem('loggedInUser') || 'Current account';
             const accountLabel = document.getElementById('matrixComplianceAccountLabel');
             if (accountLabel) accountLabel.textContent = currentUser;
-            if (tbody) tbody.innerHTML = '<tr><td colspan="8" class="matrix-compliance-empty"><span class="matrix-compliance-loading" aria-hidden="true"></span> Loading the compliance register…</td></tr>';
+            if (tbody) tbody.innerHTML = '<tr><td colspan="9" class="matrix-compliance-empty"><span class="matrix-compliance-loading" aria-hidden="true"></span> Loading the compliance register…</td></tr>';
             setMatrixComplianceNotice('Connecting to the shared compliance register…');
             try {
                 const result = await postPersonnelMutation(matrixComplianceAuthPayload('get_matrix_compliances'));
@@ -3312,7 +3379,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 matrixComplianceRecords = [];
                 matrixComplianceReadOnly = true;
                 renderMatrixComplianceCalendar();
-                if (tbody) tbody.innerHTML = '<tr><td colspan="8" class="matrix-compliance-empty matrix-compliance-error">Unable to load the compliance register. ' + escapeHtml(error.message || 'Please retry.') + '</td></tr>';
+                if (tbody) tbody.innerHTML = '<tr><td colspan="9" class="matrix-compliance-empty matrix-compliance-error">Unable to load the compliance register. ' + escapeHtml(error.message || 'Please retry.') + '</td></tr>';
                 document.getElementById('matrixCompliancePagination')?.classList.add('hidden');
                 setMatrixComplianceNotice(error.message || 'Unable to connect to the compliance service.', 'error');
                 const addButton = document.getElementById('matrixComplianceAddBtn');
@@ -3325,7 +3392,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             if (!tbody) return;
             const search = String(document.getElementById('matrixComplianceSearch')?.value || '').trim().toLowerCase();
             const matchingRows = matrixComplianceRecords.filter(record => {
-                const haystack = [record.compliance, record.officeInCharge, record.actionTaken, record.targetDate, record.frequency, record.encodedBy].join(' ').toLowerCase();
+                const haystack = [record.compliance, record.officeInCharge, record.actionTaken, record.targetDate, record.targetTime, record.frequency, record.encodedBy].join(' ').toLowerCase();
                 return !search || haystack.includes(search);
             });
             const pagination = document.getElementById('matrixCompliancePagination');
@@ -3337,7 +3404,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 const message = matrixComplianceRecords.length
                     ? 'No compliance records match your search.'
                     : 'No compliance entries yet. Select Add Compliance to record the first requirement.';
-                tbody.innerHTML = '<tr><td colspan="8" class="matrix-compliance-empty"><i class="fi fi-rr-clipboard-list"></i><span>' + escapeHtml(message) + '</span></td></tr>';
+                tbody.innerHTML = '<tr><td colspan="9" class="matrix-compliance-empty"><i class="fi fi-rr-clipboard-list"></i><span>' + escapeHtml(message) + '</span></td></tr>';
                 if (pagination) pagination.classList.add('hidden');
                 return;
             }
@@ -3355,14 +3422,16 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 const actionTaken = escapeHtml(record.actionTaken || 'Not yet recorded');
                 const encodedBy = escapeHtml(record.encodedBy || 'Unknown');
                 const targetDate = formatMatrixComplianceDate(record.targetDate);
+                const targetTime = record.targetTime ? formatActivityTime(record.targetTime) : '—';
                 const lastUpdated = formatMatrixComplianceDate(record.updatedAt || record.createdAt, true);
                 const recurrence = matrixComplianceFrequencyLabel(record.frequency);
                 const recurrenceText = recurrence === 'None' ? 'One-time' : recurrence + (record.recurrenceUntil ? ` · until ${formatMatrixComplianceDate(record.recurrenceUntil)}` : ' · ongoing');
                 const canManage = !matrixComplianceReadOnly && (matrixComplianceIsAlphaAdmin || String(record.encodedBy || '').trim().toLowerCase() === currentUser);
                 const disabled = canManage ? '' : ' disabled aria-disabled="true"';
-                return '<tr>'
+                return '<tr data-matrix-compliance-id="' + encodedId + '">'
                     + '<td class="matrix-compliance-main-cell"><strong>' + compliance + '</strong></td>'
                     + '<td class="matrix-compliance-date-cell">' + escapeHtml(targetDate) + '</td>'
+                    + '<td class="matrix-compliance-time-cell">' + escapeHtml(targetTime) + '</td>'
                     + '<td class="matrix-compliance-office-cell">' + office + '</td>'
                     + '<td class="matrix-compliance-action-cell">' + actionTaken + '</td>'
                     + '<td class="matrix-compliance-recurrence-cell">' + escapeHtml(recurrenceText) + '</td>'
@@ -3396,6 +3465,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             const compliance = document.getElementById('matrixComplianceText');
             const target = document.getElementById('matrixComplianceTargetDate');
             const office = document.getElementById('matrixComplianceOfficeInCharge');
+            const targetTime = document.getElementById('matrixComplianceTargetTime');
             const action = document.getElementById('matrixComplianceActionTaken');
             const frequency = document.getElementById('matrixComplianceFrequency');
             const repeatUntil = document.getElementById('matrixComplianceRepeatUntil');
@@ -3403,6 +3473,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             if (title) title.textContent = record ? 'Edit Compliance' : 'Add Compliance';
             if (compliance) compliance.value = record ? String(record.compliance || '') : '';
             if (target) target.value = record ? String(record.targetDate || '').slice(0, 10) : '';
+            if (targetTime) targetTime.value = record ? String(record.targetTime || '').slice(0, 5) : '';
             if (office) office.value = record ? String(record.officeInCharge || '') : '';
             if (action) action.value = record ? String(record.actionTaken || '') : '';
             if (frequency) frequency.value = matrixComplianceFrequencyLabel(record && record.frequency);
@@ -3439,6 +3510,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             const wasEditing = !!matrixComplianceEditingId;
             const compliance = String(document.getElementById('matrixComplianceText')?.value || '').trim();
             const targetDate = String(document.getElementById('matrixComplianceTargetDate')?.value || '').trim();
+            const targetTime = String(document.getElementById('matrixComplianceTargetTime')?.value || '').trim();
             const officeInCharge = String(document.getElementById('matrixComplianceOfficeInCharge')?.value || '').trim();
             const actionTaken = String(document.getElementById('matrixComplianceActionTaken')?.value || '').trim();
             const frequency = matrixComplianceFrequencyLabel(document.getElementById('matrixComplianceFrequency')?.value);
@@ -3452,7 +3524,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             if (saveLabel) saveLabel.textContent = 'Saving…';
             try {
                 const action = matrixComplianceEditingId ? 'update_matrix_compliance' : 'add_matrix_compliance';
-                const payload = matrixComplianceAuthPayload(action, {compliance, targetDate, officeInCharge, actionTaken, frequency, recurrenceUntil});
+                const payload = matrixComplianceAuthPayload(action, {compliance, targetDate, targetTime, officeInCharge, actionTaken, frequency, recurrenceUntil});
                 if (matrixComplianceEditingId) payload.id = matrixComplianceEditingId;
                 await postPersonnelMutation(payload);
                 closeMatrixComplianceModal();
@@ -4524,14 +4596,85 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 return { activity, archived, locked: isActivityMarkedDone(activity) || archived || pastOccurrence };
             });
         }
-        function bindActivityCalendarDetails(host) {
-            host.querySelectorAll('[data-activity-details-id]').forEach(button => {
-                button.addEventListener('click', () => showActivityDetails(
-                    button.dataset.activityDetailsId,
-                    button.dataset.activityOccurrenceLocked === 'true'
-                ));
+        function sortActivityCalendarMatches(matches) {
+            return (Array.isArray(matches) ? matches : []).slice().sort((left, right) => {
+                const leftRange = getActivityTimeRange(left.activity);
+                const rightRange = getActivityTimeRange(right.activity);
+                const leftTime = leftRange.start == null ? Number.MAX_SAFE_INTEGER : leftRange.start;
+                const rightTime = rightRange.start == null ? Number.MAX_SAFE_INTEGER : rightRange.start;
+                if (leftTime !== rightTime) return leftTime - rightTime;
+                return String(left.activity.activityTitle || '').localeCompare(String(right.activity.activityTitle || ''));
             });
         }
+
+        function activityCalendarStatusClass(status, archived, locked) {
+            if (archived || /^(archive|archived|done|complete|completed|finished|closed|cancelled|canceled)$/.test(String(status || '').trim().toLowerCase())) return 'is-closed';
+            const normalized = String(status || '').trim().toLowerCase();
+            if (normalized === 'ongoing' || normalized === 'active') return 'is-ongoing';
+            if (normalized === 'recurring') return 'is-recurring';
+            return locked ? 'is-locked' : 'is-scheduled';
+        }
+
+        function activityCalendarEventMarkup(item) {
+            const activity = item.activity || {};
+            const archived = !!item.archived;
+            const locked = !!item.locked;
+            const activityName = String(activity.activityTitle || 'Untitled activity');
+            const statusLabel = archived ? 'Archived' : String(activity.status || activityStatusForDate(activity.date) || 'Scheduled');
+            const rawTime = String(activity.time || '').trim();
+            const firstTime = rawTime.split(/\s*(?:-|–|to)\s*/i)[0] || '';
+            const timeValue = activityTimeForInput(firstTime) || activityTimeForInput(formatActivityTime(firstTime));
+            const timeLabel = timeValue ? formatActivityTime(timeValue) : '';
+            const statusClass = activityCalendarStatusClass(statusLabel, archived, locked);
+            return `<button type="button" class="activity-overview-event-text activity-calendar-event-card ${statusClass}${locked ? ' is-occurrence-locked' : ''}" data-activity-details-id="${escapeAttr(activity.id)}" data-activity-occurrence-locked="${locked ? 'true' : 'false'}" title="${locked ? 'Read-only occurrence · ' : ''}${escapeAttr(activityName)}" aria-label="${locked ? 'Read-only. ' : ''}${escapeAttr(statusLabel)} activity: ${escapeAttr(activityName)}${timeLabel ? ', ' + escapeAttr(timeLabel) : ''}">
+                <span class="activity-calendar-event-meta">${timeLabel ? `<span class="activity-calendar-event-time">${escapeHtml(timeLabel)}</span>` : '<span class="activity-calendar-event-time is-unspecified">Time not set</span>'}<span class="activity-calendar-event-status">${escapeHtml(statusLabel)}</span></span>
+                <span class="activity-calendar-event-title">${locked ? '<i class="fi fi-rr-lock activity-lock-icon" aria-hidden="true"></i>' : ''}${escapeHtml(activityName)}${archived ? ' <span class="activity-overview-archive-label">(Archived)</span>' : ''}</span>
+            </button>`;
+        }
+
+        function bindActivityCalendarDetails(host) {
+            if (!host) return;
+            host.querySelectorAll('[data-activity-details-id]').forEach(button => {
+                button.addEventListener('click', () => {
+                    if (button.closest('#activityDayListBody')) closeActivityDayList();
+                    showActivityDetails(
+                        button.dataset.activityDetailsId,
+                        button.dataset.activityOccurrenceLocked === 'true'
+                    );
+                });
+            });
+            host.querySelectorAll('[data-activity-day-more]').forEach(button => {
+                button.addEventListener('click', () => showActivityDayList(button.dataset.activityDayMore));
+            });
+        }
+
+        function showActivityDayList(dateKey) {
+            const date = new Date(String(dateKey || '') + 'T00:00:00');
+            if (Number.isNaN(date.getTime())) return;
+            const matches = sortActivityCalendarMatches(activityMatchesOnDate(date));
+            const modal = document.getElementById('activityDayListModal');
+            const title = document.getElementById('activityDayListTitle');
+            const body = document.getElementById('activityDayListBody');
+            if (!modal || !title || !body) return;
+            title.textContent = `Activities · ${date.toLocaleDateString(undefined, {year:'numeric', month:'long', day:'numeric'})}`;
+            body.innerHTML = matches.length
+                ? matches.map(activityCalendarEventMarkup).join('')
+                : '<div class="activity-day-list-empty">No activities are scheduled for this date.</div>';
+            modal.classList.remove('hidden');
+            modal.setAttribute('aria-hidden', 'false');
+            window.SPADESModalStack?.bringToFront(modal);
+            bindActivityCalendarDetails(body);
+        }
+
+        function closeActivityDayList() {
+            const modal = document.getElementById('activityDayListModal');
+            if (modal) {
+                modal.classList.add('hidden');
+                modal.setAttribute('aria-hidden', 'true');
+            }
+            window.SPADESModalStack?.refresh();
+        }
+
         function renderActivityOverviewCalendar() {
             const host = document.getElementById('activityOverviewCalendar');
             const title = document.getElementById('activityOverviewMonthTitle');
@@ -4547,14 +4690,15 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 const raw = i - first + 1;
                 const date = raw < 1 ? new Date(year, month - 1, previousCount + raw) : raw > count ? new Date(year, month + 1, raw - count) : new Date(year, month, raw);
                 const key = localDateKey(date), other = date.getMonth() !== month;
-                const matches = activityMatchesOnDate(date);
-                const activityTextList = matches.map(({activity, archived, locked}) => {
-                    const activityName = String(activity.activityTitle || 'Untitled activity');
-                    const statusLabel = archived ? 'Archived' : String(activity.status || activityStatusForDate(activity.date) || 'Ongoing');
-                    return `<button type="button" class="activity-overview-event-text${archived ? ' is-archived' : ''}${locked ? ' is-locked' : ''}" data-activity-details-id="${escapeAttr(activity.id)}" data-activity-occurrence-locked="${locked ? 'true' : 'false'}" title="${locked ? 'Completed or archived · ' : ''}View ${escapeAttr(statusLabel.toLowerCase())} activity details: ${escapeAttr(activityName)}" aria-label="${locked ? 'Locked completed activity. ' : ''}View ${escapeAttr(statusLabel.toLowerCase())} activity details for ${escapeAttr(activityName)}">${locked ? '<i class="fi fi-rr-lock activity-lock-icon" aria-hidden="true"></i>' : ''}${escapeHtml(activityName)}${archived ? ' <span class="activity-overview-archive-label">(Archived)</span>' : ''}</button>`;
-                }).join('');
+                const matches = sortActivityCalendarMatches(activityMatchesOnDate(date));
+                const visibleMatches = matches.slice(0, 2);
+                const activityTextList = visibleMatches.map(activityCalendarEventMarkup).join('');
+                const overflowCount = Math.max(0, matches.length - visibleMatches.length);
+                const overflowButton = overflowCount
+                    ? `<button type="button" class="activity-calendar-more-button" data-activity-day-more="${escapeAttr(key)}" aria-label="View ${overflowCount} more activities scheduled on ${escapeAttr(key)}">+${overflowCount} MORE</button>`
+                    : '';
                 const lockedDate = matches.length > 0 && matches.every(item => item.locked);
-                html += `<div class="activity-overview-day${other ? ' is-other-month' : ''}${key === today ? ' is-today' : ''}${lockedDate ? ' is-locked-date' : ''}"><span class="activity-overview-day-number">${date.getDate()}${lockedDate ? ' <i class="fi fi-rr-lock" aria-label="Completed date locked"></i>' : ''}</span>${activityTextList ? `<div class="activity-overview-events activity-day-text-list" aria-label="Activities scheduled on ${escapeAttr(key)}">${activityTextList}</div>` : ''}</div>`;
+                html += `<div class="activity-overview-day${other ? ' is-other-month' : ''}${key === today ? ' is-today' : ''}${lockedDate ? ' is-locked-date' : ''}"><span class="activity-overview-day-number">${date.getDate()}${lockedDate ? ' <i class="fi fi-rr-lock" aria-label="Completed date locked"></i>' : ''}</span>${activityTextList || overflowButton ? `<div class="activity-overview-events activity-day-text-list" aria-label="Activities scheduled on ${escapeAttr(key)}">${activityTextList}${overflowButton}</div>` : ''}</div>`;
             }
             host.classList.add('activity-month-view-host');
             host.innerHTML = html;
@@ -4684,7 +4828,6 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 renderArchivedActivities();
                 renderActivityOverviewCalendar();
                 updateActivityPermissions();
-                startActivityReminderMonitor();
                 if (!document.getElementById('tabDashboard').classList.contains('hidden')) renderExecutiveDashboard();
             } catch(e) {
                 console.error(e);
