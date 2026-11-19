@@ -272,6 +272,8 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         }
         
         let allMemos = [];
+        let dashboardSummaryCache = null;
+        let dashboardSummaryPromise = null;
         let filteredMemos = [];
         let currentMemoPage = 1;
         
@@ -1741,7 +1743,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         function applyProfileCover(coverUrl) {
             const cover = document.getElementById('profileCoverBanner');
             if (!cover) return;
-            const fallback = 'url("images/SPADES%20Banner.jpg")';
+            const fallback = 'image-set(url("images/SPADES%20Banner.webp") type("image/webp"), url("images/SPADES%20Banner.jpg") type("image/jpeg"))';
             const selected = String(coverUrl || '').trim();
             // Keep the banner visible if a saved cloud-storage image is missing or blocked.
             cover.style.backgroundImage = selected
@@ -2393,6 +2395,9 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
 
         function attemptLogout() { if (userSettings.confirmLogout) { customConfirm("Are you sure you want to log out of the system?", (confirmed) => { if (confirmed) logoutUser(false); }); } else { logoutUser(false); } }
         function logoutUser(force = false) {
+            dashboardSummaryCache = null;
+            liveActivityLogs = [];
+            
             const currentUser = localStorage.getItem('loggedInUser');
             const currentToken = localStorage.getItem('loggedCred') || '';
             if (currentUser && currentToken) {
@@ -4233,6 +4238,12 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             }
             renderActivityOverviewCalendar();
         }
+        function goToActivityOverviewToday() {
+            const today = new Date();
+            if (activityOverviewMode === 'week') activityOverviewWeekStart = getActivityWeekStart(today);
+            else activityOverviewMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+            renderActivityOverviewCalendar();
+        }
 
         function activityAnchorDates(activity) {
             return String(activity && activity.date || '').split(',').map(v => v.trim().slice(0, 10)).filter(v => /^\d{4}-\d{2}-\d{2}$/.test(v));
@@ -4359,18 +4370,40 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 const d = new Date(start); d.setDate(start.getDate()+index); return d;
             });
             const end = days[6];
-            title.textContent = `${start.toLocaleDateString(undefined,{month:'short',day:'numeric'})} – ${end.toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'})}`;
-            const firstMinute = 6 * 60, lastMinute = 22 * 60, pxPerMinute = 0.72;
-            const hourLabels = Array.from({length:17},(_,i)=>`<div class="activity-week-hour" style="top:${i*60*pxPerMinute}px">${String((i+6)%24).padStart(2,'0')}:00</div>`).join('');
-            const dayColumns = days.map((date,dayIndex) => {
+            const sameMonth = start.getMonth() === end.getMonth() && start.getFullYear() === end.getFullYear();
+            const rangeStart = start.toLocaleDateString(undefined,{month:'short',day:'numeric'});
+            const rangeEnd = end.toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'});
+            title.textContent = sameMonth
+                ? `${start.toLocaleDateString(undefined,{month:'long'})} ${start.getDate()}–${end.getDate()}, ${end.getFullYear()}`
+                : `${rangeStart} – ${rangeEnd}`;
+
+            const firstMinute = 6 * 60;
+            const lastMinute = 22 * 60;
+            const pxPerMinute = 0.8;
+            const timelineHeight = (lastMinute - firstMinute) * pxPerMinute;
+            const todayKey = localDateKey(new Date());
+            const now = new Date();
+            const nowMinutes = now.getHours() * 60 + now.getMinutes();
+            const showNowLine = nowMinutes >= firstMinute && nowMinutes <= lastMinute;
+            const hourLabel = hour => hour === 12 ? '12 PM' : hour < 12 ? `${hour} AM` : `${hour - 12} PM`;
+            const hourLabels = Array.from({length:17},(_,i) => {
+                const hour = i + 6;
+                const top = i * 60 * pxPerMinute;
+                return `<div class="activity-week-hour" style="top:${top}px"><span>${hourLabel(hour)}</span></div>`;
+            }).join('');
+
+            const dayData = days.map(date => {
                 const matches = activityMatchesOnDate(date);
-                const timed = [], untimed = [];
+                const timed = [];
+                const untimed = [];
                 matches.forEach(match => {
                     const range = getActivityTimeRange(match.activity);
                     const entry = {...match, range};
                     if (range.start == null) untimed.push(entry); else timed.push(entry);
                 });
-                timed.sort((a,b)=>a.range.start-b.range.start || a.range.end-b.range.end);
+                timed.sort((a,b) => a.range.start - b.range.start || a.range.end - b.range.end);
+
+                // Assign the first available lane so overlapping events remain readable.
                 const laneEnds = [];
                 timed.forEach(item => {
                     let lane = laneEnds.findIndex(endMinute => endMinute <= item.range.start);
@@ -4378,31 +4411,106 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                     laneEnds[lane] = item.range.end;
                     item.lane = lane;
                 });
-                const laneCount = Math.max(1,laneEnds.length);
-                const topEvents = untimed.map(item => {
+                return {
+                    date,
+                    key: localDateKey(date),
+                    matches,
+                    timed,
+                    untimed,
+                    laneCount: Math.max(1,laneEnds.length),
+                    locked: matches.length > 0 && matches.every(item => item.locked)
+                };
+            });
+
+            // One shared all-day lane height keeps every day's hourly grid perfectly aligned.
+            const maxAllDayItems = Math.max(0, ...dayData.map(day => day.untimed.length));
+            const allDayHeight = Math.min(144, Math.max(68, 38 + maxAllDayItems * 27));
+            const totalOccurrences = dayData.reduce((sum,day) => sum + day.matches.length, 0);
+            const lockedOccurrences = dayData.reduce((sum,day) => sum + day.matches.filter(item => item.locked).length, 0);
+            const timedOccurrences = dayData.reduce((sum,day) => sum + day.timed.length, 0);
+            const allDayOccurrences = dayData.reduce((sum,day) => sum + day.untimed.length, 0);
+
+            const dayHeaders = dayData.map(day => {
+                const weekday = day.date.toLocaleDateString(undefined,{weekday:'short'}).toUpperCase();
+                const weekend = day.date.getDay() === 0 || day.date.getDay() === 6;
+                const today = day.key === todayKey;
+                return `<div class="activity-week-day-header${today?' is-today':''}${weekend?' is-weekend':''}" aria-label="${escapeAttr(day.date.toLocaleDateString(undefined,{weekday:'long',month:'long',day:'numeric',year:'numeric'}))}">
+                    <span class="activity-week-day-name">${weekday}</span>
+                    <span class="activity-week-day-date">${day.date.getDate()}</span>
+                    <span class="activity-week-day-count">${day.matches.length ? `${day.matches.length} ${day.matches.length === 1 ? 'item' : 'items'}` : 'No events'}</span>
+                    ${today ? '<span class="activity-week-today-tag">TODAY</span>' : ''}
+                </div>`;
+            }).join('');
+
+            const dayColumns = dayData.map(day => {
+                const topEvents = day.untimed.map(item => {
                     const name = String(item.activity.activityTitle || 'Untitled activity');
                     const color = activityWeekColor(item.activity);
-                    return `<button type="button" class="activity-week-all-day-event${item.locked?' is-locked':''}" style="--week-event-color:${color}" data-activity-details-id="${escapeAttr(item.activity.id)}" data-activity-occurrence-locked="${item.locked?'true':'false'}" title="${escapeAttr(item.range.label)} · ${escapeAttr(name)}">${item.locked?'<i class="fi fi-rr-lock" aria-hidden="true"></i> ':''}${escapeHtml(name)}</button>`;
+                    const status = item.locked ? 'Completed / archived · read-only' : 'Open activity details';
+                    return `<button type="button" class="activity-week-all-day-event${item.locked?' is-locked':''}" style="--week-event-color:${color}" data-activity-details-id="${escapeAttr(item.activity.id)}" data-activity-occurrence-locked="${item.locked?'true':'false'}" title="${escapeAttr(status)} · ${escapeAttr(name)}" aria-label="${escapeAttr(status)}: ${escapeAttr(name)}">${item.locked?'<i class="fi fi-rr-lock" aria-hidden="true"></i> ':''}<span>${escapeHtml(name)}</span></button>`;
                 }).join('');
-                const positioned = timed.map(item => {
+
+                const positioned = day.timed.map(item => {
                     const startMinute = Math.max(firstMinute,item.range.start);
                     const endMinute = Math.min(lastMinute,item.range.end);
-                    if (endMinute <= firstMinute || startMinute >= lastMinute) return '';
+                    if (endMinute <= firstMinute || startMinute >= lastMinute || endMinute <= startMinute) return '';
                     const top = (startMinute-firstMinute)*pxPerMinute;
-                    const height = Math.max(26,(endMinute-startMinute)*pxPerMinute);
-                    const width = 100/laneCount;
+                    const height = Math.max(28,(endMinute-startMinute)*pxPerMinute);
+                    const width = 100/day.laneCount;
                     const left = item.lane*width;
                     const name = String(item.activity.activityTitle || 'Untitled activity');
                     const color = activityWeekColor(item.activity);
-                    return `<button type="button" class="activity-week-event${item.locked?' is-locked':''}" style="--week-event-color:${color};top:${top}px;height:${height}px;left:calc(${left}% + 2px);width:calc(${width}% - 4px)" data-activity-details-id="${escapeAttr(item.activity.id)}" data-activity-occurrence-locked="${item.locked?'true':'false'}" title="${escapeAttr(name)} · ${escapeAttr(item.range.label)}"><strong>${item.locked?'<i class="fi fi-rr-lock" aria-hidden="true"></i> ':''}${escapeHtml(name)}</strong><span>${escapeHtml(item.range.label)}</span></button>`;
+                    const compact = height < 48;
+                    const status = item.locked ? 'Completed / archived · read-only' : 'Open activity details';
+                    return `<button type="button" class="activity-week-event${item.locked?' is-locked':''}${compact?' is-compact':''}" style="--week-event-color:${color};top:${top}px;height:${height}px;left:calc(${left}% + 3px);width:calc(${width}% - 6px)" data-activity-details-id="${escapeAttr(item.activity.id)}" data-activity-occurrence-locked="${item.locked?'true':'false'}" title="${escapeAttr(name)} · ${escapeAttr(item.range.label)}" aria-label="${escapeAttr(status)}: ${escapeAttr(name)}, ${escapeAttr(item.range.label)}"><strong>${item.locked?'<i class="fi fi-rr-lock" aria-hidden="true"></i> ':''}${escapeHtml(name)}</strong>${compact?'':`<span>${escapeHtml(item.range.label)}</span>`}</button>`;
                 }).join('');
-                const dateKey = localDateKey(date);
-                const lockedDate = matches.length > 0 && matches.every(item => item.locked);
-                return `<div class="activity-week-day-col${dateKey===localDateKey(new Date())?' is-today':''}${lockedDate?' is-locked-date':''}"><div class="activity-week-all-day">${topEvents || '<span class="activity-week-empty-label">No all-day activity</span>'}</div><div class="activity-week-day-body"><div class="activity-week-grid-lines" aria-hidden="true"></div>${positioned || ''}</div></div>`;
+
+                const nowMarker = day.key === todayKey && showNowLine
+                    ? `<div class="activity-week-now-line" style="top:${(nowMinutes-firstMinute)*pxPerMinute}px" aria-label="Current time"></div>`
+                    : '';
+                return `<div class="activity-week-day-col${day.key===todayKey?' is-today':''}${day.locked?' is-locked-date':''}${day.date.getDay()===0||day.date.getDay()===6?' is-weekend':''}">
+                    <div class="activity-week-all-day" style="height:${allDayHeight}px">${topEvents || '<span class="activity-week-empty-label">No all-day activities</span>'}</div>
+                    <div class="activity-week-day-body" style="height:${timelineHeight}px">
+                        <div class="activity-week-grid-lines" aria-hidden="true"></div>
+                        ${nowMarker}
+                        ${positioned || ''}
+                    </div>
+                </div>`;
             }).join('');
+
+            const nowSummary = totalOccurrences === 0
+                ? 'No activities scheduled this week'
+                : `${totalOccurrences} scheduled ${totalOccurrences === 1 ? 'occurrence' : 'occurrences'} this week`;
             host.classList.remove('activity-month-view-host');
             host.classList.add('activity-week-view-host');
-            host.innerHTML = `<div class="activity-week-scroll"><div class="activity-week-view"><div class="activity-week-header-spacer"></div><div class="activity-week-header-days">${days.map(date=>`<div class="activity-week-day-header"><strong>${date.toLocaleDateString(undefined,{weekday:'short'})}</strong><span>${date.getDate()}</span></div>`).join('')}</div><div class="activity-week-body"><div class="activity-week-time-axis">${hourLabels}</div><div class="activity-week-columns">${dayColumns}</div></div></div></div><div class="activity-week-legend"><span><i class="activity-week-legend-swatch"></i>Activity block height represents scheduled duration</span><span><i class="fi fi-rr-lock" aria-hidden="true"></i> Completed / archived · read-only</span></div>`;
+            host.innerHTML = `
+                <div class="activity-week-summary-bar">
+                    <div class="activity-week-summary-copy"><strong>Weekly schedule</strong><span>${escapeHtml(nowSummary)}</span></div>
+                    <div class="activity-week-summary-metrics">
+                        <span><i class="activity-week-metric-dot is-timed"></i>${timedOccurrences} timed</span>
+                        <span><i class="activity-week-metric-dot is-allday"></i>${allDayOccurrences} all-day</span>
+                        <span><i class="fi fi-rr-lock" aria-hidden="true"></i>${lockedOccurrences} read-only</span>
+                    </div>
+                    <button type="button" class="activity-week-today-btn" onclick="goToActivityOverviewToday()"><i class="fi fi-rr-calendar-day" aria-hidden="true"></i> Today</button>
+                </div>
+                <div class="activity-week-scroll" style="--activity-week-all-day-height:${allDayHeight}px;--activity-week-timeline-height:${timelineHeight}px">
+                    <div class="activity-week-view">
+                        <div class="activity-week-header-spacer"><span>TIME</span></div>
+                        <div class="activity-week-header-days">${dayHeaders}</div>
+                        <div class="activity-week-body">
+                            <div class="activity-week-axis-column">
+                                <div class="activity-week-all-day-axis" style="height:${allDayHeight}px"><span>ALL DAY</span></div>
+                                <div class="activity-week-time-axis" style="height:${timelineHeight}px">${hourLabels}</div>
+                            </div>
+                            <div class="activity-week-columns">${dayColumns}</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="activity-week-legend">
+                    <span><i class="activity-week-legend-swatch"></i>Activity block height represents scheduled duration</span>
+                    <span><i class="fi fi-rr-lock" aria-hidden="true"></i>Completed / archived activities are read-only</span>
+                    <span><i class="activity-week-now-swatch"></i>Current time</span>
+                </div>`;
             bindActivityCalendarDetails(host);
         }
 
@@ -4715,98 +4823,156 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         }
 
         function renderExecutiveDashboard() {
-            const totalMemos = allMemos.length;
-            const organicPersonnel = (allPersonnel || []).filter(p => {
-                const s = String(p.section || '').trim().toLowerCase();
-                return s !== 'detached service' && s !== 'ds to other office/unit';
+            const summary = dashboardSummaryCache;
+            const organicPersonnel = summary ? null : (allPersonnel || []).filter(p => {
+                const section = String(p.section || '').trim().toLowerCase();
+                return section !== 'detached service' && section !== 'ds to other office/unit';
             });
-            const detachedPersonnel = (allPersonnel || []).filter(p => String(p.section || '').trim().toLowerCase() === 'detached service');
-            const dsOtherPersonnel = (allPersonnel || []).filter(p => String(p.section || '').trim().toLowerCase() === 'ds to other office/unit');
-            const totalPersonnel = organicPersonnel.length + detachedPersonnel.length + dsOtherPersonnel.length;
-            const totalActivities = (allActivities || []).length;
-            const totalCompliances = (matrixComplianceRecords || []).length;
+            const detachedPersonnel = summary ? null : (allPersonnel || []).filter(p => String(p.section || '').trim().toLowerCase() === 'detached service');
+            const dsOtherPersonnel = summary ? null : (allPersonnel || []).filter(p => String(p.section || '').trim().toLowerCase() === 'ds to other office/unit');
+            const totalMemos = summary ? Number(summary.memos?.total || 0) : allMemos.length;
+            const totalPersonnel = summary ? Number(summary.personnel?.total || 0) : (organicPersonnel.length + detachedPersonnel.length + dsOtherPersonnel.length);
+            const totalActivities = summary ? (Array.isArray(summary.activities) ? summary.activities.length : 0) : (allActivities || []).length;
+            const totalCompliances = summary ? Number(summary.complianceCount || 0) : (matrixComplianceRecords || []).length;
 
-            document.getElementById('execTotalMemos').innerText = totalMemos;
-            document.getElementById('execTotalPersonnel').innerText = totalPersonnel;
-            document.getElementById('execTotalActivities').innerText = totalActivities;
+            const totalMemosEl = document.getElementById('execTotalMemos');
+            const totalPersonnelEl = document.getElementById('execTotalPersonnel');
+            const totalActivitiesEl = document.getElementById('execTotalActivities');
+            if (totalMemosEl) totalMemosEl.innerText = totalMemos;
+            if (totalPersonnelEl) totalPersonnelEl.innerText = totalPersonnel;
+            if (totalActivitiesEl) totalActivitiesEl.innerText = totalActivities;
             const complianceKpi = document.getElementById('execTotalCompliances');
             if (complianceKpi) complianceKpi.innerText = totalCompliances;
 
-            const encoders = execCountMap(allMemos, r => r[3]);
-            document.getElementById('execEncoderCount').innerText = Object.keys(encoders).length;
-
-            const memoOffices = execCountMap(allMemos, r => r[1]);
-            const personnelSections = execCountMap(organicPersonnel, p => p.section);
-            const categories = {};
-            allMemos.forEach(r => {
-                const c = String(r[2] || '');
-                const m = c.match(/RHSU\(([^)]+)\)/i);
-                const key = m ? m[1] : (c || 'Uncategorized');
-                categories[key] = (categories[key] || 0) + 1;
-            });
+            const encoders = summary ? (summary.memos?.encoders || {}) : execCountMap(allMemos, row => row[3]);
+            const categories = summary ? (summary.memos?.categories || {}) : (() => {
+                const counts = {};
+                allMemos.forEach(row => {
+                    const control = String(row[2] || '');
+                    const match = control.match(/RHSU\(([^)]+)\)/i);
+                    const key = match ? match[1] : (control || 'Uncategorized');
+                    counts[key] = (counts[key] || 0) + 1;
+                });
+                return counts;
+            })();
+            const encoderCount = document.getElementById('execEncoderCount');
+            if (encoderCount) encoderCount.innerText = Object.keys(encoders).length;
             execRenderList('execMemoCategories', categories, totalMemos);
             execRenderList('execMemoEncoders', encoders, totalMemos);
 
-            const groups = { PNCO:0, PCO:0, NUP:0, Other:0 };
-            organicPersonnel.forEach(p => {
-                const g = rankGroup(p.rank);
-                groups[g] = (groups[g] || 0) + 1;
-            });
-            const personnelRecap = {
-                'Organic Personnel': organicPersonnel.length,
-                'Detached Service': detachedPersonnel.length,
-                'DS to Other Office/Unit': dsOtherPersonnel.length,
-                'Total Personnel': totalPersonnel,
-                'PNCO': groups.PNCO,
-                'PCO': groups.PCO,
-                'NUP': groups.NUP,
-                'Other': groups.Other
-            };
+            let personnelRecap;
+            if (summary) {
+                const p = summary.personnel || {};
+                const groups = p.groups || {PNCO:0,PCO:0,NUP:0,Other:0};
+                personnelRecap = {
+                    'Organic Personnel':Number(p.organic || 0),
+                    'Detached Service':Number(p.detached || 0),
+                    'DS to Other Office/Unit':Number(p.dsOther || 0),
+                    'Total Personnel':Number(p.total || 0),
+                    'PNCO':Number(groups.PNCO || 0),
+                    'PCO':Number(groups.PCO || 0),
+                    'NUP':Number(groups.NUP || 0),
+                    'Other':Number(groups.Other || 0)
+                };
+            } else {
+                const groups = { PNCO:0, PCO:0, NUP:0, Other:0 };
+                organicPersonnel.forEach(person => {
+                    const group = rankGroup(person.rank);
+                    groups[group] = (groups[group] || 0) + 1;
+                });
+                personnelRecap = {
+                    'Organic Personnel':organicPersonnel.length,
+                    'Detached Service':detachedPersonnel.length,
+                    'DS to Other Office/Unit':dsOtherPersonnel.length,
+                    'Total Personnel':totalPersonnel,
+                    'PNCO':groups.PNCO,
+                    'PCO':groups.PCO,
+                    'NUP':groups.NUP,
+                    'Other':groups.Other
+                };
+            }
             execRenderList('execPersonnelGroups', personnelRecap, totalPersonnel);
 
-            renderExecVenueActivities(allActivities);
+            renderExecVenueActivities(summary ? (summary.activities || []) : allActivities);
 
-            // Operational details strip
-            (function(){
-                const detailsEl = document.getElementById('execDetailsStrip');
-                if (!detailsEl) return;
-                const now = new Date();
-                const todayStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
-                const ym = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
-                let onLeaveToday = 0, onLeaveMonth = 0;
-                (leaveEntries || []).forEach(e => { (e.dates || []).forEach(d => { if (d === todayStr) onLeaveToday++; if (String(d).startsWith(ym)) onLeaveMonth++; }); });
-                let bmiUnhealthy = 0;
-                (bmiRecords || []).forEach(r => { const c = String(r.classification || '').toLowerCase(); if (c.indexOf('overweight') !== -1 || c.indexOf('obese') !== -1) bmiUnhealthy++; });
-                const cards = [
-                    ['On Leave Today', onLeaveToday],
-                    ['On Leave This Month', onLeaveMonth],
-                    ['Active Squads', (squads || []).length],
-                    ['Designated Areas', (areas || []).length],
-                    ['BMI Overweight/Obese', bmiUnhealthy],
-                    ['Archived Personnel', (archivedPersonnel || []).length]
-                ];
+            const detailsEl = document.getElementById('execDetailsStrip');
+            if (detailsEl) {
+                let cards;
+                if (summary && summary.operations) {
+                    const o = summary.operations;
+                    cards = [
+                        ['On Leave Today', Number(o.onLeaveToday || 0)],
+                        ['On Leave This Month', Number(o.onLeaveMonth || 0)],
+                        ['Active Squads', Number(o.activeSquads || 0)],
+                        ['Designated Areas', Number(o.designatedAreas || 0)],
+                        ['BMI Overweight/Obese', Number(o.bmiUnhealthy || 0)],
+                        ['Archived Personnel', Number(o.archivedPersonnel || 0)]
+                    ];
+                } else {
+                    const now = new Date();
+                    const todayStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+                    const ym = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+                    let onLeaveToday = 0, onLeaveMonth = 0;
+                    (leaveEntries || []).forEach(entry => { (entry.dates || []).forEach(date => { if (date === todayStr) onLeaveToday++; if (String(date).startsWith(ym)) onLeaveMonth++; }); });
+                    let bmiUnhealthy = 0;
+                    (bmiRecords || []).forEach(record => { const c = String(record.bmiClassification || record.classification || '').toLowerCase(); if (c.indexOf('overweight') !== -1 || c.indexOf('obese') !== -1) bmiUnhealthy++; });
+                    cards = [
+                        ['On Leave Today', onLeaveToday],
+                        ['On Leave This Month', onLeaveMonth],
+                        ['Active Squads', (squads || []).length],
+                        ['Designated Areas', (areas || []).length],
+                        ['BMI Overweight/Obese', bmiUnhealthy],
+                        ['Archived Personnel', (archivedPersonnel || []).length]
+                    ];
+                }
                 detailsEl.innerHTML = '<h3 class="exec-details-title">Operational Details</h3><div class="exec-details-grid">' +
-                    cards.map(c => `<div class="exec-detail-card"><div class="exec-detail-value">${c[1]}</div><div class="exec-detail-label">${c[0]}</div></div>`).join('') +
+                    cards.map(card => `<div class="exec-detail-card"><div class="exec-detail-value">${card[1]}</div><div class="exec-detail-label">${card[0]}</div></div>`).join('') +
                     '</div>';
-            })();
+            }
 
             renderExecActivityLogs();
-
-            document.getElementById('execDashUser').innerText = `Signed in: ${localStorage.getItem('loggedInUser') || 'Guest'}`;
-            document.getElementById('execDashUpdated').innerText = `Updated ${new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}`;
+            const dashUser = document.getElementById('execDashUser');
+            const dashUpdated = document.getElementById('execDashUpdated');
+            if (dashUser) dashUser.innerText = `Signed in: ${localStorage.getItem('loggedInUser') || 'Guest'}`;
+            if (dashUpdated) dashUpdated.innerText = `Updated ${new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}`;
         }
 
         async function loadExecutiveDashboard() {
-            // Preload the complete Personnel Management data set even when the user stays
-            // on the Dashboard. Operational summaries must not depend on opening each tab.
-            try {
-                const tasks = [loadMatrixCompliances(), fetchActivityLogs()];
-                if (typeof userHasAccess !== 'function' || userHasAccess('home')) tasks.push(loadData());
-                if (typeof userHasAccess !== 'function' || userHasAccess('personnel')) tasks.push(loadAllPersonnelManagementData(true));
-                if (typeof userHasAccess !== 'function' || userHasAccess('activityManagement')) tasks.push(loadActivities());
-                await Promise.allSettled(tasks);
-            } catch (e) {}
-            renderExecutiveDashboard();
+            if (dashboardSummaryPromise) return dashboardSummaryPromise;
+            dashboardSummaryPromise = (async () => {
+                try {
+                    // One authenticated summary response replaces separate full-data
+                    // requests for memos, personnel submodules, activities, Matrix, and logs.
+                    const response = await spadesAuthenticatedRead('get_dashboard_summary');
+                    if (!response.ok) throw new Error(`Dashboard summary request failed (${response.status}).`);
+                    const result = await response.json();
+                    if (!result || result.success !== true || !result.summary) throw new Error(result?.error || 'Dashboard summary is unavailable.');
+                    dashboardSummaryCache = result.summary;
+                    liveActivityLogs = sortActivityLogsLatestFirst(Array.isArray(result.summary.activityLogs) ? result.summary.activityLogs : []);
+                    lastLogCount = liveActivityLogs.length;
+                    renderExecutiveDashboard();
+                    return true;
+                } catch (summaryError) {
+                    console.warn('Optimized Dashboard summary is unavailable; using the compatible full-read fallback.', summaryError);
+                    dashboardSummaryCache = null;
+                    // Backward compatibility for a frontend deployed before its matching backend.
+                    try {
+                        const tasks = [loadMatrixCompliances(), fetchActivityLogs()];
+                        if (typeof userHasAccess !== 'function' || userHasAccess('home')) tasks.push(loadData());
+                        if (typeof userHasAccess !== 'function' || userHasAccess('personnel')) tasks.push(loadAllPersonnelManagementData(true));
+                        if (typeof userHasAccess !== 'function' || userHasAccess('activityManagement')) tasks.push(loadActivities());
+                        await Promise.allSettled(tasks);
+                        renderExecutiveDashboard();
+                        return false;
+                    } catch (fallbackError) {
+                        console.error('Dashboard data could not be loaded:', fallbackError);
+                        renderExecutiveDashboard();
+                        return false;
+                    }
+                }
+            })();
+            try { return await dashboardSummaryPromise; }
+            finally { dashboardSummaryPromise = null; }
         }
 
         async function loadData() {
@@ -5267,7 +5433,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                     } else {
                         window.clearInterval(stageTimer);
                     }
-                }, 150);
+                }, 110);
 
                 // Identity lookup is a non-blocking UI bootstrap. A cached public username
                 // is available immediately; validate_session returns the authoritative role.
@@ -5306,7 +5472,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 }
 
                 checkAuth();
-                const minimumDisplay = 420;
+                const minimumDisplay = 160;
                 const remaining = Math.max(0, minimumDisplay - (performance.now() - startedAt));
                 window.setTimeout(() => {
                     window.clearInterval(stageTimer);
@@ -5452,32 +5618,54 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             if (personnelManagementDataPromise) return personnelManagementDataPromise;
 
             personnelManagementDataPromise = (async () => {
-                const personnelLoaded = await loadPersonnel();
-                const moduleResults = await Promise.allSettled([
-                    loadDutySequence(),
-                    loadBmiRecords(),
-                    loadLeaveEntries(),
-                    loadAreas()
-                ]);
-                // Squads are filtered against the archived personnel list, so load them
-                // after the Personnel sheet has been read.
-                const squadsLoaded = await loadSquads();
-                const modulesLoaded = moduleResults.every(result =>
-                    result.status === 'fulfilled' && result.value !== false
-                );
-                personnelManagementDataLoaded = personnelLoaded !== false && modulesLoaded && squadsLoaded !== false;
-                if (!personnelManagementDataLoaded) {
-                    console.warn('One or more Personnel Management datasets did not load. They will be retried on the next refresh or page visit.');
+                try {
+                    const response = await spadesAuthenticatedRead('get_personnel_management_bundle');
+                    if (!response.ok) throw new Error(`Personnel Management request failed (${response.status}).`);
+                    const data = await response.json();
+                    if (!data || data.success !== true) throw new Error(data?.error || 'Invalid Personnel Management response.');
+
+                    allPersonnel = Array.isArray(data.personnel) ? data.personnel : [];
+                    archivedPersonnel = Array.isArray(data.archived) ? data.archived : [];
+                    dutySequence = Array.isArray(data.sequence) ? data.sequence : [];
+                    bmiRecords = Array.isArray(data.records) ? data.records.map(normalizeBmiRecordForDisplay) : [];
+                    squads = Array.isArray(data.squads) ? data.squads : [];
+                    leaveEntries = Array.isArray(data.entries) ? data.entries : [];
+                    areas = Array.isArray(data.areas) ? data.areas : [];
+
+                    updatePersonnelDashboard();
+                    populatePersonnelFilters();
+                    populatePersonnelSections();
+                    renderDutyCalendar();
+                    renderDutyTable();
+                    populateBmiPeriods();
+                    renderBmiTable();
+                    renderSquadCarousel();
+                    renderLeaveCalendar();
+                    renderLeaveTable();
+                    renderAreaCards();
+                    requestAnimationFrame(() => filterPersonnel());
+
+                    personnelManagementDataLoaded = true;
+                    return true;
+                } catch (error) {
+                    personnelManagementDataLoaded = false;
+                    console.warn('Personnel Management bundle failed; falling back to individual module reads.', error);
+                    const personnelLoaded = await loadPersonnel();
+                    const moduleResults = await Promise.allSettled([
+                        loadDutySequence(), loadBmiRecords(), loadLeaveEntries(), loadAreas()
+                    ]);
+                    const squadsLoaded = await loadSquads();
+                    personnelManagementDataLoaded = personnelLoaded !== false &&
+                        moduleResults.every(result => result.status === 'fulfilled' && result.value !== false) &&
+                        squadsLoaded !== false;
+                    return personnelManagementDataLoaded;
                 }
-                return personnelManagementDataLoaded;
             })();
 
-            try {
-                return await personnelManagementDataPromise;
-            } finally {
-                personnelManagementDataPromise = null;
-            }
+            try { return await personnelManagementDataPromise; }
+            finally { personnelManagementDataPromise = null; }
         }
+
         /* ---------- Duty Office ---------- */
         async function loadDutySequence() {
             let loaded = true;
@@ -7129,30 +7317,49 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         }
 
         /* ---------- User Access Control ---------- */
-        async function loadUserAccessMap() {
+        let userAccessContextLoadedFor = '';
+        let userAccessContextLoadedAt = 0;
+        let userAccessContextPromise = null;
+        async function loadUserAccessContext(forceRefresh = false) {
             const requestedUser = localStorage.getItem('loggedInUser') || '';
-            userAccessMapLoadedFor = '';
-            try {
-                const res = await fetch(API_URL, {method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'get_user_access',userName:requestedUser,password:sessionAdminPass,credential:localStorage.getItem('loggedCred') || ''})});
-                if (!res.ok) throw new Error(`Access map request failed (${res.status})`);
-                const data = await res.json();
-                if (data && data.success && data.accessMap && typeof data.accessMap === 'object') {
-                    userAccessMap = data.accessMap;
+            if (!requestedUser) return;
+            if (!forceRefresh && userAccessContextLoadedFor === requestedUser && Date.now() - userAccessContextLoadedAt < 30000) return;
+            if (userAccessContextPromise) return userAccessContextPromise;
+            userAccessContextPromise = (async () => {
+                try {
+                    const res = await fetch(API_URL, {
+                        method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, cache:'no-store',
+                        body:JSON.stringify({action:'get_user_security_context',userName:requestedUser,password:sessionAdminPass,credential:localStorage.getItem('loggedCred') || ''})
+                    });
+                    if (!res.ok) throw new Error(`Account security context request failed (${res.status})`);
+                    const data = await res.json();
+                    if (!data || !data.success) throw new Error(data?.error || 'Unable to load account security preferences.');
+                    userAccessMap = data.accessMap && typeof data.accessMap === 'object' ? data.accessMap : {};
                     userPersonnelPermissionsMap = data.personnelPermissionsMap && typeof data.personnelPermissionsMap === 'object' ? data.personnelPermissionsMap : {};
+                    userRestrictedMap = data.restricted && typeof data.restricted === 'object' ? data.restricted : {};
                     userAccessMapLoadedFor = requestedUser;
-                } else {
+                    userAccessContextLoadedFor = requestedUser;
+                    userAccessContextLoadedAt = Date.now();
+                } catch (error) {
                     userAccessMap = {};
                     userPersonnelPermissionsMap = {};
-                    userAccessMapLoadedFor = requestedUser;
+                    userRestrictedMap = {};
+                    userAccessMapLoadedFor = '';
+                    userAccessContextLoadedFor = '';
+                    userAccessContextLoadedAt = 0;
+                    console.warn('Could not load account security preferences.', error);
+                } finally {
+                    updatePersonnelPermissions();
+                    if (typeof applyAccessRestrictions === 'function') applyAccessRestrictions();
                 }
-            } catch (e) {
-                userAccessMap = {};
-                userPersonnelPermissionsMap = {};
-                userAccessMapLoadedFor = '';
-                console.warn('Could not load account page-access preferences.', e);
-            }
-            updatePersonnelPermissions();
+            })();
+            try { return await userAccessContextPromise; }
+            finally { userAccessContextPromise = null; }
         }
+        async function loadUserAccessMap(forceRefresh = false) {
+            await loadUserAccessContext(forceRefresh);
+        }
+
         function openUserAccessModal(username) {
             if (!isAlphaAdmin()) return customAlert('Only the Alpha Admin can configure account permissions.', 'Permission Denied');
             currentAccessUsername = username;
@@ -7341,14 +7548,11 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
 
         /* ---------- User Restriction (read-only mode) ---------- */
         let userRestrictedMap = {};
-        async function loadUserRestrictions() {
-            try {
-                const res = await fetch(API_URL, {method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'get_user_restrictions',userName:localStorage.getItem('loggedInUser') || '',password:sessionAdminPass,credential:localStorage.getItem('loggedCred') || ''})});
-                const data = await res.json();
-                userRestrictedMap = (data.success && data.restricted) ? data.restricted : {};
-            } catch(e) { userRestrictedMap = {}; }
+        async function loadUserRestrictions(forceRefresh = false) {
+            await loadUserAccessContext(forceRefresh);
             updatePersonnelPermissions();
         }
+
         function toggleUserRestriction(username, restrict) {
             customConfirm(`${restrict ? 'Restrict (make read-only)' : 'Remove the read-only restriction from'} user "${username}"?`, async confirmed => {
                 if (!confirmed) { loadAdminUsers(); return; }
