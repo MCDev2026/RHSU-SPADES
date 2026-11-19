@@ -947,6 +947,94 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             }
         }
 
+        /**
+         * Safe client-side file optimization. JPEG, PNG and WebP images are decoded,
+         * optionally resized, re-encoded in their original format, and accepted only
+         * when the resulting image validates and is strictly smaller. All other formats
+         * (including PDF and Office documents) pass through unchanged.
+         */
+        function spadesFormatFileSize(bytes) {
+            const n = Math.max(0, Number(bytes) || 0);
+            if (!n) return '0 B';
+            const units = ['B','KB','MB','GB'];
+            const i = Math.min(Math.floor(Math.log(n) / Math.log(1024)), units.length - 1);
+            const amount = n / Math.pow(1024, i);
+            const formatted = i ? amount.toFixed(2).replace(/\.?0+$/, '') : String(Math.round(amount));
+            return formatted + ' ' + units[i];
+        }
+
+        async function spadesOptimizeUploadFile(file, options = {}) {
+            const originalSize = Number(file && file.size) || 0;
+            const unchanged = (reason) => ({file, compressed:false, originalSize, optimizedSize:originalSize, savedBytes:0, savedPercent:0, reason:reason || 'unchanged'});
+            if (!file || !originalSize) return unchanged('empty');
+            const ext = String((file.name || '').split('.').pop() || '').toLowerCase();
+            const suppliedType = String(file.type || '').toLowerCase();
+            const typeByExtension = {jpg:'image/jpeg',jpeg:'image/jpeg',png:'image/png',webp:'image/webp'};
+            const mime = suppliedType === 'image/jpg' ? 'image/jpeg' : ((suppliedType === 'application/octet-stream' || !suppliedType) ? (typeByExtension[ext] || suppliedType) : suppliedType);
+            if (!['image/jpeg','image/png','image/webp'].includes(mime) || !['jpg','jpeg','png','webp'].includes(ext)) {
+                return unchanged('unsupported-format');
+            }
+            if (typeByExtension[ext] !== mime) return unchanged('mime-extension-mismatch');
+            if (typeof createImageBitmap !== 'function' || typeof document === 'undefined') return unchanged('image-optimizer-unavailable');
+            let bitmap = null;
+            try {
+                bitmap = await createImageBitmap(file);
+                const originalWidth = Number(bitmap.width) || 0;
+                const originalHeight = Number(bitmap.height) || 0;
+                if (!originalWidth || !originalHeight) return unchanged('invalid-image-dimensions');
+                const maxDimension = Math.max(320, Number(options.maxDimension) || 2800);
+                // Preserve every PNG pixel: these commonly contain scanned forms, certificates,
+                // and other official documents. JPEG/WebP photos may be resized when oversized.
+                const scale = mime === 'image/png' ? 1 : Math.min(1, maxDimension / Math.max(originalWidth, originalHeight));
+                const width = Math.max(1, Math.round(originalWidth * scale));
+                const height = Math.max(1, Math.round(originalHeight * scale));
+                const threshold = mime === 'image/png' ? 600 * 1024 : 256 * 1024;
+                if (scale === 1 && originalSize < threshold) return unchanged('already-optimized-or-small');
+                const canvas = document.createElement('canvas');
+                canvas.width = width; canvas.height = height;
+                const context = canvas.getContext('2d', {alpha:mime === 'image/png'});
+                if (!context) return unchanged('canvas-unavailable');
+                context.imageSmoothingEnabled = true;
+                context.imageSmoothingQuality = 'high';
+                context.drawImage(bitmap, 0, 0, width, height);
+                const quality = Math.min(0.94, Math.max(0.72, Number(options.quality) || (mime === 'image/webp' ? 0.88 : 0.90)));
+                const blob = await new Promise((resolve, reject) => {
+                    try { canvas.toBlob(result => result ? resolve(result) : reject(new Error('Image encoder returned no data.')), mime, mime === 'image/png' ? undefined : quality); }
+                    catch (error) { reject(error); }
+                });
+                if (!blob || !blob.size || blob.type !== mime || blob.size >= originalSize) return unchanged('no-safe-size-reduction');
+                // Decode the output once to verify that the optimized image is complete/readable.
+                let validation = null;
+                try {
+                    validation = await createImageBitmap(blob);
+                    if (validation.width !== width || validation.height !== height) return unchanged('optimized-image-validation-failed');
+                } finally { if (validation && typeof validation.close === 'function') validation.close(); }
+                const optimized = new File([blob], file.name, {type:mime, lastModified:file.lastModified || Date.now()});
+                const savedBytes = originalSize - optimized.size;
+                return {file:optimized, compressed:true, originalSize, optimizedSize:optimized.size, savedBytes, savedPercent:Math.round(savedBytes / originalSize * 100), reason:'compressed', width, height};
+            } catch (error) {
+                return unchanged('compression-failed');
+            } finally {
+                if (bitmap && typeof bitmap.close === 'function') bitmap.close();
+            }
+        }
+
+        function spadesUploadOptimizationLabel(result) {
+            if (!result) return 'No optimization details available.';
+            const original = spadesFormatFileSize(result.originalSize);
+            const optimized = spadesFormatFileSize(result.optimizedSize);
+            if (!result.compressed) {
+                const reason = result.reason;
+                const explanation = reason === 'already-optimized-or-small' ? 'already optimized or too small to benefit' :
+                    reason === 'unsupported-format' ? 'safe compression is not supported for this format' :
+                    reason === 'mime-extension-mismatch' ? 'file type and extension did not match' :
+                    reason === 'no-safe-size-reduction' ? 'no smaller safe version was produced' :
+                    reason === 'empty' ? 'empty file' : 'safe compression was unavailable or failed';
+                return 'Original ' + original + ' → uploaded ' + optimized + ' (unchanged; ' + explanation + ').';
+            }
+            return 'Original ' + original + ' → optimized ' + optimized + ' (' + result.savedPercent + '% saved).';
+        }
+
         function formatChatFileSize(bytes) {
             const n = Number(bytes || 0);
             if (!n) return '0 B';
@@ -961,15 +1049,10 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 clearChatAttachment();
                 return;
             }
-            if (file.size > CHAT_MAX_ATTACHMENT_BYTES) {
-                event.target.value = '';
-                clearChatAttachment();
-                return customAlert('The selected file is larger than 10 MB. Please choose a smaller file.', 'Attachment');
-            }
             chatAttachmentFile = file;
             const wrap = document.getElementById('usersChatAttachment');
             const name = document.getElementById('usersChatAttachmentName');
-            if (name) name.textContent = `${file.name} · ${formatChatFileSize(file.size)}`;
+            if (name) name.textContent = `${file.name} · ${formatChatFileSize(file.size)}${file.size > CHAT_MAX_ATTACHMENT_BYTES ? ' · safe optimization will be attempted where supported before upload' : ''}`;
             wrap?.classList.remove('hidden');
         }
 
@@ -1097,19 +1180,24 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 const auth = chatCredentialPayload();
                 let attachment = null;
                 if (chatAttachmentFile) {
+                    const selectedFile = chatAttachmentFile;
+                    const optimization = await spadesOptimizeUploadFile(selectedFile);
+                    const uploadFile = optimization.file || selectedFile;
+                    if (uploadFile.size > CHAT_MAX_ATTACHMENT_BYTES) throw new Error('The selected file exceeds 10 MB and could not be reduced safely. Choose a smaller file.');
                     let base64;
-                    try {
-                        base64 = await readChatFileAsBase64(chatAttachmentFile);
-                    } catch (readErr) {
-                        // The file could not be read — clear the bad attachment so the UI
-                        // does not keep showing it, then rethrow so the outer catch alerts the user.
+                    try { base64 = await readChatFileAsBase64(uploadFile); }
+                    catch (readErr) {
                         clearChatAttachment();
                         throw readErr;
                     }
+                    {
+                        const attachmentName = document.getElementById('usersChatAttachmentName');
+                        if (attachmentName) attachmentName.textContent = selectedFile.name + ' · ' + spadesUploadOptimizationLabel(optimization);
+                    }
                     attachment = {
-                        name: chatAttachmentFile.name,
-                        mimeType: chatAttachmentFile.type || 'application/octet-stream',
-                        size: chatAttachmentFile.size,
+                        name: selectedFile.name,
+                        mimeType: uploadFile.type || selectedFile.type || 'application/octet-stream',
+                        size: uploadFile.size,
                         base64: base64
                     };
                 }
@@ -1757,76 +1845,65 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         async function uploadProfilePhoto(type, inputEl) {
             const file = inputEl.files && inputEl.files[0];
             if (!file) return;
-            if (file.size > 4 * 1024 * 1024) { customAlert("Image too large. Please use an image under 4 MB.", "Validation"); inputEl.value=''; return; }
             if (file.type && !['image/jpeg', 'image/jpg', 'image/png', 'image/webp'].includes(file.type.toLowerCase())) {
                 customAlert('Please select a JPG, PNG, or WebP image.', 'Validation'); inputEl.value=''; return;
             }
-            // Loading/disabled state: disable the hidden input and its visible trigger button
-            // so a double-selection cannot fire while an upload is in flight.
             const triggerBtn = type === 'cover'
                 ? document.querySelector('.pf-cover-change-btn')
                 : (document.querySelector('#profilePictureModal .profile-picture-select-btn') || document.querySelector('.pf-avatar-trigger'));
             inputEl.disabled = true;
             if (triggerBtn) { triggerBtn.disabled = true; triggerBtn.style.opacity = '0.5'; triggerBtn.style.pointerEvents = 'none'; }
             const restoreUploadUI = function () {
-                inputEl.disabled = false;
-                inputEl.value = '';
+                inputEl.disabled = false; inputEl.value = '';
                 if (triggerBtn) { triggerBtn.disabled = false; triggerBtn.style.opacity = ''; triggerBtn.style.pointerEvents = ''; }
             };
-            const reader = new FileReader();
-            reader.onerror = function () { customAlert('The selected image could not be read. Please try another image.', 'Error'); restoreUploadUI(); };
-            reader.onabort = function () { customAlert('Image reading was cancelled. Please try again.', 'Upload Cancelled'); restoreUploadUI(); };
-            reader.onload = async function(e) {
-                const payload = {
-                    action: 'upload_photo',
-                    username: localStorage.getItem('loggedInUser') || '',
-                    credential: localStorage.getItem('loggedCred') || '',
-                    photoType: type === 'cover' ? 'cover' : 'profile',
-                    mime: file.type || 'image/jpeg',
-                    dataBase64: e.target.result
-                };
-                try {
-                    const res = await fetch(API_URL, { method:'POST', mode:'cors', headers:{'Content-Type':'text/plain'}, body: JSON.stringify(payload) });
-                    let data;
-                    try {
-                        data = await res.json();
-                    } catch (parseErr) {
-                        // Non-JSON response: surface the raw server body if it looks like an error message.
-                        let detail = '';
-                        try { detail = (await res.text()).trim(); } catch (_) {}
-                        if (detail && detail.length > 300) detail = detail.slice(0, 300) + '…';
-                        throw new Error(detail ? ('Server returned an error: ' + detail) : 'The server returned an invalid response. Please try again later.');
-                    }
-                    if (data && data.success && data.url) {
-                        const photoOwner = localStorage.getItem('loggedInUser') || '';
-                        rememberProfilePhotoUrl(photoOwner, type === 'cover' ? 'cover' : 'profile', data.url);
-                        if (type === 'cover') {
-                            applyProfileCover(data.url);
-                            customAlert(data.cleanupWarning
-                                ? 'Cover photo updated successfully. ' + data.cleanupWarning
-                                : 'Cover photo updated successfully.', data.cleanupWarning ? 'Updated with Warning' : 'Success');
-                        } else {
-                            applyProfilePhotos(data.url);
-                            closeProfilePictureModal();
-                            customAlert(data.cleanupWarning
-                                ? 'Profile photo updated successfully. ' + data.cleanupWarning
-                                : 'Profile photo updated successfully.', data.cleanupWarning ? 'Updated with Warning' : 'Success');
-                        }
-                    } else {
-                        customAlert((data && data.error) ? data.error : 'Photo upload failed. Please try again.', 'Error');
-                    }
-                } catch (err) {
-                    const msg = (err && err.message && !/fetch|network|load failed/i.test(err.message))
-                        ? err.message
-                        : 'Photo upload failed. Please check your connection and try again.';
-                    customAlert(msg, 'Error');
-                }
-                restoreUploadUI();
-            };
             try {
-                reader.readAsDataURL(file);
-            } catch (readErr) {
-                customAlert((readErr && readErr.message) || 'The selected image could not be read. Please try another image.', 'Error');
+                const optimization = await spadesOptimizeUploadFile(file, {maxDimension:2400, quality:0.91});
+                const uploadFile = optimization.file || file;
+                if (uploadFile.size > 4 * 1024 * 1024) {
+                    customAlert('The image is still larger than 4 MB after safe optimization. Choose a smaller image.', 'Validation');
+                    restoreUploadUI(); return;
+                }
+                const reader = new FileReader();
+                reader.onerror = function () { customAlert('The selected image could not be read. Please try another image.', 'Error'); restoreUploadUI(); };
+                reader.onabort = function () { customAlert('Image reading was cancelled. Please try again.', 'Upload Cancelled'); restoreUploadUI(); };
+                reader.onload = async function(e) {
+                    const payload = {
+                        action: 'upload_photo', username: localStorage.getItem('loggedInUser') || '',
+                        credential: localStorage.getItem('loggedCred') || '',
+                        photoType: type === 'cover' ? 'cover' : 'profile',
+                        mime: uploadFile.type || file.type || 'image/jpeg', dataBase64: e.target.result
+                    };
+                    try {
+                        const res = await fetch(API_URL, { method:'POST', mode:'cors', headers:{'Content-Type':'text/plain'}, body: JSON.stringify(payload) });
+                        let data;
+                        try { data = await res.json(); }
+                        catch (parseErr) {
+                            let detail = ''; try { detail = (await res.text()).trim(); } catch (_) {}
+                            if (detail && detail.length > 300) detail = detail.slice(0, 300) + '…';
+                            throw new Error(detail ? ('Server returned an error: ' + detail) : 'The server returned an invalid response. Please try again later.');
+                        }
+                        if (data && data.success && data.url) {
+                            const photoOwner = localStorage.getItem('loggedInUser') || '';
+                            rememberProfilePhotoUrl(photoOwner, type === 'cover' ? 'cover' : 'profile', data.url);
+                            const savedNote = ' ' + spadesUploadOptimizationLabel(optimization);
+                            if (type === 'cover') {
+                                applyProfileCover(data.url);
+                                customAlert((data.cleanupWarning ? 'Cover photo updated successfully. ' + data.cleanupWarning : 'Cover photo updated successfully.') + savedNote, data.cleanupWarning ? 'Updated with Warning' : 'Success');
+                            } else {
+                                applyProfilePhotos(data.url); closeProfilePictureModal();
+                                customAlert((data.cleanupWarning ? 'Profile photo updated successfully. ' + data.cleanupWarning : 'Profile photo updated successfully.') + savedNote, data.cleanupWarning ? 'Updated with Warning' : 'Success');
+                            }
+                        } else customAlert((data && data.error) ? data.error : 'Photo upload failed. Please try again.', 'Error');
+                    } catch (err) {
+                        const msg = (err && err.message && !/fetch|network|load failed/i.test(err.message)) ? err.message : 'Photo upload failed. Please check your connection and try again.';
+                        customAlert(msg, 'Error');
+                    }
+                    restoreUploadUI();
+                };
+                reader.readAsDataURL(uploadFile);
+            } catch (error) {
+                customAlert(error && error.message ? error.message : 'The selected image could not be processed.', 'Upload Error');
                 restoreUploadUI();
             }
         }
@@ -2296,12 +2373,13 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             // verifier is authoritative. New PIN/password rules remain enforced at creation/change.
             const credentialInput = document.getElementById('loginCredential');
             const loginButton = document.querySelector('#loginPage .rhsu-login-submit');
-            const previousText = loginButton?.textContent;
+            const loginLabel = loginButton?.querySelector('.rhsu-login-submit-label');
+            const previousText = loginLabel?.textContent || 'LOG IN';
             loginUser._inFlight = true;
             const controller = new AbortController();
             const timeoutId = window.setTimeout(() => controller.abort(), 45000);
             credentialInput.disabled = true;
-            if (loginButton) { loginButton.disabled = true; loginButton.setAttribute('aria-busy', 'true'); loginButton.textContent = 'Verifying…'; }
+            if (loginButton) { loginButton.disabled = true; loginButton.setAttribute('aria-busy', 'true'); if (loginLabel) loginLabel.textContent = 'VERIFYING…'; }
             try {
                 // Allow the visual busy state to paint before the network request begins.
                 await new Promise(resolve => requestAnimationFrame(resolve));
@@ -2362,7 +2440,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 window.clearTimeout(timeoutId);
                 loginUser._inFlight = false;
                 credentialInput.disabled = false;
-                if (loginButton) { loginButton.disabled = false; loginButton.removeAttribute('aria-busy'); loginButton.textContent = previousText || 'Login'; }
+                if (loginButton) { loginButton.disabled = false; loginButton.removeAttribute('aria-busy'); if (loginLabel) loginLabel.textContent = previousText || 'LOG IN'; }
             }
         }
 
@@ -2681,6 +2759,93 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 if (activityPage && !activityPage.classList.contains('hidden')) openActivityModal();
             });
         }
+        function getDashboardQuickAccessItems() {
+            const signedInUser = localStorage.getItem('loggedInUser') || '';
+            const permissionsReady = typeof userAccessMapLoadedFor === 'undefined' || userAccessMapLoadedFor === signedInUser;
+            const pageAllowed = key => key === 'matrixCompliances' ? true : (permissionsReady && (typeof userHasAccess !== 'function' || userHasAccess(key)));
+            const personnelAllowed = pageAllowed('personnel');
+            const items = [
+                {id:'add-memo', label:'Add Memo', icon:'plus', visible:pageAllowed('home')},
+                {id:'memo-database', label:'Memo Database', icon:'document', visible:pageAllowed('home')},
+                {id:'add-personnel', label:'Add Personnel', icon:'user-add', visible:personnelAllowed && canPersonnelAction('list','add')},
+                {id:'personnel-list', label:'Personnel List', icon:'users', visible:personnelAllowed},
+                {id:'bmi-monitoring', label:'BMI Monitoring', icon:'activity', visible:personnelAllowed},
+                {id:'leave-management', label:'Leave Management', icon:'calendar', visible:personnelAllowed},
+                {id:'add-activity', label:'Add Activity', icon:'calendar-plus', visible:pageAllowed('activityManagement') && canManageActivities()},
+                {id:'matrix-compliances', label:'Matrix of Compliances', icon:'table', visible:pageAllowed('matrixCompliances')},
+                {id:'my-files', label:'My Files', icon:'folder', visible:!!localStorage.getItem('loggedInUser')},
+                {id:'user-management', label:'User Management', icon:'settings', visible:isAlphaAdmin()}
+            ];
+            return items.filter(item => item.visible);
+        }
+
+        function renderDashboardQuickAccess() {
+            const panel = document.getElementById('dashboardQuickAccessPanel');
+            if (!panel) return;
+            const icons = {
+                plus:'fi-rr-plus', document:'fi-rr-document', 'user-add':'fi-rr-user-add', users:'fi-rr-users',
+                activity:'fi-rr-heart-rate', calendar:'fi-rr-calendar', 'calendar-plus':'fi-rr-calendar-plus',
+                table:'fi-rr-table-list', folder:'fi-rr-folder-open', settings:'fi-rr-settings'
+            };
+            const items = getDashboardQuickAccessItems();
+            panel.innerHTML = items.map(item => `<button class="dashboard-quick-access-item" data-quick-access="${escapeAttr(item.id)}" onclick="runDashboardQuickAccess('${escapeAttr(item.id)}')" role="menuitem" type="button"><i aria-hidden="true" class="fi ${icons[item.icon] || 'fi-rr-apps'}"></i><span>${escapeHtml(item.label)}</span><i aria-hidden="true" class="fi fi-rr-angle-small-right dashboard-quick-access-arrow"></i></button>`).join('') || '<span class="dashboard-quick-access-empty">No shortcuts are available for this account.</span>';
+        }
+
+        function toggleDashboardQuickAccess(forceOpen) {
+            const panel = document.getElementById('dashboardQuickAccessPanel');
+            const button = document.getElementById('dashboardQuickAccessBtn');
+            if (!panel || !button) return;
+            const open = typeof forceOpen === 'boolean' ? forceOpen : panel.classList.contains('hidden');
+            if (open) renderDashboardQuickAccess();
+            panel.classList.toggle('hidden', !open);
+            panel.setAttribute('aria-hidden', open ? 'false' : 'true');
+            button.setAttribute('aria-expanded', open ? 'true' : 'false');
+            button.classList.toggle('is-open', open);
+            if (open) {
+                if (!toggleDashboardQuickAccess._outsideHandler) {
+                    toggleDashboardQuickAccess._outsideHandler = event => {
+                        const root = document.getElementById('dashboardQuickAccess');
+                        if (root && !root.contains(event.target)) toggleDashboardQuickAccess(false);
+                    };
+                    document.addEventListener('pointerdown', toggleDashboardQuickAccess._outsideHandler, true);
+                }
+                window.requestAnimationFrame(() => panel.querySelector('button')?.focus({preventScroll:true}));
+            }
+        }
+
+        function dashboardQuickAccessKeydown(event) {
+            if (event && event.key === 'Escape') {
+                toggleDashboardQuickAccess(false);
+                document.getElementById('dashboardQuickAccessBtn')?.focus({preventScroll:true});
+            }
+        }
+
+        function runDashboardQuickAccess(action) {
+            toggleDashboardQuickAccess(false);
+            const openPersonnel = sub => {
+                switchTab('personnel');
+                window.requestAnimationFrame(() => {
+                    const page = document.getElementById('tabPersonnel');
+                    if (!page || page.classList.contains('hidden')) return;
+                    switchPersonnelSubPage(sub === 'add' ? 'list' : (sub || 'list'));
+                    if (sub === 'add') openPersonnelModal();
+                });
+            };
+            switch (action) {
+                case 'add-memo': dashboardAddMemo(); break;
+                case 'memo-database': switchTab('home'); break;
+                case 'add-personnel': openPersonnel('add'); break;
+                case 'personnel-list': openPersonnel('list'); break;
+                case 'bmi-monitoring': openPersonnel('bmi'); break;
+                case 'leave-management': openPersonnel('leave'); break;
+                case 'add-activity': dashboardAddActivity(); break;
+                case 'matrix-compliances': switchTab('matrixCompliances'); break;
+                case 'my-files': openMyFilesModal(); break;
+                case 'user-management': if (isAlphaAdmin()) switchTab('adminMgmt'); else customAlert('Only Alpha Admin can access User Management.', 'Permission Denied'); break;
+                default: break;
+            }
+        }
+
         function closeMemoModal() { document.getElementById('memoSubmissionModal').classList.add('hidden'); }
         function toggleAdminCredentialVisibility() {
             const input = document.getElementById('adminPassInput');
@@ -3459,14 +3624,30 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             }
         }
         function populatePersonnelFilters() {
-            const ranks=[...new Set(allPersonnel.map(p=>String(p.rank||'').trim()).filter(Boolean))].sort();
-            const statuses=[...new Set(allPersonnel.map(p=>String(p.status||'').trim()).filter(Boolean))].sort();
-            const rs=document.getElementById('personnelRankFilter'), ss=document.getElementById('personnelStatusFilter');
-            const oldR=rs.value, oldS=ss.value;
-            rs.innerHTML='<option value="">All Ranks</option>'+ranks.map(r=>`<option value="${escapeAttr(r)}">${escapeHtml(r)}</option>`).join('');
-            ss.innerHTML='<option value="">All Status</option>'+statuses.map(x=>`<option value="${escapeAttr(x)}">${escapeHtml(x)}</option>`).join('');
-            rs.value=ranks.includes(oldR)?oldR:'';
-            ss.value=statuses.includes(oldS)?oldS:'';
+            const records = [...(Array.isArray(allPersonnel) ? allPersonnel : []), ...(Array.isArray(archivedPersonnel) ? archivedPersonnel : [])];
+            const ranks = [...new Set(records.map(p => String(p.rank || '').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
+            const statuses = [...new Set(records.map(p => String(p.status || '').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
+            const sectionsMap = new Map();
+            records.forEach(p => {
+                const value = String(p.section || '').trim();
+                if (value && !sectionsMap.has(value.toLowerCase())) sectionsMap.set(value.toLowerCase(), value);
+            });
+            const sections = [...sectionsMap.values()].sort((a,b)=>a.localeCompare(b));
+            const hasBlankSection = records.some(p => !String(p.section || '').trim());
+            const rs = document.getElementById('personnelRankFilter'), ss = document.getElementById('personnelStatusFilter'), sec = document.getElementById('personnelSectionFilter');
+            const oldR = rs ? rs.value : '', oldS = ss ? ss.value : '', oldSection = sec ? sec.value : '';
+            if (rs) {
+                rs.innerHTML = '<option value="">All Ranks</option>' + ranks.map(r => `<option value="${escapeAttr(r)}">${escapeHtml(r)}</option>`).join('');
+                rs.value = ranks.includes(oldR) ? oldR : '';
+            }
+            if (ss) {
+                ss.innerHTML = '<option value="">All Status</option>' + statuses.map(x => `<option value="${escapeAttr(x)}">${escapeHtml(x)}</option>`).join('');
+                ss.value = statuses.includes(oldS) ? oldS : '';
+            }
+            if (sec) {
+                sec.innerHTML = '<option value="">All Sections</option>' + sections.map(x => `<option value="${escapeAttr(x)}">${escapeHtml(x)}</option>`).join('') + (hasBlankSection ? '<option value="__blank__">Unspecified / Blank</option>' : '');
+                sec.value = oldSection === '__blank__' && hasBlankSection ? '__blank__' : (sections.find(x => x.toLowerCase() === String(oldSection).toLowerCase()) || '');
+            }
         }
 
         function populatePersonnelSections() {
@@ -3500,22 +3681,27 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         }
 
         function filterPersonnel() {
-            const q = document.getElementById('personnelSearch').value.trim().toLowerCase();
-            const rank = document.getElementById('personnelRankFilter').value;
-            const status = document.getElementById('personnelStatusFilter').value;
-
-            const rows = allPersonnel.filter(p => {
-                const text = [p.no,p.rank,p.lastName,p.firstName,p.middleName,p.qualifiers,p.designation,p.section,p.status,p.contactNo,p.remarks]
+            const q = (document.getElementById('personnelSearch')?.value || '').trim().toLowerCase();
+            const rank = document.getElementById('personnelRankFilter')?.value || '';
+            const status = document.getElementById('personnelStatusFilter')?.value || '';
+            const section = document.getElementById('personnelSectionFilter')?.value || '';
+            const matches = p => {
+                const text = [p.no,p.rank,p.lastName,p.firstName,p.middleName,p.qualifiers,p.designation,p.section,p.status,p.contactNo,p.remarks,p.badgeNumber]
                     .join(' ').toLowerCase();
+                const sectionValue = String(p.section || '').trim();
                 return (!q || text.includes(q)) &&
-                       (!rank || String(p.rank || '') === rank) &&
-                       (!status || String(p.status || '') === status);
-            });
-
-            renderPersonnelTable(rows);
+                    (!rank || String(p.rank || '') === rank) &&
+                    (!status || String(p.status || '') === status) &&
+                    (!section || (section === '__blank__' ? !sectionValue : sectionValue.toLowerCase() === section.toLowerCase()));
+            };
+            const rows = (Array.isArray(allPersonnel) ? allPersonnel : []).filter(matches);
+            const archiveRows = (Array.isArray(archivedPersonnel) ? archivedPersonnel : []).filter(matches);
+            const count = document.getElementById('personnelFilterResultCount');
+            if (count) count.textContent = `Showing ${rows.length} in current list · ${archiveRows.length} archived`;
+            renderPersonnelTable(rows, archiveRows);
         }
 
-        function renderPersonnelTable(rows) {
+        function renderPersonnelTable(rows, archiveRows) {
             const can = canPersonnelAction('list', 'edit') || canPersonnelAction('list', 'delete') || canPersonnelAction('list', 'add');
             const container = document.getElementById('personnelTablesContainer');
             if (!container) return;
@@ -3616,7 +3802,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             activeHtml += buildTable('Detached Service', detached);
             activeHtml += buildTable('DS to Other Office/Unit', dsOther);
 
-            const archivedSorted = sortPersonnel(archivedPersonnel || []);
+            const archivedSorted = sortPersonnel(Array.isArray(archiveRows) ? archiveRows : (archivedPersonnel || []));
             const archiveHtml = archivedSorted.length
                 ? buildTable('Archived', archivedSorted, true)
                 : `<h3 style="margin-top:28px;margin-bottom:10px;color:var(--text-muted);font-size:16px;">Archived</h3>
@@ -3674,6 +3860,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             document.getElementById('personnelSearch').value='';
             document.getElementById('personnelRankFilter').value='';
             document.getElementById('personnelStatusFilter').value='';
+            if (document.getElementById('personnelSectionFilter')) document.getElementById('personnelSectionFilter').value='';
             filterPersonnel();
         }
 
@@ -4272,36 +4459,16 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         }
 
         let activityOverviewMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
-        let activityOverviewMode = 'month';
-        let activityOverviewWeekStart = getActivityWeekStart(new Date());
         let selectedActivityDetailsId = null;
         let selectedActivityOccurrenceLocked = false;
 
-        function getActivityWeekStart(date) {
-            const d = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-            d.setDate(d.getDate() - d.getDay());
-            d.setHours(0,0,0,0);
-            return d;
-        }
-        function setActivityCalendarView(mode) {
-            activityOverviewMode = mode === 'week' ? 'week' : 'month';
-            if (activityOverviewMode === 'week') activityOverviewWeekStart = getActivityWeekStart(new Date());
-            document.getElementById('activityMonthViewBtn')?.classList.toggle('is-active', activityOverviewMode === 'month');
-            document.getElementById('activityWeekViewBtn')?.classList.toggle('is-active', activityOverviewMode === 'week');
-            renderActivityOverviewCalendar();
-        }
         function changeActivityOverviewMonth(delta) {
-            if (activityOverviewMode === 'week') {
-                activityOverviewWeekStart.setDate(activityOverviewWeekStart.getDate() + (Number(delta) || 0) * 7);
-            } else {
-                activityOverviewMonth = new Date(activityOverviewMonth.getFullYear(), activityOverviewMonth.getMonth() + (Number(delta) || 0), 1);
-            }
+            activityOverviewMonth = new Date(activityOverviewMonth.getFullYear(), activityOverviewMonth.getMonth() + (Number(delta) || 0), 1);
             renderActivityOverviewCalendar();
         }
         function goToActivityOverviewToday() {
             const today = new Date();
-            if (activityOverviewMode === 'week') activityOverviewWeekStart = getActivityWeekStart(today);
-            else activityOverviewMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+            activityOverviewMonth = new Date(today.getFullYear(), today.getMonth(), 1);
             renderActivityOverviewCalendar();
         }
 
@@ -4369,12 +4536,6 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             const host = document.getElementById('activityOverviewCalendar');
             const title = document.getElementById('activityOverviewMonthTitle');
             if (!host || !title) return;
-            document.getElementById('activityMonthViewBtn')?.classList.toggle('is-active', activityOverviewMode === 'month');
-            document.getElementById('activityWeekViewBtn')?.classList.toggle('is-active', activityOverviewMode === 'week');
-            if (activityOverviewMode === 'week') {
-                renderActivityOverviewWeekCalendar(host, title);
-                return;
-            }
             const year = activityOverviewMonth.getFullYear(), month = activityOverviewMonth.getMonth();
             title.textContent = activityOverviewMonth.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
             const weekdays = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
@@ -4395,7 +4556,6 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 const lockedDate = matches.length > 0 && matches.every(item => item.locked);
                 html += `<div class="activity-overview-day${other ? ' is-other-month' : ''}${key === today ? ' is-today' : ''}${lockedDate ? ' is-locked-date' : ''}"><span class="activity-overview-day-number">${date.getDate()}${lockedDate ? ' <i class="fi fi-rr-lock" aria-label="Completed date locked"></i>' : ''}</span>${activityTextList ? `<div class="activity-overview-events activity-day-text-list" aria-label="Activities scheduled on ${escapeAttr(key)}">${activityTextList}</div>` : ''}</div>`;
             }
-            host.classList.remove('activity-week-view-host');
             host.classList.add('activity-month-view-host');
             host.innerHTML = html;
             bindActivityCalendarDetails(host);
@@ -4416,165 +4576,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             if (end <= start) end += 24 * 60;
             return {start, end, label: formatActivityTime(raw) || 'Time not specified'};
         }
-        function activityWeekColor(activity) {
-            const palette = ['#2563eb','#0f766e','#7c3aed','#b45309','#be123c','#0369a1','#475569'];
-            const key = String(activity && (activity.groupId || activity.id || activity.activityTitle) || 'activity');
-            let hash = 0;
-            for (let i=0;i<key.length;i++) hash = ((hash << 5) - hash + key.charCodeAt(i)) | 0;
-            return palette[Math.abs(hash) % palette.length];
-        }
-        function renderActivityOverviewWeekCalendar(host, title) {
-            const start = getActivityWeekStart(activityOverviewWeekStart);
-            activityOverviewWeekStart = start;
-            const days = Array.from({length:7}, (_,index) => {
-                const d = new Date(start); d.setDate(start.getDate()+index); return d;
-            });
-            const end = days[6];
-            const sameMonth = start.getMonth() === end.getMonth() && start.getFullYear() === end.getFullYear();
-            const rangeStart = start.toLocaleDateString(undefined,{month:'short',day:'numeric'});
-            const rangeEnd = end.toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'});
-            title.textContent = sameMonth
-                ? `${start.toLocaleDateString(undefined,{month:'long'})} ${start.getDate()}–${end.getDate()}, ${end.getFullYear()}`
-                : `${rangeStart} – ${rangeEnd}`;
-
-            const firstMinute = 6 * 60;
-            const lastMinute = 22 * 60;
-            const pxPerMinute = 0.8;
-            const timelineHeight = (lastMinute - firstMinute) * pxPerMinute;
-            const todayKey = localDateKey(new Date());
-            const now = new Date();
-            const nowMinutes = now.getHours() * 60 + now.getMinutes();
-            const showNowLine = nowMinutes >= firstMinute && nowMinutes <= lastMinute;
-            const hourLabel = hour => hour === 12 ? '12 PM' : hour < 12 ? `${hour} AM` : `${hour - 12} PM`;
-            const hourLabels = Array.from({length:17},(_,i) => {
-                const hour = i + 6;
-                const top = i * 60 * pxPerMinute;
-                return `<div class="activity-week-hour" style="top:${top}px"><span>${hourLabel(hour)}</span></div>`;
-            }).join('');
-
-            const dayData = days.map(date => {
-                const matches = activityMatchesOnDate(date);
-                const timed = [];
-                const untimed = [];
-                matches.forEach(match => {
-                    const range = getActivityTimeRange(match.activity);
-                    const entry = {...match, range};
-                    if (range.start == null) untimed.push(entry); else timed.push(entry);
-                });
-                timed.sort((a,b) => a.range.start - b.range.start || a.range.end - b.range.end);
-
-                // Assign the first available lane so overlapping events remain readable.
-                const laneEnds = [];
-                timed.forEach(item => {
-                    let lane = laneEnds.findIndex(endMinute => endMinute <= item.range.start);
-                    if (lane < 0) lane = laneEnds.length;
-                    laneEnds[lane] = item.range.end;
-                    item.lane = lane;
-                });
-                return {
-                    date,
-                    key: localDateKey(date),
-                    matches,
-                    timed,
-                    untimed,
-                    laneCount: Math.max(1,laneEnds.length),
-                    locked: matches.length > 0 && matches.every(item => item.locked)
-                };
-            });
-
-            // One shared all-day lane height keeps every day's hourly grid perfectly aligned.
-            const maxAllDayItems = Math.max(0, ...dayData.map(day => day.untimed.length));
-            const allDayHeight = Math.min(144, Math.max(68, 38 + maxAllDayItems * 27));
-            const totalOccurrences = dayData.reduce((sum,day) => sum + day.matches.length, 0);
-            const lockedOccurrences = dayData.reduce((sum,day) => sum + day.matches.filter(item => item.locked).length, 0);
-            const timedOccurrences = dayData.reduce((sum,day) => sum + day.timed.length, 0);
-            const allDayOccurrences = dayData.reduce((sum,day) => sum + day.untimed.length, 0);
-
-            const dayHeaders = dayData.map(day => {
-                const weekday = day.date.toLocaleDateString(undefined,{weekday:'short'}).toUpperCase();
-                const weekend = day.date.getDay() === 0 || day.date.getDay() === 6;
-                const today = day.key === todayKey;
-                return `<div class="activity-week-day-header${today?' is-today':''}${weekend?' is-weekend':''}" aria-label="${escapeAttr(day.date.toLocaleDateString(undefined,{weekday:'long',month:'long',day:'numeric',year:'numeric'}))}">
-                    <span class="activity-week-day-name">${weekday}</span>
-                    <span class="activity-week-day-date">${day.date.getDate()}</span>
-                    <span class="activity-week-day-count">${day.matches.length ? `${day.matches.length} ${day.matches.length === 1 ? 'item' : 'items'}` : 'No events'}</span>
-                    ${today ? '<span class="activity-week-today-tag">TODAY</span>' : ''}
-                </div>`;
-            }).join('');
-
-            const dayColumns = dayData.map(day => {
-                const topEvents = day.untimed.map(item => {
-                    const name = String(item.activity.activityTitle || 'Untitled activity');
-                    const color = activityWeekColor(item.activity);
-                    const status = item.locked ? 'Completed / archived · read-only' : 'Open activity details';
-                    return `<button type="button" class="activity-week-all-day-event${item.locked?' is-locked':''}" style="--week-event-color:${color}" data-activity-details-id="${escapeAttr(item.activity.id)}" data-activity-occurrence-locked="${item.locked?'true':'false'}" title="${escapeAttr(status)} · ${escapeAttr(name)}" aria-label="${escapeAttr(status)}: ${escapeAttr(name)}">${item.locked?'<i class="fi fi-rr-lock" aria-hidden="true"></i> ':''}<span>${escapeHtml(name)}</span></button>`;
-                }).join('');
-
-                const positioned = day.timed.map(item => {
-                    const startMinute = Math.max(firstMinute,item.range.start);
-                    const endMinute = Math.min(lastMinute,item.range.end);
-                    if (endMinute <= firstMinute || startMinute >= lastMinute || endMinute <= startMinute) return '';
-                    const top = (startMinute-firstMinute)*pxPerMinute;
-                    const height = Math.max(28,(endMinute-startMinute)*pxPerMinute);
-                    const width = 100/day.laneCount;
-                    const left = item.lane*width;
-                    const name = String(item.activity.activityTitle || 'Untitled activity');
-                    const color = activityWeekColor(item.activity);
-                    const compact = height < 48;
-                    const status = item.locked ? 'Completed / archived · read-only' : 'Open activity details';
-                    return `<button type="button" class="activity-week-event${item.locked?' is-locked':''}${compact?' is-compact':''}" style="--week-event-color:${color};top:${top}px;height:${height}px;left:calc(${left}% + 3px);width:calc(${width}% - 6px)" data-activity-details-id="${escapeAttr(item.activity.id)}" data-activity-occurrence-locked="${item.locked?'true':'false'}" title="${escapeAttr(name)} · ${escapeAttr(item.range.label)}" aria-label="${escapeAttr(status)}: ${escapeAttr(name)}, ${escapeAttr(item.range.label)}"><strong>${item.locked?'<i class="fi fi-rr-lock" aria-hidden="true"></i> ':''}${escapeHtml(name)}</strong>${compact?'':`<span>${escapeHtml(item.range.label)}</span>`}</button>`;
-                }).join('');
-
-                const nowMarker = day.key === todayKey && showNowLine
-                    ? `<div class="activity-week-now-line" style="top:${(nowMinutes-firstMinute)*pxPerMinute}px" aria-label="Current time"></div>`
-                    : '';
-                return `<div class="activity-week-day-col${day.key===todayKey?' is-today':''}${day.locked?' is-locked-date':''}${day.date.getDay()===0||day.date.getDay()===6?' is-weekend':''}">
-                    <div class="activity-week-all-day" style="height:${allDayHeight}px">${topEvents || '<span class="activity-week-empty-label">No all-day activities</span>'}</div>
-                    <div class="activity-week-day-body" style="height:${timelineHeight}px">
-                        <div class="activity-week-grid-lines" aria-hidden="true"></div>
-                        ${nowMarker}
-                        ${positioned || ''}
-                    </div>
-                </div>`;
-            }).join('');
-
-            const nowSummary = totalOccurrences === 0
-                ? 'No activities scheduled this week'
-                : `${totalOccurrences} scheduled ${totalOccurrences === 1 ? 'occurrence' : 'occurrences'} this week`;
-            host.classList.remove('activity-month-view-host');
-            host.classList.add('activity-week-view-host');
-            host.innerHTML = `
-                <div class="activity-week-summary-bar">
-                    <div class="activity-week-summary-copy"><strong>Weekly schedule</strong><span>${escapeHtml(nowSummary)}</span></div>
-                    <div class="activity-week-summary-metrics">
-                        <span><i class="activity-week-metric-dot is-timed"></i>${timedOccurrences} timed</span>
-                        <span><i class="activity-week-metric-dot is-allday"></i>${allDayOccurrences} all-day</span>
-                        <span><i class="fi fi-rr-lock" aria-hidden="true"></i>${lockedOccurrences} read-only</span>
-                    </div>
-                    <button type="button" class="activity-week-today-btn" onclick="goToActivityOverviewToday()"><i class="fi fi-rr-calendar-day" aria-hidden="true"></i> Today</button>
-                </div>
-                <div class="activity-week-scroll" style="--activity-week-all-day-height:${allDayHeight}px;--activity-week-timeline-height:${timelineHeight}px">
-                    <div class="activity-week-view">
-                        <div class="activity-week-header-spacer"><span>TIME</span></div>
-                        <div class="activity-week-header-days">${dayHeaders}</div>
-                        <div class="activity-week-body">
-                            <div class="activity-week-axis-column">
-                                <div class="activity-week-all-day-axis" style="height:${allDayHeight}px"><span>ALL DAY</span></div>
-                                <div class="activity-week-time-axis" style="height:${timelineHeight}px">${hourLabels}</div>
-                            </div>
-                            <div class="activity-week-columns">${dayColumns}</div>
-                        </div>
-                    </div>
-                </div>
-                <div class="activity-week-legend">
-                    <span><i class="activity-week-legend-swatch"></i>Activity block height represents scheduled duration</span>
-                    <span><i class="fi fi-rr-lock" aria-hidden="true"></i>Completed / archived activities are read-only</span>
-                    <span><i class="activity-week-now-swatch"></i>Current time</span>
-                </div>`;
-            bindActivityCalendarDetails(host);
-        }
-
-                function openActivityDataModal() {
+        function openActivityDataModal() {
             const modal = document.getElementById('activityDataModal');
             if (!modal) return;
             modal.classList.remove('hidden');
@@ -7918,50 +7920,41 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             const uploadBtn = document.getElementById('personnelFolderUploadBtn');
             if (uploadBtn) uploadBtn.disabled = true;
             let okCount = 0;
-            const failures = [];
-            for (let i = 0; i < files.length; i++) {
-                const file = files[i];
-                if (status) status.textContent = 'Uploading ' + file.name + ' (' + (i + 1) + '/' + files.length + ')\u2026';
-                try {
-                    const rawBase64 = await readChatFileAsBase64(file); // strips data: prefix, returns raw base64
-                    const res = await fetch(API_URL, {
-                        method:'POST', mode:'cors',
-                        headers:{'Content-Type':'text/plain;charset=utf-8'},
-                        body: JSON.stringify({
-                            action:'upload_to_personnel_folder',
-                            username: localStorage.getItem('loggedInUser') || '',
-                            credential: localStorage.getItem('loggedCred') || '',
-                            personnelNo: no,
-                            fileName: file.name,
-                            mimeType: file.type || 'application/octet-stream',
-                            base64: rawBase64
-                        })
-                    });
-                    let data;
+            const failures = [], reports = [];
+            try {
+                for (let i = 0; i < files.length; i++) {
+                    const file = files[i];
+                    if (status) status.textContent = 'Optimizing / preparing ' + file.name + ' (' + (i + 1) + '/' + files.length + ')…';
                     try {
-                        data = await res.json();
-                    } catch (parseErr) {
-                        throw new Error('The server returned an invalid response.');
-                    }
-                    if (data && data.success) {
-                        okCount++;
-                    } else {
-                        failures.push(file.name + ': ' + ((data && data.error) ? data.error : 'upload failed'));
-                    }
-                } catch (err) {
-                    failures.push(file.name + ': ' + ((err && err.message) ? err.message : 'read failed'));
+                        const optimization = await spadesOptimizeUploadFile(file);
+                        const uploadFile = optimization.file || file;
+                        if (uploadFile.size > 10 * 1024 * 1024) throw new Error('file exceeds 10 MB and could not be reduced safely; choose a smaller file');
+                        const rawBase64 = await readChatFileAsBase64(uploadFile);
+                        if (status) status.textContent = 'Uploading ' + file.name + ' (' + (i + 1) + '/' + files.length + ')…';
+                        const res = await fetch(API_URL, {
+                            method:'POST', mode:'cors', headers:{'Content-Type':'text/plain;charset=utf-8'},
+                            body: JSON.stringify({
+                                action:'upload_to_personnel_folder', username:localStorage.getItem('loggedInUser') || '',
+                                credential:localStorage.getItem('loggedCred') || '', personnelNo:no, fileName:file.name,
+                                mimeType:uploadFile.type || file.type || 'application/octet-stream', base64:rawBase64
+                            })
+                        });
+                        let data;
+                        try { data = await res.json(); } catch (parseErr) { throw new Error('The server returned an invalid response.'); }
+                        if (data && data.success) {
+                            okCount++;
+                            reports.push(file.name + ': ' + spadesUploadOptimizationLabel(optimization));
+                        } else failures.push(file.name + ': ' + ((data && data.error) ? data.error : 'upload failed'));
+                    } catch (err) { failures.push(file.name + ': ' + ((err && err.message) ? err.message : 'upload failed')); }
                 }
+            } finally {
+                if (input) input.value = '';
+                if (uploadBtn) uploadBtn.disabled = false;
             }
-            if (input) input.value = '';
             const summary = okCount + ' uploaded' + (failures.length ? ', ' + failures.length + ' failed.' : '.');
             if (status) status.textContent = summary;
-            customAlert(summary + (failures.length ? ('\n\nFailed:\n' + failures.join('\n')) : ''), 'Upload Result');
-            // Re-fetch listing so newly uploaded files appear immediately.
-            try {
-                const data = await fetchPersonnelFolderListing(no);
-                if (data && data.success) renderFolderBrowserEntries(data.entries || []);
-            } catch (_) { /* keep current list */ }
-            if (uploadBtn) uploadBtn.disabled = false;
+            customAlert(summary + (reports.length ? '\n\n' + reports.join('\n') : '') + (failures.length ? ('\n\nFailed:\n' + failures.join('\n')) : ''), 'Upload Result');
+            try { const data = await fetchPersonnelFolderListing(no); if (data && data.success) renderFolderBrowserEntries(data.entries || []); } catch (_) {}
         }
 
         function closePersonnelFolderBrowser() {
@@ -8051,6 +8044,20 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             notice.textContent = message || '';
             notice.classList.remove('is-error', 'is-success', 'is-warning');
             if (state) notice.classList.add('is-' + state);
+        }
+
+        function updateMyFilesUploadProgress(current, total, phase, fileName = '', complete = false) {
+            const wrap = document.getElementById('myFilesUploadProgress');
+            const bar = document.getElementById('myFilesUploadProgressBar');
+            const label = document.getElementById('myFilesUploadProgressLabel');
+            const count = document.getElementById('myFilesUploadProgressCount');
+            if (!wrap || !bar || !label || !count) return;
+            const safeTotal = Math.max(1, Number(total) || 1);
+            const percent = Math.max(0, Math.min(100, Math.round((Number(current) || 0) / safeTotal * 100)));
+            wrap.classList.remove('hidden');
+            bar.value = percent;
+            count.textContent = percent + '%';
+            label.textContent = complete ? 'Upload processing completed' : ((phase || 'Processing') + ' · ' + Math.min(Number(current) + 1, safeTotal) + ' of ' + safeTotal + (fileName ? ' · ' + fileName : ''));
         }
 
         function updateMyFilesCount() {
@@ -8178,15 +8185,16 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         function setMyFilesUploadQueue(files, append = false) {
             const incoming = Array.from(files || []);
             myFilesUploadQueue = append ? myFilesUploadQueue.concat(incoming) : incoming;
+            document.getElementById('myFilesUploadProgress')?.classList.add('hidden');
             renderMyFilesSelection();
             updateMyFilesUploadControls();
             if (!myFilesUploadQueue.length) return;
             const oversized = myFilesUploadQueue.filter(file => file.size > SPADES_ACCOUNT_FILE_MAX_BYTES);
             const empty = myFilesUploadQueue.filter(file => !file.size);
             if (oversized.length || empty.length) {
-                setMyFilesNotice(oversized.length + ' file(s) exceed the 10 MB limit and ' + empty.length + ' empty file(s) will be skipped.', 'warning');
+                setMyFilesNotice(oversized.length + ' large file(s) will be optimized where safely supported before the 10 MB limit is checked; ' + empty.length + ' empty file(s) will be skipped.', 'warning');
             } else {
-                setMyFilesNotice(myFilesUploadQueue.length + ' file(s) selected. Review the selection, then select Upload files to continue.', 'success');
+                setMyFilesNotice(myFilesUploadQueue.length + ' file(s) selected. Supported images will be optimized automatically where this reduces size.', 'success');
             }
         }
 
@@ -8271,34 +8279,37 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             if (myFilesReadOnly) return customAlert('This account is restricted to read-only access.', 'Upload Not Available');
             if (myFilesLoading || myFilesUploading) return;
             const files = myFilesUploadQueue.slice();
-            // With no queued selection, the Upload button opens the device picker.
             if (!files.length) return openMyFilesFilePicker();
-            const validFiles = files.filter(file => file && file.size > 0 && file.size <= SPADES_ACCOUNT_FILE_MAX_BYTES);
-            const failures = files.filter(file => !file || !file.size || file.size > SPADES_ACCOUNT_FILE_MAX_BYTES)
-                .map(file => (file && file.name ? file.name : 'Selected file') + (!file || !file.size ? ': empty files are not accepted' : ': exceeds the 10 MB limit'));
+            const validFiles = files.filter(file => file && file.size > 0);
+            const failures = files.filter(file => !file || !file.size).map(file => (file && file.name ? file.name : 'Selected file') + ': empty files are not accepted');
             if (!validFiles.length) {
-                setMyFilesNotice('No files meet the upload requirements. Choose non-empty files up to 10 MB each.', 'warning');
+                setMyFilesNotice('No non-empty files were selected.', 'warning');
                 customAlert(failures.join('\n'), 'Upload Not Started');
                 return;
             }
             myFilesUploading = true;
             updateMyFilesUploadControls();
             let uploaded = 0;
+            const reports = [];
+            updateMyFilesUploadProgress(0, validFiles.length, 'Preparing');
             try {
                 for (let i = 0; i < validFiles.length; i++) {
                     const file = validFiles[i];
-                    setMyFilesNotice('Uploading ' + (i + 1) + ' of ' + validFiles.length + ': ' + file.name, '');
+                    updateMyFilesUploadProgress(i, validFiles.length, 'Optimizing', file.name);
+                    setMyFilesNotice('Optimizing / preparing ' + (i + 1) + ' of ' + validFiles.length + ': ' + file.name, '');
                     try {
-                        const base64 = arrayBufferToBase64(await file.arrayBuffer());
+                        const optimization = await spadesOptimizeUploadFile(file);
+                        const uploadFile = optimization.file || file;
+                        if (uploadFile.size > SPADES_ACCOUNT_FILE_MAX_BYTES) throw new Error('exceeds 10 MB and could not be reduced safely; choose a smaller file');
+                        setMyFilesNotice('Uploading ' + (i + 1) + ' of ' + validFiles.length + ': ' + file.name, '');
+                        const base64 = arrayBufferToBase64(await uploadFile.arrayBuffer());
                         await callMyFilesApi('upload_user_file', {
-                            fileName:file.name,
-                            mimeType:file.type || 'application/octet-stream',
-                            base64
+                            fileName:file.name, mimeType:uploadFile.type || file.type || 'application/octet-stream', base64
                         });
                         uploaded++;
-                    } catch (error) {
-                        failures.push(file.name + ': ' + (error && error.message ? error.message : 'upload failed'));
-                    }
+                        reports.push(file.name + ' — ' + spadesUploadOptimizationLabel(optimization));
+                    } catch (error) { failures.push(file.name + ': ' + (error && error.message ? error.message : 'upload failed')); }
+                    updateMyFilesUploadProgress(i + 1, validFiles.length, 'Processed', file.name);
                 }
             } finally {
                 myFilesUploading = false;
@@ -8308,10 +8319,12 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 renderMyFilesSelection();
                 updateMyFilesUploadControls();
             }
+            updateMyFilesUploadProgress(validFiles.length, validFiles.length, 'Completed', '', true);
             await loadMyFiles();
             const summary = uploaded + ' file(s) uploaded successfully.' + (failures.length ? ' ' + failures.length + ' file(s) could not be uploaded.' : '');
-            setMyFilesNotice(summary + (failures.length ? ' Review the upload details.' : ''), failures.length ? 'warning' : 'success');
-            if (uploaded || failures.length) customAlert(summary + (failures.length ? '\n\n' + failures.join('\n') : ''), 'Upload Result');
+            const details = reports.concat(failures.map(item => 'FAILED — ' + item)).join(' | ');
+            setMyFilesNotice(summary + (details ? ' ' + details : ''), failures.length ? 'warning' : 'success');
+            if (uploaded || failures.length) customAlert(summary + (reports.length ? '\n\n' + reports.join('\n') : '') + (failures.length ? '\n\n' + failures.join('\n') : ''), 'Upload Result');
         }
 
         async function fetchMyAccountFile(fileId) {

@@ -8,6 +8,10 @@
 <title>SPADES | RHSU Operations Portal</title>
 <link href="images/RHSU Spades.png" rel="icon" type="image/png"/>
 <link href="images/RHSU Spades.png" rel="apple-touch-icon"/>
+<link rel="preconnect" href="https://script.google.com" crossorigin/>
+<link rel="preconnect" href="https://script.googleusercontent.com" crossorigin/>
+<link rel="dns-prefetch" href="https://script.google.com"/>
+<link rel="dns-prefetch" href="https://script.googleusercontent.com"/>
 <link href="https://cdn-uicons.flaticon.com/4.0.0/uicons-regular-rounded/css/uicons-regular-rounded.css" rel="stylesheet"/>
 <script>
         // Prevent the login form from flashing during an authenticated page refresh.
@@ -85,7 +89,9 @@
 <label for="loginCredential">PIN / Password</label>
 <input autocomplete="current-password" id="loginCredential" maxlength="128" onkeydown="if(event.key==='Enter'){event.preventDefault();loginUser();}" placeholder="Enter your PIN or password" type="password"/>
 </div>
-<button class="rhsu-login-submit" onclick="loginUser()">Login</button>
+<button class="rhsu-login-submit" onclick="loginUser()" type="button" aria-label="Log in to SPADES">
+<i aria-hidden="true" class="fi fi-rr-sign-in-alt spades-ui-icon"></i><span class="rhsu-login-submit-label">LOG IN</span>
+</button>
 <div class="rhsu-login-create">New user? <span class="link" onclick="toggleAuthViews('registerPage')">Create an Account</span></div>
 </section>
 </div>
@@ -198,13 +204,25 @@
 </div>
 <span>POLICE REGIONAL OFFICE 1</span>
 </div>
+<div class="exec-hero-logo-item exec-hero-logo-item-spades">
+<div class="exec-hero-logo-glass exec-hero-logo-spades">
+<img alt="RHSU SPADES logo" onerror="this.closest('.exec-hero-logo-item').style.display='none'" src="images/RHSU Spades.webp"/>
+</div>
+<span>RHSU SPADES</span>
+</div>
 </div>
 </div>
 </div>
 <div class="exec-hero-footer">
 <div class="exec-hero-action-intro">
-<span class="exec-hero-action-kicker">QUICK ACCESS</span>
+<span class="exec-hero-action-kicker">DASHBOARD SHORTCUTS</span>
 <span class="exec-hero-action-hint">Frequently used dashboard actions</span>
+</div>
+<div class="dashboard-quick-access" id="dashboardQuickAccess">
+<button aria-controls="dashboardQuickAccessPanel" aria-expanded="false" class="dashboard-quick-access-trigger" id="dashboardQuickAccessBtn" onclick="toggleDashboardQuickAccess()" onkeydown="dashboardQuickAccessKeydown(event)" type="button">
+<i aria-hidden="true" class="fi fi-rr-bolt"></i><span>QUICK ACCESS</span><i aria-hidden="true" class="fi fi-rr-angle-small-down dashboard-quick-access-chevron"></i>
+</button>
+<div aria-hidden="true" aria-label="Quick access shortcuts" class="dashboard-quick-access-panel hidden" id="dashboardQuickAccessPanel" onkeydown="dashboardQuickAccessKeydown(event)" role="menu"></div>
 </div>
 <div class="exec-hero-actions">
 <button aria-label="Dashboard: Create Memo" class="rhsu-dashboard-action-btn" data-spades-action-key="dashboard-memo-create" data-tooltip="Dashboard · Create Memo" id="dashboardAddMemoBtn" onclick="dashboardAddMemo()" title="Dashboard · Create Memo" type="button"><span aria-hidden="true" class="dashboard-action-icon"><i class="fi fi-rr-plus"></i></span><span class="dashboard-action-label">Add Memo</span></button>
@@ -604,6 +622,11 @@
 <select id="personnelStatusFilter" onchange="filterPersonnel()" style="width:auto;min-width:150px;">
 <option value="">All Status</option>
 </select>
+<label class="personnel-filter-label" for="personnelSectionFilter">Filter by Section</label>
+<select aria-label="Filter by Section" id="personnelSectionFilter" onchange="filterPersonnel()" style="width:auto;min-width:190px;">
+<option value="">All Sections</option>
+</select>
+<span aria-live="polite" class="personnel-filter-result-count" id="personnelFilterResultCount">Showing all personnel</span>
 <button class="action-btn" onclick="clearPersonnelFilters()">Clear Filters</button>
 <button class="action-btn" onclick="loadPersonnel()">↻ Refresh</button>
 </div>
@@ -838,11 +861,12 @@
 <div class="activity-calendar-head-actions">
 <button aria-label="Activity Management: Add Activity" class="action-btn approve-btn activity-calendar-add" data-spades-action-key="activity-management-add-activity" id="activityAddBtn" onclick="openActivityModal()" style="color:white;font-weight:bold;" title="Activity Management · Add Activity" type="button"><i aria-hidden="true" class="fi fi-rr-plus"></i> Add Activity</button>
 <button class="action-btn activity-view-data-btn" onclick="openActivityDataModal()" type="button"><i aria-hidden="true" class="fi fi-rr-table-list"></i> View Data</button>
-<div aria-label="Calendar view" class="activity-calendar-view-switch" role="group">
-<button class="is-active" id="activityMonthViewBtn" onclick="setActivityCalendarView('month')" type="button">Month</button>
-<button id="activityWeekViewBtn" onclick="setActivityCalendarView('week')" type="button">Week</button>
+<div class="activity-calendar-nav">
+<button aria-label="Previous month" onclick="changeActivityOverviewMonth(-1)" type="button">‹</button>
+<strong id="activityOverviewMonthTitle"></strong>
+<button aria-label="Next month" onclick="changeActivityOverviewMonth(1)" type="button">›</button>
+<button aria-label="Go to current month" class="activity-calendar-today-btn" onclick="goToActivityOverviewToday()" type="button">Today</button>
 </div>
-<div class="activity-calendar-nav"><button aria-label="Previous period" onclick="changeActivityOverviewMonth(-1)" type="button">‹</button><strong id="activityOverviewMonthTitle"></strong><button aria-label="Next period" onclick="changeActivityOverviewMonth(1)" type="button">›</button></div>
 </div>
 </div>
 <div class="activity-overview-grid" id="activityOverviewCalendar"></div>
@@ -1725,13 +1749,17 @@
 <span class="my-files-dropzone-icon"><i aria-hidden="true" class="fi fi-rr-cloud-upload"></i></span>
 <div class="my-files-dropzone-copy">
 <strong>Upload files to your workspace</strong>
-<span>Drag and drop files here, or click Upload files to browse your device. Maximum 10 MB per file.</span>
+<span>Drag and drop files here, or click Upload files to browse your device. Maximum 10 MB after safe optimization where supported; other formats upload unchanged.</span>
 </div>
 <div class="my-files-upload-controls">
 <button aria-label="Choose files or upload selected files" class="my-files-upload-btn my-files-upload-confirm" id="myFilesUploadBtn" onclick="uploadMyFiles()" title="Choose files or upload selected files" type="button">
 <i aria-hidden="true" class="fi fi-rr-upload"></i><span id="myFilesUploadBtnLabel">Upload files</span>
 </button>
 </div>
+</div>
+<div aria-live="polite" class="my-files-upload-progress hidden" id="myFilesUploadProgress" role="status">
+<div class="my-files-upload-progress-copy"><strong id="myFilesUploadProgressLabel">Preparing uploads</strong><span id="myFilesUploadProgressCount">0%</span></div>
+<progress id="myFilesUploadProgressBar" max="100" value="0">0%</progress>
 </div>
 <div class="my-files-selection-row" hidden="" id="myFilesSelectionRow">
 <span class="my-files-selection-icon"><i aria-hidden="true" class="fi fi-rr-paperclip"></i></span>
