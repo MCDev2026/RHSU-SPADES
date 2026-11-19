@@ -13334,3 +13334,225 @@ body .profile-settings-overlay .modal-content > header.modal-uniform-header > bu
     inset: 14px 14px auto auto !important;
   }
 }
+
+
+/* ========================================================================
+   SPADES FEATURE UPDATE – CENTERED LOGIN BRAND, PERSONNEL ROW COPY,
+   DISTINCT FILE ACTIONS, AND REFINED MY PROFILE DASHBOARD
+   ======================================================================== */
+/* Login identity is the visual anchor. Keep it centered and prominent on all devices. */
+#loginPage.rhsu-login-shell .rhsu-login-brand {
+    display:flex !important;
+    align-items:center;
+    justify-content:center;
+    text-align:center;
+    background:linear-gradient(145deg,#0b1c39 0%,#174a96 58%,#087e83 100%);
+}
+#loginPage .rhsu-login-brand-inner {
+    width:100%;
+    max-width:560px;
+    align-items:center;
+    justify-content:center;
+    padding:42px clamp(22px,4vw,52px);
+    text-align:center;
+}
+#loginPage .rhsu-login-brand-logo {
+    display:block;
+    width:clamp(132px,15vw,178px);
+    height:clamp(132px,15vw,178px);
+    margin:0 auto 22px;
+    object-fit:contain;
+    object-position:center;
+    filter:drop-shadow(0 10px 24px rgba(0,0,0,.26));
+}
+#loginPage .rhsu-login-brand h1 { max-width:440px; text-align:center; }
+#loginPage .rhsu-login-brand p { text-align:center; margin-left:auto; margin-right:auto; }
+#loginPage .rhsu-login-system-status { justify-content:center; }
+#loginPage .rhsu-login-form { align-self:stretch; }
+#loginPage .rhsu-login-submit[aria-busy="true"] { opacity:.86; cursor:progress; }
+@media(max-width:760px) {
+    #loginPage.rhsu-login-shell { grid-template-columns:minmax(0,1fr); }
+    #loginPage .rhsu-login-brand { min-height:190px; }
+    #loginPage .rhsu-login-brand-inner { padding:18px 20px 16px; }
+    #loginPage .rhsu-login-brand-logo { width:clamp(96px,25vw,124px); height:clamp(96px,25vw,124px); margin-bottom:12px; }
+    #loginPage .rhsu-login-kicker { margin-bottom:6px; font-size:9px; }
+    #loginPage .rhsu-login-brand h1 { font-size:20px; margin-bottom:6px; }
+    #loginPage .rhsu-login-brand p { font-size:11px; line-height:1.45; }
+    #loginPage .rhsu-login-system-status { margin-top:10px; font-size:10px; }
+    #loginPage .rhsu-login-form { padding:24px 22px 28px; }
+}
+
+/* Personnel List – a single compact, accessible copy action per row. */
+.personnel-copy-heading { width:54px; min-width:54px; text-align:center !important; }
+.personnel-copy-cell { text-align:center !important; vertical-align:middle; white-space:nowrap; }
+.personnel-row-copy-btn {
+    display:inline-grid !important;
+    place-items:center !important;
+    width:30px !important;
+    min-width:30px !important;
+    height:30px !important;
+    min-height:30px !important;
+    padding:0 !important;
+    margin:0 auto !important;
+    border:1px solid var(--border-color) !important;
+    border-radius:8px !important;
+    background:var(--surface-muted,rgba(100,116,139,.08)) !important;
+    color:var(--primary) !important;
+    box-shadow:none !important;
+    cursor:pointer;
+}
+.personnel-row-copy-btn i { font-size:13px; line-height:1; }
+.personnel-row-copy-btn:hover:not(:disabled) { transform:none !important; background:rgba(37,99,235,.12) !important; border-color:rgba(37,99,235,.38) !important; }
+.personnel-row-copy-btn.is-copied { color:#047857 !important; background:rgba(16,185,129,.12) !important; border-color:rgba(16,185,129,.42) !important; }
+.personnel-row-copy-btn:focus-visible { outline:3px solid rgba(59,130,246,.35); outline-offset:2px; }
+
+/* Personnel File Browser – make file picking and transfer actions visually distinct. */
+.pf-folder-choose-btn, .pf-folder-upload-btn { min-height:40px !important; gap:9px !important; font-weight:750 !important; }
+.pf-folder-choose-btn > i, .pf-folder-upload-btn > i {
+    display:inline-grid !important;
+    place-items:center;
+    width:27px;
+    height:27px;
+    flex:0 0 27px;
+    border-radius:8px;
+    background:rgba(255,255,255,.20);
+    color:#fff;
+    font-size:15px !important;
+}
+.pf-folder-choose-btn > i { background:rgba(255,255,255,.24); }
+.pf-folder-upload-btn > i { background:rgba(0,0,0,.13); }
+
+/* My Profile – modern account overview and structured information dashboard. */
+#tabProfile { max-width:1500px; margin-inline:auto; }
+#tabProfile .pf-page-intro {
+    display:flex;
+    align-items:center;
+    gap:14px;
+    margin:0 0 18px;
+    padding:2px 1px;
+    min-width:0;
+}
+#tabProfile .pf-page-intro-icon {
+    display:grid;
+    place-items:center;
+    flex:0 0 48px;
+    width:48px;
+    height:48px;
+    border:1px solid rgba(37,99,235,.16);
+    border-radius:15px;
+    color:var(--primary);
+    background:linear-gradient(145deg,rgba(37,99,235,.13),rgba(8,126,131,.09));
+    font-size:21px;
+}
+#tabProfile .pf-page-intro-copy { min-width:0; flex:1 1 auto; }
+#tabProfile .pf-page-eyebrow, #tabProfile .pf-section-eyebrow, #tabProfile .pf-identity-kicker {
+    display:block;
+    color:var(--primary);
+    font-size:9px;
+    font-weight:850;
+    letter-spacing:.14em;
+    text-transform:uppercase;
+}
+#tabProfile .pf-page-intro h2 { margin:2px 0 3px !important; color:var(--text-main) !important; font-size:clamp(21px,2vw,27px); letter-spacing:-.035em; }
+#tabProfile .pf-page-intro p { margin:0; color:var(--text-muted); font-size:12px; line-height:1.5; }
+#tabProfile .pf-refresh-btn {
+    display:inline-flex !important;
+    align-items:center;
+    justify-content:center;
+    gap:8px;
+    flex:0 0 auto;
+    min-height:38px;
+    padding:8px 13px !important;
+    border:1px solid var(--border-color) !important;
+    border-radius:10px !important;
+    background:var(--surface,var(--glass-bg)) !important;
+    color:var(--text-main) !important;
+    font-size:12px;
+    font-weight:750;
+    box-shadow:0 2px 8px rgba(15,23,42,.045) !important;
+}
+#tabProfile .pf-refresh-btn i { color:var(--primary); }
+#tabProfile .pf-hero { border:1px solid var(--border-color); border-radius:18px; box-shadow:var(--ui-shadow,0 8px 28px rgba(15,23,42,.07)); }
+#tabProfile .pf-cover { min-height:190px; border-radius:17px 17px 0 0; }
+#tabProfile .pf-cover-actions { padding:13px 16px; }
+#tabProfile .pf-profile-quick-actions { gap:7px; padding:7px; border:1px solid rgba(255,255,255,.16); border-radius:13px; background:rgba(4,17,39,.35); backdrop-filter:blur(12px); }
+#tabProfile .pf-profile-quick-actions button { display:inline-flex; align-items:center; gap:7px; min-height:35px; padding:7px 10px; border:1px solid rgba(255,255,255,.13); border-radius:9px; background:rgba(255,255,255,.08); color:#fff; font-size:11px; }
+#tabProfile .pf-profile-quick-actions button i { font-size:13px; }
+#tabProfile .pf-profile-quick-actions button:hover { background:rgba(255,255,255,.19); }
+#tabProfile .pf-hero-body { grid-template-columns:132px minmax(180px,1fr) minmax(220px,auto); gap:14px 20px; align-items:center; padding:0 22px 20px; }
+#tabProfile .pf-avatar-wrap { margin-top:-54px; align-self:start; }
+#tabProfile .pf-hero-info { padding-top:10px; }
+#tabProfile .pf-identity-kicker { margin-bottom:6px; color:var(--text-muted); letter-spacing:.12em; }
+#tabProfile #profileDisplayName { margin:0 0 3px !important; font-size:clamp(20px,2vw,26px); font-weight:850; letter-spacing:-.035em; }
+#tabProfile .pf-username { margin:0 0 9px; font-size:12px; }
+#tabProfile .profile-role-badge { padding:5px 10px; }
+#tabProfile .pf-hero-stats { justify-content:flex-end; align-items:center; gap:10px; }
+#tabProfile .pf-stat { min-width:140px; padding:12px 13px; border:1px solid var(--border-color); border-radius:12px; background:var(--surface-muted,rgba(100,116,139,.055)); }
+#tabProfile .pf-stat-icon { display:grid; place-items:center; width:34px; height:34px; flex:0 0 34px; border-radius:10px; color:var(--primary); background:rgba(37,99,235,.11); font-size:16px; opacity:1; }
+#tabProfile .pf-stat strong { font-size:19px; font-weight:850; }
+#tabProfile .pf-stat small { font-size:10px; }
+#tabProfile .pf-profile-content-grid { grid-template-columns:minmax(0,1.25fr) minmax(320px,.85fr); gap:16px; align-items:start; margin-top:16px; }
+#tabProfile .pf-info-panel, #tabProfile .pf-panel { padding:0; overflow:hidden; border:1px solid var(--border-color); border-radius:15px; background:var(--surface,var(--glass-bg)); box-shadow:var(--ui-shadow,0 3px 16px rgba(15,23,42,.045)); }
+#tabProfile .pf-section-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:16px 18px; border-bottom:1px solid var(--border-color); }
+#tabProfile .pf-section-heading h3 { margin:3px 0 3px !important; padding:0 !important; border:0 !important; color:var(--text-main); font-size:15px; font-weight:800; }
+#tabProfile .pf-section-heading p { margin:0; color:var(--text-muted); font-size:11px; line-height:1.45; }
+#tabProfile .pf-section-edit-btn { display:inline-flex !important; align-items:center; justify-content:center; gap:6px; min-height:33px; padding:7px 10px !important; border:1px solid rgba(37,99,235,.25) !important; border-radius:9px !important; color:var(--primary) !important; background:rgba(37,99,235,.07) !important; font-size:11px; font-weight:800; }
+#tabProfile .pf-info-section-label { display:flex; align-items:center; gap:8px; margin:0 18px; padding:13px 0 9px; color:var(--text-main); border-bottom:1px solid var(--border-color); font-size:11px; font-weight:800; }
+#tabProfile .pf-info-section-label i { color:var(--primary); font-size:13px; }
+#tabProfile .pf-info-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:0 16px; padding:0 18px 9px; }
+#tabProfile .pf-info-item { display:flex; flex-direction:column; justify-content:center; gap:5px; min-width:0; min-height:62px; padding:10px 0; border-bottom:1px solid var(--border-color); }
+#tabProfile .pf-info-item:nth-last-child(-n+2) { border-bottom:0; }
+#tabProfile .pf-info-item > span { color:var(--text-muted); font-size:10px; font-weight:700; letter-spacing:.025em; }
+#tabProfile .pf-info-item > strong { color:var(--text-main); font-size:12px; font-weight:750; line-height:1.4; overflow-wrap:anywhere; word-break:break-word; }
+#tabProfile .pf-info-item .profile-value { color:var(--text-main); }
+#tabProfile .pf-info-item .pf-status-active { color:#059669; }
+#tabProfile .pf-right { gap:14px; }
+#tabProfile .pf-section-icon-badge { display:grid; place-items:center; width:34px; height:34px; flex:0 0 34px; border-radius:10px; color:var(--primary); background:rgba(37,99,235,.10); }
+#tabProfile .pf-recent-panel #profileRecentMemos { max-height:340px; min-height:90px; padding:10px 16px 14px; }
+#tabProfile .pf-quick-panel .pf-section-heading { border-bottom:0; padding-bottom:10px; }
+#tabProfile .pf-profile-shortcuts { display:grid; gap:0; padding:0 16px 8px; }
+#tabProfile .pf-profile-shortcuts button { display:flex !important; align-items:center; gap:10px; width:100%; min-width:0; min-height:62px; margin:0 !important; padding:9px 2px !important; border:0 !important; border-top:1px solid var(--border-color) !important; border-radius:0 !important; background:transparent !important; color:var(--text-main) !important; text-align:left; box-shadow:none !important; }
+#tabProfile .pf-profile-shortcuts button > span:nth-child(2) { display:flex; flex:1; flex-direction:column; gap:3px; min-width:0; }
+#tabProfile .pf-profile-shortcuts button strong { font-size:11px; font-weight:800; }
+#tabProfile .pf-profile-shortcuts button small { color:var(--text-muted); font-size:10px; line-height:1.35; }
+#tabProfile .pf-profile-shortcuts button > i:last-child { color:var(--text-muted); font-size:14px; }
+#tabProfile .pf-profile-shortcuts button:hover { background:var(--surface-muted,rgba(100,116,139,.05)) !important; transform:none !important; }
+#tabProfile .pf-shortcut-icon { display:grid; place-items:center; width:36px; height:36px; flex:0 0 36px; border-radius:11px; font-size:15px; }
+#tabProfile .pf-shortcut-blue { color:#2563eb; background:rgba(37,99,235,.11); }
+#tabProfile .pf-shortcut-green { color:#059669; background:rgba(16,185,129,.12); }
+#tabProfile .pf-shortcut-violet { color:#7c3aed; background:rgba(124,58,237,.11); }
+body.dark-mode #tabProfile .pf-info-item > strong { color:var(--text-main); }
+body.dark-mode #tabProfile .pf-profile-shortcuts button:hover { background:rgba(255,255,255,.04) !important; }
+@media(max-width:1000px) {
+    #tabProfile .pf-hero-body { grid-template-columns:110px minmax(0,1fr); align-items:end; }
+    #tabProfile .pf-avatar-wrap { width:110px; height:110px; }
+    #tabProfile .pf-avatar-trigger, #tabProfile .pf-avatar-img, #tabProfile .pf-avatar-fallback { width:110px; height:110px; }
+    #tabProfile .pf-hero-stats { grid-column:1/-1; justify-content:flex-start; }
+    #tabProfile .pf-profile-content-grid { grid-template-columns:minmax(0,1fr); }
+}
+@media(max-width:600px) {
+    #tabProfile .pf-page-intro { align-items:flex-start; flex-wrap:wrap; }
+    #tabProfile .pf-page-intro-icon { width:40px; height:40px; flex-basis:40px; border-radius:12px; }
+    #tabProfile .pf-page-intro-copy { flex-basis:calc(100% - 58px); }
+    #tabProfile .pf-refresh-btn { margin-left:54px; }
+    #tabProfile .pf-cover { min-height:150px; height:150px; }
+    #tabProfile .pf-cover-actions { padding:9px; }
+    #tabProfile .pf-profile-quick-actions { gap:4px; padding:5px; }
+    #tabProfile .pf-profile-quick-actions button { min-height:31px; padding:6px 8px; }
+    #tabProfile .pf-profile-quick-actions button .pf-action-label { display:none; }
+    #tabProfile .pf-hero-body { grid-template-columns:82px minmax(0,1fr); gap:10px 12px; padding:0 13px 14px; }
+    #tabProfile .pf-avatar-wrap { width:82px; height:82px; margin-top:-36px; }
+    #tabProfile .pf-avatar-trigger, #tabProfile .pf-avatar-img, #tabProfile .pf-avatar-fallback { width:82px; height:82px; }
+    #tabProfile .pf-avatar-fallback { font-size:30px; }
+    #tabProfile .pf-hero-info { padding-top:7px; }
+    #tabProfile #profileDisplayName { font-size:17px; }
+    #tabProfile .pf-hero-stats { gap:7px; }
+    #tabProfile .pf-stat { flex:1 1 130px; min-width:0; padding:9px; }
+    #tabProfile .pf-stat-icon { width:29px; height:29px; flex-basis:29px; font-size:13px; }
+    #tabProfile .pf-stat strong { font-size:16px; }
+    #tabProfile .pf-section-heading { padding:13px 14px; }
+    #tabProfile .pf-info-grid { grid-template-columns:minmax(0,1fr); padding:0 14px 8px; }
+    #tabProfile .pf-info-item { min-height:54px; border-bottom:1px solid var(--border-color) !important; }
+    #tabProfile .pf-info-item:last-child { border-bottom:0 !important; }
+    #tabProfile .pf-info-section-label { margin:0 14px; }
+}

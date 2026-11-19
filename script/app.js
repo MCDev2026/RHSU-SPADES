@@ -2254,22 +2254,29 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 // fall back to the Dashboard through navigateToSpadesAddress().
                 navigateToSpadesAddress();
                 
-                // Apply per-user allowed-access restrictions to navigation after login/restore.
-                loadUserAccessMap().then(() => applyAccessRestrictions()).catch(() => {});
-                // Force read-only if the current user is restricted by Alpha Admin.
-                loadUserRestrictions().then(() => {
-                    const me = localStorage.getItem('loggedInUser');
-                    if (me && userRestrictedMap[me]) {
+                // Fetch the combined security context once. Access permissions and read-only
+                // restrictions are delivered by the same authenticated endpoint.
+                loadUserAccessContext().then(() => {
+                    const me = String(localStorage.getItem('loggedInUser') || '').trim().toLowerCase();
+                    const restrictedKey = Object.keys(userRestrictedMap || {}).find(key => String(key).trim().toLowerCase() === me);
+                    if (restrictedKey && userRestrictedMap[restrictedKey]) {
                         localStorage.setItem('canEdit', 'No');
                         localStorage.setItem('userRole', 'Regular User');
-                        applyAccessRestrictions();
                     }
+                    applyAccessRestrictions();
                 }).catch(() => {});
-                
-                restartActivityLogRefresh();
-                fetchSystemAnnouncement();
-                startActivityReminderMonitor();
-                startChatNotificationMonitor();
+
+                // Keep the first authenticated screen responsive. Background polling,
+                // announcements and reminders start after the initial render.
+                const startPostLoginTasks = () => {
+                    if (!localStorage.getItem('loggedInUser')) return;
+                    restartActivityLogRefresh();
+                    fetchSystemAnnouncement();
+                    startActivityReminderMonitor();
+                    startChatNotificationMonitor();
+                };
+                if (typeof window.requestIdleCallback === 'function') window.requestIdleCallback(startPostLoginTasks, {timeout: 1200});
+                else window.setTimeout(startPostLoginTasks, 260);
             } else {
                 if (activityReminderTimer) clearInterval(activityReminderTimer);
                 stopChatNotificationMonitor();
@@ -2278,6 +2285,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         }
 
         async function loginUser() {
+            if (loginUser._inFlight) return;
             const user = document.getElementById('loginUsername').value.trim();
             const cred = document.getElementById('loginCredential').value;
             const credentialMode = document.querySelector('input[name="loginType"]:checked')?.value || 'pin';
@@ -2289,11 +2297,14 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             const credentialInput = document.getElementById('loginCredential');
             const loginButton = document.querySelector('#loginPage .rhsu-login-submit');
             const previousText = loginButton?.textContent;
+            loginUser._inFlight = true;
             const controller = new AbortController();
             const timeoutId = window.setTimeout(() => controller.abort(), 45000);
             credentialInput.disabled = true;
-            if (loginButton) { loginButton.disabled = true; loginButton.textContent = 'Connecting…'; }
+            if (loginButton) { loginButton.disabled = true; loginButton.setAttribute('aria-busy', 'true'); loginButton.textContent = 'Verifying…'; }
             try {
+                // Allow the visual busy state to paint before the network request begins.
+                await new Promise(resolve => requestAnimationFrame(resolve));
                 const response = await fetch(API_URL, {
                     method:'POST',
                     mode:'cors',
@@ -2349,8 +2360,9 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 customAlert(message, 'Authentication Connection Error');
             } finally {
                 window.clearTimeout(timeoutId);
+                loginUser._inFlight = false;
                 credentialInput.disabled = false;
-                if (loginButton) { loginButton.disabled = false; loginButton.textContent = previousText || 'Login'; }
+                if (loginButton) { loginButton.disabled = false; loginButton.removeAttribute('aria-busy'); loginButton.textContent = previousText || 'Login'; }
             }
         }
 
@@ -3560,16 +3572,20 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 const showRestoreAction = archived && canPersonnelAction('list', 'add');
                 const bodyHtml = dataRows.map((p, index) => {
                     const clickAction = archived ? `onclick="openArchivedPersonnelDetails(${Number(p.archiveRow)})"` : `onclick="openPersonnelProfile(${Number(p.no)})"`;
+                    const recordKey = archived ? Number(p.archiveRow) : Number(p.no);
+                    const copyLabel = 'Copy Rank through Qualifier for ' + [p.rank,p.lastName,p.firstName,p.middleName,p.qualifiers].filter(Boolean).join(' ');
+                    const copyActionCell = `<td class="personnel-copy-cell"><button type="button" class="personnel-row-copy-btn" title="Copy Rank through Qualifier" aria-label="${escapeAttr(copyLabel)}" onclick="event.stopPropagation();copyPersonnelRowToClipboard(${recordKey},${archived},this)" onkeydown="event.stopPropagation()"><i aria-hidden="true" class="fi fi-rr-copy"></i><span class="sr-only">Copy row</span></button></td>`;
                     const restoreActionCell = showRestoreAction
-                        ? `<td class="personnel-actions-cell"><button type="button" class="action-btn approve-btn" title="Restore personnel" aria-label="Restore ${escapeAttr((p.rank||'')+' '+(p.firstName||'')+' '+(p.lastName||''))}" onclick="event.stopPropagation();restorePersonnel(${Number(p.archiveRow)})" style="font-size:12px;padding:6px 10px;width:auto;min-width:76px;height:auto;">↻ Restore</button></td>`
+                        ? `<td class="personnel-actions-cell"><button type="button" class="action-btn approve-btn" title="Restore personnel" aria-label="Restore ${escapeAttr((p.rank||'')+' '+(p.firstName||'')+' '+(p.lastName||''))}" onclick="event.stopPropagation();restorePersonnel(${Number(p.archiveRow)})" onkeydown="event.stopPropagation()" style="font-size:12px;padding:6px 10px;width:auto;min-width:76px;height:auto;">↻ Restore</button></td>`
                         : '';
-                    return `<tr class="personnel-clickable-row" ${clickAction} tabindex="0" role="button" aria-label="View personnel ${escapeAttr((p.rank||'')+' '+(p.firstName||'')+' '+(p.lastName||''))}" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();${archived ? `openArchivedPersonnelDetails(${Number(p.archiveRow)})` : `openPersonnelProfile(${Number(p.no)})`};}">
+                    return `<tr class="personnel-clickable-row" ${clickAction} tabindex="0" role="button" aria-label="View personnel ${escapeAttr((p.rank||'')+' '+(p.firstName||'')+' '+(p.lastName||''))}" onkeydown="if((event.key==='Enter'||event.key===' ')&&!event.target.closest('button,a,input,select,textarea')){event.preventDefault();${archived ? `openArchivedPersonnelDetails(${Number(p.archiveRow)})` : `openPersonnelProfile(${Number(p.no)})`};}">
                         <td>${index + 1}</td>
                         <td>${escapeHtml(p.rank)}</td>
                         <td>${escapeHtml(p.lastName)}</td>
                         <td>${escapeHtml(p.firstName)}</td>
                         <td>${escapeHtml(p.middleName)}</td>
                         <td>${escapeHtml(p.qualifiers)}</td>
+                        ${copyActionCell}
                         <td>${escapeHtml(p.badgeNumber || '')}</td>
                         <td>${escapeHtml(p.designation)}</td>
                         <td>${escapeHtml(p.section)}</td>
@@ -3588,7 +3604,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                     <table class="personnel-data-table${archived ? ' archived-personnel-table' : ''}">
                         <thead><tr>
                             <th>No.</th><th>Rank</th><th>Last Name</th><th>First Name</th><th>Middle Name</th>
-                            <th>Qualifiers</th><th>Badge Number</th><th>Designation</th><th>Section</th><th>Status</th><th>Contact No.</th>
+                            <th>Qualifiers</th><th class="personnel-copy-heading">Copy</th><th>Badge Number</th><th>Designation</th><th>Section</th><th>Status</th><th>Contact No.</th>
                             ${extraHeader}
                         </tr></thead>
                         <tbody>${bodyHtml}</tbody>
@@ -3610,6 +3626,50 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
 
             container.innerHTML = (activeHtml || '<div style="text-align:center;color:var(--text-muted);padding:20px;">No active personnel records found.</div>') + archiveHtml;
         }
+        async function copyPersonnelRowToClipboard(recordKey, archived = false, button = null) {
+            const records = archived ? (Array.isArray(archivedPersonnel) ? archivedPersonnel : []) : (Array.isArray(allPersonnel) ? allPersonnel : []);
+            const key = Number(recordKey);
+            const record = records.find(item => archived ? Number(item.archiveRow) === key : Number(item.no) === key);
+            if (!record) return customAlert('The selected personnel record could not be found. Refresh the list and try again.', 'Copy Failed');
+            // Copy in the same visible order as the table: Rank, Last Name, First Name, Middle Name, Qualifiers.
+            const values = [record.rank, record.lastName, record.firstName, record.middleName, record.qualifiers]
+                .map(value => String(value == null ? '' : value).trim());
+            const text = values.join('\t');
+            if (!text.replace(/\t/g, '').trim()) return customAlert('There is no personnel information to copy.', 'Copy');
+            let copied = false;
+            try {
+                if (navigator.clipboard && window.isSecureContext && typeof navigator.clipboard.writeText === 'function') {
+                    await navigator.clipboard.writeText(text);
+                    copied = true;
+                }
+            } catch (error) { copied = false; }
+            if (!copied) {
+                const textarea = document.createElement('textarea');
+                textarea.value = text;
+                textarea.setAttribute('readonly', '');
+                textarea.style.position = 'fixed'; textarea.style.left = '-9999px'; textarea.style.top = '0';
+                document.body.appendChild(textarea); textarea.select();
+                try { copied = document.execCommand('copy'); } catch (error) { copied = false; }
+                textarea.remove();
+            }
+            if (!copied) return customAlert('The browser did not allow clipboard access. Please select the personnel details and copy them manually.', 'Copy Failed');
+            if (button) {
+                const icon = button.querySelector('i');
+                const originalTitle = button.getAttribute('title') || 'Copy Rank through Qualifier';
+                if (icon) icon.className = 'fi fi-rr-check';
+                button.classList.add('is-copied');
+                button.setAttribute('title', 'Copied');
+                button.setAttribute('aria-label', 'Personnel details copied');
+                window.setTimeout(() => {
+                    if (!button.isConnected) return;
+                    if (icon) icon.className = 'fi fi-rr-copy';
+                    button.classList.remove('is-copied');
+                    button.setAttribute('title', originalTitle);
+                    button.setAttribute('aria-label', originalTitle);
+                }, 1400);
+            }
+        }
+
         function clearPersonnelFilters() {
             document.getElementById('personnelSearch').value='';
             document.getElementById('personnelRankFilter').value='';

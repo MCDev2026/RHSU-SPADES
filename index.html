@@ -79,11 +79,11 @@
 </div>
 <div class="rhsu-login-field">
 <label for="loginUsername">Username</label>
-<input autocomplete="username" id="loginUsername" placeholder="Enter Username" type="text"/>
+<input autocomplete="username" id="loginUsername" onkeydown="if(event.key==='Enter'){event.preventDefault();loginUser();}" placeholder="Enter Username" type="text"/>
 </div>
 <div class="rhsu-login-field">
 <label for="loginCredential">PIN / Password</label>
-<input autocomplete="current-password" id="loginCredential" maxlength="128" placeholder="Enter your PIN or password" type="password"/>
+<input autocomplete="current-password" id="loginCredential" maxlength="128" onkeydown="if(event.key==='Enter'){event.preventDefault();loginUser();}" placeholder="Enter your PIN or password" type="password"/>
 </div>
 <button class="rhsu-login-submit" onclick="loginUser()">Login</button>
 <div class="rhsu-login-create">New user? <span class="link" onclick="toggleAuthViews('registerPage')">Create an Account</span></div>
@@ -371,74 +371,66 @@
 </div>
 <!-- PROFILE TAB -->
 <div class="hidden" id="tabProfile">
-<div class="controls">
-<div>
-<h2 style="margin:0; color: var(--primary);">My Profile</h2>
-<div style="font-size:12px;color:var(--text-muted);margin-top:4px;">Manage your account, profile information, security, preferences, and session.</div>
-</div>
-<button class="action-btn" onclick="populateProfileData()">Refresh Profile</button>
+<div class="pf-page-intro">
+  <div class="pf-page-intro-icon"><i aria-hidden="true" class="fi fi-rr-id-badge"></i></div>
+  <div class="pf-page-intro-copy"><span class="pf-page-eyebrow">PERSONNEL ACCOUNT</span><h2>My Profile</h2><p>Review your identity, contact details, account access, and recent activity in one place.</p></div>
+  <button class="pf-refresh-btn" onclick="populateProfileData()" type="button"><i aria-hidden="true" class="fi fi-rr-refresh"></i><span>Refresh Profile</span></button>
 </div>
 <input accept="image/jpeg,image/png,image/webp" id="avatarPhotoInput" onchange="uploadProfilePhoto('profile', this)" style="display:none;" type="file"/>
 <input accept="image/jpeg,image/png,image/webp" id="coverPhotoInput" onchange="uploadProfilePhoto('cover', this)" style="display:none;" type="file"/>
 <span id="profileAvatar" style="display:none;"></span>
-<!-- PROFILE HERO: cover photo + avatar + name + stats -->
 <div class="pf-hero glass-panel">
-<div aria-label="SPADES static cover banner" class="pf-cover" id="profileCoverBanner">
-<div aria-label="Profile cover actions" class="pf-cover-actions"><div class="pf-cover-action-buttons pf-profile-quick-actions">
-<button aria-label="Change Cover Page" class="pf-cover-change-btn" onclick="document.getElementById('coverPhotoInput').click()" title="Change Cover Page" type="button"><i aria-hidden="true" class="fi fi-rr-camera"></i><span class="sr-only">Change Cover Page</span></button>
-<button aria-label="Security &amp; Authentication" onclick="openProfileModal('securitySettingsModal')" title="Security &amp; Authentication" type="button"><i aria-hidden="true" class="fi fi-rr-lock"></i><span class="sr-only">Security &amp; Authentication</span></button>
-<button aria-label="Profile Settings" onclick="openProfileModal('profileSettingsModal')" title="Profile Settings" type="button"><i aria-hidden="true" class="fi fi-rr-settings"></i><span class="sr-only">Profile Settings</span></button>
-<button aria-label="My Files" onclick="openMyFilesModal()" title="My Files" type="button"><i aria-hidden="true" class="fi fi-rr-folder"></i><span class="sr-only">My Files</span></button>
-</div></div>
+  <div aria-label="SPADES static cover banner" class="pf-cover" id="profileCoverBanner">
+    <div aria-label="Profile cover actions" class="pf-cover-actions"><div class="pf-cover-action-buttons pf-profile-quick-actions">
+      <button aria-label="Change Cover Page" class="pf-cover-change-btn" onclick="document.getElementById('coverPhotoInput').click()" title="Change Cover Page" type="button"><i aria-hidden="true" class="fi fi-rr-camera"></i><span class="pf-action-label">Cover Photo</span><span class="sr-only">Change Cover Page</span></button>
+      <button aria-label="Security &amp; Authentication" onclick="openProfileModal('securitySettingsModal')" title="Security &amp; Authentication" type="button"><i aria-hidden="true" class="fi fi-rr-lock"></i><span class="pf-action-label">Security</span><span class="sr-only">Security &amp; Authentication</span></button>
+      <button aria-label="Profile Settings" onclick="openProfileModal('profileSettingsModal')" title="Profile Settings" type="button"><i aria-hidden="true" class="fi fi-rr-settings"></i><span class="pf-action-label">Edit Profile</span><span class="sr-only">Profile Settings</span></button>
+      <button aria-label="My Files" onclick="openMyFilesModal()" title="My Files" type="button"><i aria-hidden="true" class="fi fi-rr-folder"></i><span class="pf-action-label">My Files</span><span class="sr-only">My Files</span></button>
+    </div></div>
+  </div>
+  <div class="pf-hero-body">
+    <div class="pf-avatar-wrap"><button aria-label="Update profile picture" class="pf-avatar-trigger" id="profileAvatarTrigger" onclick="openProfilePictureModal()" title="Update Profile Picture" type="button">
+      <img alt="Profile" class="pf-avatar-img" id="profileAvatarImg" onerror="this.style.display='none'; const fb=document.getElementById('profileAvatarFallback'); if(fb) fb.style.display='flex';" src=""/>
+      <span class="pf-avatar-fallback" id="profileAvatarFallback">U</span><span class="pf-avatar-edit-hint"><i aria-hidden="true" class="fi fi-rr-pencil"></i> Update photo</span>
+    </button></div>
+    <div class="pf-hero-info"><span class="pf-identity-kicker">SIGNED-IN ACCOUNT</span><h2 id="profileDisplayName">User</h2><div class="pf-username">@<span id="profUsername">user</span></div><span class="profile-role-badge" id="profileRoleBadge">Regular User</span></div>
+    <div class="pf-hero-stats">
+      <div class="pf-stat"><span class="pf-stat-icon"><i aria-hidden="true" class="fi fi-rr-document"></i></span><div><strong id="profTotalMemos">0</strong><small>Total Memos Created</small></div></div>
+      <div class="pf-stat"><span class="pf-stat-icon"><i aria-hidden="true" class="fi fi-rr-calendar"></i></span><div><strong id="profAccountCreated">—</strong><small>Account Created</small></div></div>
+    </div>
+  </div>
 </div>
-<div class="pf-hero-body">
-<div class="pf-avatar-wrap">
-<button aria-label="Update profile picture" class="pf-avatar-trigger" id="profileAvatarTrigger" onclick="openProfilePictureModal()" title="Update Profile Picture" type="button">
-<img alt="Profile" class="pf-avatar-img" id="profileAvatarImg" onerror="this.style.display='none'; const fb=document.getElementById('profileAvatarFallback'); if(fb) fb.style.display='flex';" src=""/>
-<span class="pf-avatar-fallback" id="profileAvatarFallback">U</span>
-<span class="pf-avatar-edit-hint"><i aria-hidden="true" class="fi fi-rr-pencil"></i> Update photo</span>
-</button>
-</div>
-<div class="pf-hero-info">
-<h2 id="profileDisplayName" style="margin:0 0 4px 0;color:var(--text-main);">User</h2>
-<div class="pf-username">@<span id="profUsername">user</span></div>
-<span class="profile-role-badge" id="profileRoleBadge">Regular User</span>
-</div>
-<div class="pf-hero-stats">
-<div class="pf-stat">
-<span class="pf-stat-icon">📄</span>
-<div><strong id="profTotalMemos">0</strong><small>Total Memos Created</small></div>
-</div>
-<div class="pf-stat">
-<span class="pf-stat-icon">📅</span>
-<div><strong id="profAccountCreated">—</strong><small>Account Created</small></div>
-</div>
-</div>
-</div>
-</div>
-<div class="pf-body-grid">
-<!-- LEFT: Personal Information -->
-<div class="pf-left glass-panel">
-<h3 style="margin-top:0;">Personal Information</h3>
-<div class="setting-row"><span>Rank</span> <span class="profile-value" id="profRank">Not Available</span></div>
-<div class="setting-row"><span>First Name</span> <span class="profile-value" id="profFirstName">Not Available</span></div>
-<div class="setting-row"><span>Middle Name</span> <span class="profile-value" id="profMiddleName">Not Available</span></div>
-<div class="setting-row"><span>Last Name</span> <span class="profile-value" id="profLastName">Not Available</span></div>
-<div class="setting-row"><span>Qualifier</span> <span class="profile-value" id="profQlf">Not Available</span></div>
-<div class="setting-row"><span>Email Address</span> <span class="profile-value" id="profEmail">Not Available</span></div>
-<div class="setting-row"><span>Contact Number</span> <span class="profile-value" id="profContactNo">Not Available</span></div>
-<div class="setting-row"><span>Assigned Role</span> <span id="profAccType" style="font-weight:600;color:var(--primary);"></span></div>
-<div class="setting-row"><span>Access Level</span> <span class="profile-value" id="profAccessLevel">Standard</span></div>
-<div class="setting-row"><span>Account Status</span> <strong style="color:var(--success);">Active</strong></div>
-<div class="setting-row"><span>Last Activity</span> <span class="profile-value" id="profLastActivity">Not Available</span></div>
-</div>
-<!-- RIGHT: recent memos + account/security/preferences -->
-<div class="pf-right">
-<div class="glass-panel pf-panel">
-<h3 style="margin-top:0;">Recent Memos Created</h3>
-<div id="profileRecentMemos" style="font-size:13px;"></div>
-</div>
-</div>
+<div class="pf-body-grid pf-profile-content-grid">
+  <section class="pf-left pf-info-panel glass-panel" aria-labelledby="pfPersonalInfoTitle">
+    <div class="pf-section-heading"><div><span class="pf-section-eyebrow">PROFILE DETAILS</span><h3 id="pfPersonalInfoTitle">Personal Information</h3><p>Information associated with your SPADES account.</p></div><button class="pf-section-edit-btn" onclick="openProfileModal('profileSettingsModal')" type="button"><i aria-hidden="true" class="fi fi-rr-pencil"></i><span>Edit</span></button></div>
+    <div class="pf-info-section-label"><i aria-hidden="true" class="fi fi-rr-user"></i> Identity &amp; Name</div>
+    <div class="pf-info-grid">
+      <div class="pf-info-item"><span>Rank</span><strong class="profile-value" id="profRank">Not Available</strong></div>
+      <div class="pf-info-item"><span>First Name</span><strong class="profile-value" id="profFirstName">Not Available</strong></div>
+      <div class="pf-info-item"><span>Middle Name</span><strong class="profile-value" id="profMiddleName">Not Available</strong></div>
+      <div class="pf-info-item"><span>Last Name</span><strong class="profile-value" id="profLastName">Not Available</strong></div>
+      <div class="pf-info-item"><span>Qualifier</span><strong class="profile-value" id="profQlf">Not Available</strong></div>
+    </div>
+    <div class="pf-info-section-label"><i aria-hidden="true" class="fi fi-rr-address-book"></i> Contact &amp; Access</div>
+    <div class="pf-info-grid">
+      <div class="pf-info-item"><span>Email Address</span><strong class="profile-value" id="profEmail">Not Available</strong></div>
+      <div class="pf-info-item"><span>Contact Number</span><strong class="profile-value" id="profContactNo">Not Available</strong></div>
+      <div class="pf-info-item"><span>Assigned Role</span><strong id="profAccType">Regular User</strong></div>
+      <div class="pf-info-item"><span>Access Level</span><strong class="profile-value" id="profAccessLevel">Standard</strong></div>
+      <div class="pf-info-item"><span>Account Status</span><strong class="pf-status-active">Active</strong></div>
+      <div class="pf-info-item"><span>Last Activity</span><strong class="profile-value" id="profLastActivity">Not Available</strong></div>
+    </div>
+  </section>
+  <div class="pf-right">
+    <section class="pf-panel pf-recent-panel glass-panel" aria-labelledby="pfRecentMemosTitle"><div class="pf-section-heading"><div><span class="pf-section-eyebrow">YOUR ACTIVITY</span><h3 id="pfRecentMemosTitle">Recent Memos Created</h3><p>Your latest memo records in SPADES.</p></div><span class="pf-section-icon-badge"><i aria-hidden="true" class="fi fi-rr-documents"></i></span></div><div id="profileRecentMemos"></div></section>
+    <section class="pf-panel pf-quick-panel glass-panel" aria-labelledby="pfAccountToolsTitle"><div class="pf-section-heading"><div><span class="pf-section-eyebrow">ACCOUNT SHORTCUTS</span><h3 id="pfAccountToolsTitle">Account &amp; Security</h3><p>Quick access to your profile tools.</p></div></div>
+      <div class="pf-profile-shortcuts">
+        <button type="button" onclick="openProfileModal('profileSettingsModal')"><span class="pf-shortcut-icon pf-shortcut-blue"><i aria-hidden="true" class="fi fi-rr-user-pen"></i></span><span><strong>Profile Settings</strong><small>Update personal and contact details</small></span><i aria-hidden="true" class="fi fi-rr-angle-small-right"></i></button>
+        <button type="button" onclick="openProfileModal('securitySettingsModal')"><span class="pf-shortcut-icon pf-shortcut-green"><i aria-hidden="true" class="fi fi-rr-shield-check"></i></span><span><strong>Security &amp; Authentication</strong><small>Manage sign-in credentials and session</small></span><i aria-hidden="true" class="fi fi-rr-angle-small-right"></i></button>
+        <button type="button" onclick="openMyFilesModal()"><span class="pf-shortcut-icon pf-shortcut-violet"><i aria-hidden="true" class="fi fi-rr-folder-open"></i></span><span><strong>My Files</strong><small>Access your private workspace</small></span><i aria-hidden="true" class="fi fi-rr-angle-small-right"></i></button>
+      </div>
+    </section>
+  </div>
 </div>
 </div>
 <!-- PROFILE SETTINGS MODALS -->
@@ -1672,8 +1664,8 @@
 <div id="folderBrowserList" style="padding:16px 24px;min-height:200px;max-height:400px;overflow-y:auto;"></div>
 <div style="padding:0 24px 20px 24px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
 <input id="personnelFolderFileInput" multiple="" onchange="document.getElementById('folderBrowserStatus').textContent = this.files.length + ' file(s) selected';" style="display:none;" type="file"/>
-<button class="action-btn pf-folder-choose-btn" onclick="document.getElementById('personnelFolderFileInput').click()" style="flex:0 0 auto;margin:0;background:#2563eb;color:#fff;border:none;" type="button"><i aria-hidden="true" class="fi fi-rr-folder-open"></i><span>Choose Files</span></button>
-<button class="action-btn pf-folder-upload-btn" id="personnelFolderUploadBtn" onclick="uploadFilesToPersonnelFolder()" style="flex:0 0 auto;margin:0;background:#059669;color:#fff;border:none;" type="button"><i aria-hidden="true" class="fi fi-rr-upload"></i><span>Upload</span></button>
+<button aria-label="Choose files from your device" class="action-btn pf-folder-choose-btn" onclick="document.getElementById('personnelFolderFileInput').click()" style="flex:0 0 auto;margin:0;background:#2563eb;color:#fff;border:none;" title="Browse and select files" type="button"><i aria-hidden="true" class="fi fi-rr-folder-open"></i><span>Choose Files</span></button>
+<button aria-label="Upload selected files" class="action-btn pf-folder-upload-btn" id="personnelFolderUploadBtn" onclick="uploadFilesToPersonnelFolder()" style="flex:0 0 auto;margin:0;background:#059669;color:#fff;border:none;" title="Upload selected files to this personnel folder" type="button"><i aria-hidden="true" class="fi fi-rr-cloud-upload"></i><span>Upload</span></button>
 <span id="folderBrowserStatus" style="flex:1;min-width:0;font-size:12px;color:var(--text-muted,#888);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>
 </div>
 </div>
