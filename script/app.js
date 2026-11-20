@@ -1758,6 +1758,8 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             const routes = [
                 ['dashboard','tabDashboard'],['home','tabHome'],['personnel','tabPersonnel'],
                 ['activityManagement','tabActivityManagement'],['matrixCompliances','tabMatrixCompliances'],
+                ['adminWorkflow','tabAdminWorkflow'],['managementReports','tabManagementReports'],
+                ['auditTrail','tabAuditTrail'],['documentManagement','tabDocumentManagement'],
                 ['usersChat','tabUsersChat'],['settings','tabSettings'],['myProfile','tabProfile'],
                 ['adminMgmt','tabAdminMgmt']
             ];
@@ -2123,55 +2125,130 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
 
         async function populateProfileData() {
             const currentUser = localStorage.getItem('loggedInUser') || 'Unknown';
+            const setProfileValue = (id, value, fallback = 'Not Available') => {
+                const el = document.getElementById(id);
+                if (!el) return;
+                const text = value == null ? '' : String(value).trim();
+                el.textContent = text || fallback;
+                el.classList.toggle('is-not-available', !text);
+            };
+
             if ((!Array.isArray(allMemos) || allMemos.length === 0) && typeof userHasAccess === 'function' && userHasAccess('home')) {
                 try { await loadData(); } catch (loadMemoError) { console.warn('Could not refresh profile memo list:', loadMemoError); }
             }
-            document.getElementById('profUsername').innerText = currentUser;
-            
-            let displayRole = "Regular User";
-            if (currentUser === ALPHA_ADMIN_NAME) {
-                displayRole = "Alpha Admin";
-            } else {
-                displayRole = localStorage.getItem('userRole') || (localStorage.getItem('canEdit') === 'Yes' ? 'Admin' : 'Regular User');
-            }
-            document.getElementById('profAccType').innerText = displayRole;
-            const nameParts = [localStorage.getItem('profileFirstName') || '', localStorage.getItem('profileLastName') || ''].filter(Boolean);
-            const profileDisplay = document.getElementById('profileDisplayName'); if (profileDisplay) profileDisplay.innerText = nameParts.join(' ') || currentUser;
-            const avatar = document.getElementById('profileAvatar'); if (avatar) avatar.innerText = String((nameParts.join(' ') || currentUser).trim().charAt(0) || 'U').toUpperCase();
-            const roleBadge = document.getElementById('profileRoleBadge'); if (roleBadge) roleBadge.innerText = displayRole;
-            const access = document.getElementById('profAccessLevel'); if (access) access.innerText = currentUser === ALPHA_ADMIN_NAME ? 'Full Administrative Access' : (localStorage.getItem('canEdit') === 'Yes' || localStorage.getItem('userRole') === 'Admin' ? 'Administrative Editing' : 'Standard User');
+            setProfileValue('profUsername', currentUser, 'Unknown');
+            setProfileValue('profUsernameAccount', currentUser, 'Unknown');
+
+            const displayRole = currentUser === ALPHA_ADMIN_NAME
+                ? 'Alpha Admin'
+                : (localStorage.getItem('userRole') || (localStorage.getItem('canEdit') === 'Yes' ? 'Admin' : 'Regular User'));
+            setProfileValue('profAccType', displayRole);
+            const fallbackName = [localStorage.getItem('profileFirstName') || '', localStorage.getItem('profileLastName') || ''].filter(Boolean).join(' ') || currentUser;
+            setProfileValue('profileDisplayName', fallbackName, currentUser);
+            const avatar = document.getElementById('profileAvatar');
+            if (avatar) avatar.textContent = String(fallbackName.trim().charAt(0) || 'U').toUpperCase();
+            const fallbackAvatar = document.getElementById('profileAvatarFallback');
+            if (fallbackAvatar) fallbackAvatar.textContent = String(fallbackName.trim().charAt(0) || 'U').toUpperCase();
+            setProfileValue('profileRoleBadge', displayRole);
+            setProfileValue('profAccessLevel', currentUser === ALPHA_ADMIN_NAME ? 'Full Administrative Access' : (localStorage.getItem('canEdit') === 'Yes' || localStorage.getItem('userRole') === 'Admin' ? 'Administrative Editing' : 'Standard User'));
             loadProfilePreferences();
-            // Display the last successfully saved image immediately while the backend profile loads.
-            // The Drive-backed backend URL below remains authoritative and refreshes this cache.
+
+            // Show cached Drive-backed images immediately while the authenticated profile loads.
             applyProfilePhotos(getCachedProfilePhotoUrl(currentUser, 'profile'));
             applyProfileCover(getCachedProfilePhotoUrl(currentUser, 'cover'));
-            
-            try {
-                const res = await spadesAuthenticatedRead('get_profile'); const data = await res.json();
-                if (data.success && data.profile) {
-                    const updateField = (id, val) => { const el = document.getElementById(id); el.innerText = val || 'Not Available'; if(val) el.style.color = 'var(--text-main)'; };
-                    updateField('profRank', data.profile.rank); updateField('profFirstName', data.profile.firstName); updateField('profMiddleName', data.profile.middleName); updateField('profLastName', data.profile.lastName); updateField('profQlf', data.profile.qlf); updateField('profEmail', data.profile.email);
-                    const editValues = {editProfileRank:data.profile.rank, editProfileFirstName:data.profile.firstName, editProfileMiddleName:data.profile.middleName, editProfileLastName:data.profile.lastName, editProfileQlf:data.profile.qlf, editProfileEmail:data.profile.email, editProfileContact:data.profile.contactNo};
-                    Object.entries(editValues).forEach(([id,val]) => { const el=document.getElementById(id); if(el) el.value=val || ''; });
-                    let contactRow = document.getElementById('profContactNo'); if (contactRow) contactRow.innerText = data.profile.contactNo || 'Not Available';
-                    if (data.profile.profilePhotoUrl) rememberProfilePhotoUrl(currentUser, 'profile', data.profile.profilePhotoUrl);
-                    if (data.profile.coverPhotoUrl) rememberProfilePhotoUrl(currentUser, 'cover', data.profile.coverPhotoUrl);
-                    applyProfilePhotos(data.profile.profilePhotoUrl || getCachedProfilePhotoUrl(currentUser, 'profile'));
-                    applyProfileCover(data.profile.coverPhotoUrl || getCachedProfilePhotoUrl(currentUser, 'cover'));
-                    const pfFull = [data.profile.rank, data.profile.firstName, data.profile.middleName, data.profile.lastName, data.profile.qlf].filter(Boolean).join(' ');
-                    if (pfFull) { const dn2 = document.getElementById('profileDisplayName'); if (dn2) dn2.innerText = pfFull; const fb2 = document.getElementById('profileAvatarFallback'); if (fb2) fb2.innerText = String(pfFull.charAt(0)||'U').toUpperCase(); }
-                }
-            } catch (err) {}
 
-            let userMemos = 0; let lastAct = "Not Available";
-            if (allMemos && allMemos.length > 0) {
+            let profile = null;
+            try {
+                const res = await spadesAuthenticatedRead('get_profile');
+                const data = await res.json();
+                if (!res.ok || !data || data.success !== true || !data.profile) throw new Error(data?.error || 'Unable to retrieve the authenticated profile.');
+                profile = data.profile;
+
+                const identityFields = {
+                    profRank: profile.rank,
+                    profFirstName: profile.firstName,
+                    profMiddleName: profile.middleName,
+                    profLastName: profile.lastName,
+                    profQlf: profile.qlf,
+                    profBadgeNumber: profile.badgeNumber,
+                    profEmail: profile.email,
+                    profContactNo: profile.contactNo,
+                    profAddress: profile.address,
+                    profDesignation: profile.designation,
+                    profSection: profile.section,
+                    profPersonnelStatus: profile.personnelStatus,
+                    profPersonnelNo: profile.personnelNo
+                };
+                Object.entries(identityFields).forEach(([id, value]) => setProfileValue(id, value));
+                setProfileValue('profAccType', profile.role || displayRole);
+                setProfileValue('profileAccountStatus', profile.status || 'Active');
+                setProfileValue('profPersonnelLink', profile.personnelLinked ? 'Linked' : 'Not Linked');
+                setProfileValue('profDesignationHero', profile.designation || 'Designation not available');
+                setProfileValue('profSectionHero', profile.section || 'Office / Section not available');
+
+                const accountStatus = document.getElementById('profileAccountStatus');
+                if (accountStatus) {
+                    accountStatus.dataset.status = String(profile.status || 'Active').toLowerCase();
+                    accountStatus.classList.toggle('is-inactive', String(profile.status || 'Active').toLowerCase() !== 'active');
+                }
+
+                const editValues = {
+                    editProfileRank:profile.rank,
+                    editProfileFirstName:profile.firstName,
+                    editProfileMiddleName:profile.middleName,
+                    editProfileLastName:profile.lastName,
+                    editProfileQlf:profile.qlf,
+                    editProfileEmail:profile.email,
+                    editProfileContact:profile.contactNo
+                };
+                Object.entries(editValues).forEach(([id, value]) => {
+                    const el = document.getElementById(id);
+                    if (el) el.value = value || '';
+                });
+
+                if (profile.profilePhotoUrl) rememberProfilePhotoUrl(currentUser, 'profile', profile.profilePhotoUrl);
+                if (profile.coverPhotoUrl) rememberProfilePhotoUrl(currentUser, 'cover', profile.coverPhotoUrl);
+                applyProfilePhotos(profile.profilePhotoUrl || getCachedProfilePhotoUrl(currentUser, 'profile'));
+                applyProfileCover(profile.coverPhotoUrl || getCachedProfilePhotoUrl(currentUser, 'cover'));
+
+                const fullName = [profile.rank, profile.firstName, profile.middleName, profile.lastName, profile.qlf].filter(Boolean).join(' ').trim();
+                if (fullName) {
+                    setProfileValue('profileDisplayName', fullName, currentUser);
+                    const initials = document.getElementById('profileAvatarFallback');
+                    if (initials) initials.textContent = String(fullName.charAt(0) || 'U').toUpperCase();
+                }
+
+                const completionCandidates = [profile.rank, profile.firstName, profile.lastName, profile.email, profile.contactNo, profile.address, profile.designation, profile.section, profile.badgeNumber];
+                const completed = completionCandidates.filter(value => String(value || '').trim()).length;
+                const completion = Math.round((completed / completionCandidates.length) * 100);
+                setProfileValue('profileCompletionText', `${completed}/${completionCandidates.length} fields`);
+                const completionBar = document.getElementById('profileCompletionBar');
+                if (completionBar) completionBar.style.width = `${completion}%`;
+            } catch (err) {
+                console.warn('Unable to refresh profile from the server:', err);
+                setProfileValue('profilePersonnelLink', 'Not Linked');
+            }
+
+            let userMemos = 0;
+            let lastAct = 'Not Available';
+            if (Array.isArray(allMemos) && allMemos.length > 0 && typeof userHasAccess === 'function' && userHasAccess('home')) {
                 const userMemosArr = allMemos.filter(m => String(m[3] || '').trim().toLowerCase() === String(currentUser).trim().toLowerCase());
                 userMemos = userMemosArr.length;
                 if (userMemos > 0) lastAct = userMemosArr[0][0] || 'Not Available';
             }
-            document.getElementById('profTotalMemos').innerText = userMemos; document.getElementById('profLastActivity').innerText = lastAct;
+            const memoCountText = typeof userHasAccess === 'function' && userHasAccess('home') ? String(userMemos) : 'Restricted';
+            setProfileValue('profTotalMemos', memoCountText);
+            setProfileValue('profTotalMemosRepeat', memoCountText);
+            setProfileValue('profLastActivity', typeof userHasAccess === 'function' && userHasAccess('home') ? lastAct : 'Restricted');
             renderProfileRecentMemos(currentUser);
-            const fbMine = document.getElementById('profileAvatarFallback'); if (fbMine) fbMine.innerText = String((nameParts.join(' ') || currentUser).trim().charAt(0) || 'U').toUpperCase();
+            if (!profile) {
+                setProfileValue('profAddress', 'Not Available');
+                setProfileValue('profDesignation', 'Not Available');
+                setProfileValue('profSection', 'Not Available');
+                setProfileValue('profBadgeNumber', 'Not Available');
+                setProfileValue('profPersonnelStatus', 'Not Available');
+                setProfileValue('profPersonnelNo', 'Not Available');
+            }
         }
 
         const SPADES_PAGE_ROUTES = {
@@ -2181,6 +2258,10 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             adminMgmt: { hash: '#user-management', label: 'User Management' },
             activityManagement: { hash: '#activity-management', label: 'Activity Management' },
             matrixCompliances: { hash: '#matrix-of-compliances', label: 'Matrix of Compliances' },
+            adminWorkflow: { hash: '#administrative-workflow', label: 'Administrative Workflow' },
+            managementReports: { hash: '#management-reports', label: 'Management Reports' },
+            auditTrail: { hash: '#audit-trail', label: 'Audit Trail' },
+            documentManagement: { hash: '#document-personnel-monitoring', label: 'Document & Personnel Monitoring' },
             usersChat: { hash: '#users-chat', label: 'Users Chat' },
             settings: { hash: '#settings', label: 'Settings' },
             profile: { hash: '#my-profile', label: 'My Profile' }
@@ -2221,8 +2302,10 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             const routeMap = {
                 'dashboard': 'dashboard', 'memo-database': 'home',
                 'personnel-management': 'personnel', 'user-management': 'adminMgmt',
-                'activity-management': 'activityManagement', 'matrix-of-compliances': 'matrixCompliances', 'users-chat': 'usersChat', 'settings': 'settings',
-                'my-profile': 'profile'
+                'activity-management': 'activityManagement', 'matrix-of-compliances': 'matrixCompliances',
+                'administrative-workflow': 'adminWorkflow', 'management-reports': 'managementReports',
+                'audit-trail': 'auditTrail', 'document-personnel-monitoring': 'documentManagement',
+                'users-chat': 'usersChat', 'settings': 'settings', 'my-profile': 'profile'
             };
             const tabName = routeMap[pageSlug] || 'dashboard';
             if (tabName === 'personnel') {
@@ -2238,7 +2321,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
 
         function switchTab(tabName, options = {}) {
             const activeUsername = localStorage.getItem('loggedInUser') || '';
-            const accessControlledTab = ['dashboard', 'home', 'personnel', 'activityManagement', 'matrixCompliances', 'usersChat', 'settings'].includes(tabName);
+            const accessControlledTab = ['dashboard', 'home', 'personnel', 'activityManagement', 'matrixCompliances', 'adminWorkflow', 'managementReports', 'auditTrail', 'documentManagement', 'usersChat', 'settings'].includes(tabName);
             if (activeUsername && accessControlledTab &&
                 typeof userAccessMapLoadedFor !== 'undefined' && userAccessMapLoadedFor === activeUsername &&
                 typeof userHasAccess === 'function' && !userHasAccess(tabName)) {
@@ -2246,10 +2329,10 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 return;
             }
             if (tabName !== 'usersChat' && chatMessagesTimer) { clearInterval(chatMessagesTimer); chatMessagesTimer = null; }
-            ['tabDashboard','tabHome','tabProfile','tabAdminMgmt','tabSettings','tabPersonnel','tabActivityManagement','tabMatrixCompliances','tabUsersChat'].forEach(id => {
+            ['tabDashboard','tabHome','tabProfile','tabAdminMgmt','tabSettings','tabPersonnel','tabActivityManagement','tabMatrixCompliances','tabAdminWorkflow','tabManagementReports','tabAuditTrail','tabDocumentManagement','tabUsersChat'].forEach(id => {
                 const el=document.getElementById(id); if(el) el.classList.add('hidden');
             });
-            ['btnDashboard','btnHome','btnSettings','btnAdminMgmt','btnPersonnel','btnActivityManagement','btnMatrixCompliances','btnUsersChat'].forEach(id => {
+            ['btnDashboard','btnHome','btnSettings','btnAdminMgmt','btnPersonnel','btnActivityManagement','btnMatrixCompliances','btnAdminWorkflow','btnManagementReports','btnAuditTrail','btnDocumentManagement','btnUsersChat'].forEach(id => {
                 const el=document.getElementById(id); if(el) el.classList.remove('active');
             });
             const settingsMain = document.getElementById('settingsMainPanel');
@@ -2259,6 +2342,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 document.getElementById('tabDashboard').classList.remove('hidden');
                 document.getElementById('btnDashboard').classList.add('active');
                 loadExecutiveDashboard();
+                loadPhase2DashboardSummary();
             } else if (tabName === 'home') {
                 document.getElementById('tabHome').classList.remove('hidden');
                 document.getElementById('btnHome').classList.add('active');
@@ -2286,6 +2370,25 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                     showAdminMgmtTab();
                 }
 
+            } else if (tabName === 'adminWorkflow') {
+                document.getElementById('tabAdminWorkflow').classList.remove('hidden');
+                document.getElementById('btnAdminWorkflow').classList.add('active');
+                loadPhase2Workflows();
+            } else if (tabName === 'managementReports') {
+                document.getElementById('tabManagementReports').classList.remove('hidden');
+                document.getElementById('btnManagementReports').classList.add('active');
+                updatePhase2ReportPeriodControls();
+                loadPhase2Reports();
+            } else if (tabName === 'auditTrail') {
+                document.getElementById('tabAuditTrail').classList.remove('hidden');
+                document.getElementById('btnAuditTrail').classList.add('active');
+                loadPhase2Audit();
+                const healthButton = document.getElementById('phase2SystemHealthBtn');
+                if (healthButton) healthButton.classList.toggle('hidden', !isAlphaAdmin());
+            } else if (tabName === 'documentManagement') {
+                document.getElementById('tabDocumentManagement').classList.remove('hidden');
+                document.getElementById('btnDocumentManagement').classList.add('active');
+                loadPhase2Documents();
             } else if (tabName === 'usersChat') {
                 const chatPage = document.getElementById('tabUsersChat');
                 if (chatPage) chatPage.classList.remove('hidden');
@@ -2505,12 +2608,14 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                     fetchSystemAnnouncement();
                     startActivityReminderMonitor();
                     startChatNotificationMonitor();
+                    startPhase2WorkflowNotificationMonitor();
                 };
                 if (typeof window.requestIdleCallback === 'function') window.requestIdleCallback(startPostLoginTasks, {timeout: 1200});
                 else window.setTimeout(startPostLoginTasks, 260);
             } else {
                 stopActivityReminderMonitor();
                 stopChatNotificationMonitor();
+                stopPhase2WorkflowNotificationMonitor();
                 toggleAuthViews('loginPage');
             }
         }
@@ -2681,6 +2786,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             if (sessionHeartbeatTimer) { clearInterval(sessionHeartbeatTimer); sessionHeartbeatTimer = null; }
             sessionStorage.removeItem('systemAnnouncementSeen');
             stopChatNotificationMonitor();
+            stopPhase2WorkflowNotificationMonitor();
             const incomingChatContainer = document.getElementById('incomingChatContainer');
             if (incomingChatContainer) incomingChatContainer.innerHTML = '';
             userSettings = { ...DEFAULT_USER_SETTINGS };
@@ -2822,10 +2928,10 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             const density = document.getElementById('profileDisplayDensity'); if (density) density.value = prefs.density;
             const activity = document.getElementById('profileShowActivity'); if (activity) activity.checked = prefs.showActivity !== false;
             const contact = document.getElementById('profileShowContact'); if (contact) contact.checked = prefs.showContact !== false;
-            document.querySelectorAll('#tabProfile .settings-section').forEach(sec => {
-                if (sec.querySelector('#profTotalMemos')) sec.classList.toggle('hidden', prefs.showActivity === false);
-                if (sec.querySelector('#profEmail')) sec.classList.toggle('hidden', prefs.showContact === false);
-            });
+            const activityPanel = document.getElementById('pfRecentMemosPanel');
+            if (activityPanel) activityPanel.classList.toggle('hidden', prefs.showActivity === false);
+            const contactGroup = document.getElementById('pfContactInfoGroup');
+            if (contactGroup) contactGroup.classList.toggle('hidden', prefs.showContact === false);
             document.getElementById('tabProfile')?.classList.toggle('profile-compact', prefs.density === 'Compact');
         }
         function saveProfilePreferences() {
@@ -2838,7 +2944,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             if (credential) { credential.value = ''; credential.type = 'password'; }
             if (username) username.value = '';
             const toggle = document.getElementById('toggleCredentialVisibility');
-            if (toggle) { toggle.textContent = 'Show'; toggle.setAttribute('aria-label', 'Show PIN or password'); toggle.setAttribute('aria-pressed', 'false'); }
+            if (toggle) { toggle.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.4-6.5 9.5-6.5 9.5 6.5 9.5 6.5-3.4 6.5-9.5 6.5S2.5 12 2.5 12Z"></path><circle cx="12" cy="12" r="3"></circle></svg>'; toggle.setAttribute('aria-label', 'Show PIN or password'); toggle.setAttribute('aria-pressed', 'false'); }
             updateCredentialStrength();
             if (!document.getElementById('securitySettingsModal')?.classList.contains('hidden')) { const currentUser = localStorage.getItem('loggedInUser'); (currentUser === ALPHA_ADMIN_NAME ? credential : username)?.focus({ preventScroll: true }); }
         }
@@ -3331,7 +3437,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                     const recurring = matrixComplianceFrequencyLabel(record.frequency) !== 'None';
                     const frequency = recurring ? ` · ${matrixComplianceFrequencyLabel(record.frequency)}` : '';
                     const office = record.officeInCharge ? `Office In-charge: ${record.officeInCharge}` : '';
-                    return `<div class="activity-overview-event-text matrix-compliance-event-text${recurring ? ' is-recurring' : ''}" title="${escapeAttr(record.compliance || 'Untitled compliance')}${escapeAttr(frequency)}${office ? ' — ' + escapeAttr(office) : ''}">${escapeHtml(record.compliance || 'Untitled compliance')}${recurring ? `<span class="matrix-compliance-recurrence-label">${escapeHtml(frequency)}</span>` : ''}</div>`;
+                    return `<button type="button" class="activity-overview-event-text matrix-compliance-event-text matrix-compliance-event-button${recurring ? ' is-recurring' : ''}" data-matrix-compliance-details-id="${escapeAttr(record.id)}" onclick="openMatrixComplianceInformationModal(this.dataset.matrixComplianceDetailsId)" title="Open compliance information: ${escapeAttr(record.compliance || 'Untitled compliance')}${escapeAttr(frequency)}${office ? ' — ' + escapeAttr(office) : ''}">${escapeHtml(record.compliance || 'Untitled compliance')}${recurring ? `<span class="matrix-compliance-recurrence-label">${escapeHtml(frequency)}</span>` : ''}</button>`;
                 }).join('');
                 html += `<div class="activity-overview-day${isOtherMonth ? ' is-other-month' : ''}${key === today ? ' is-today' : ''}"><span class="activity-overview-day-number">${date.getDate()}</span>${list ? `<div class="activity-overview-events activity-day-text-list" aria-label="Compliances scheduled on ${escapeAttr(key)}">${list}</div>` : ''}</div>`;
             }
@@ -3428,7 +3534,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 const recurrenceText = recurrence === 'None' ? 'One-time' : recurrence + (record.recurrenceUntil ? ` · until ${formatMatrixComplianceDate(record.recurrenceUntil)}` : ' · ongoing');
                 const canManage = !matrixComplianceReadOnly && (matrixComplianceIsAlphaAdmin || String(record.encodedBy || '').trim().toLowerCase() === currentUser);
                 const disabled = canManage ? '' : ' disabled aria-disabled="true"';
-                return '<tr data-matrix-compliance-id="' + encodedId + '">'
+                return '<tr data-matrix-compliance-id="' + encodedId + '" class="matrix-compliance-clickable-row" tabindex="0" role="button" aria-label="View compliance information: ' + escapeAttr(record.compliance || 'Compliance') + '" onclick="if(!event.target.closest(\'button,a,input,select,textarea\'))openMatrixComplianceInformationModal(this.dataset.matrixComplianceId)" onkeydown="if((event.key===\'Enter\'||event.key===\' \')&&!event.target.closest(\'button,a,input,select,textarea\')){event.preventDefault();openMatrixComplianceInformationModal(this.dataset.matrixComplianceId)}">'
                     + '<td class="matrix-compliance-main-cell"><strong>' + compliance + '</strong></td>'
                     + '<td class="matrix-compliance-date-cell">' + escapeHtml(targetDate) + '</td>'
                     + '<td class="matrix-compliance-time-cell">' + escapeHtml(targetTime) + '</td>'
@@ -3454,6 +3560,54 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         function changeMatrixCompliancePage(direction) {
             currentMatrixCompliancePage += Number(direction || 0);
             renderMatrixCompliances();
+        }
+
+        function matrixComplianceInfoValue(value, fallback='Not Provided') {
+            const text = String(value == null ? '' : value).trim();
+            return text ? escapeHtml(text) : fallback;
+        }
+
+        function openMatrixComplianceInformationModal(id) {
+            const record = matrixComplianceRecords.find(item => String(item.id) === String(id || ''));
+            if (!record) return customAlert('The selected compliance record could not be found. Refresh the register and try again.', 'Record Not Found');
+            const target = matrixComplianceDateObject(record.targetDate);
+            const recurring = matrixComplianceFrequencyLabel(record.frequency);
+            const recurrenceText = recurring === 'None' ? 'One-time' : recurring + (record.recurrenceUntil ? ' · until ' + formatMatrixComplianceDate(record.recurrenceUntil) : ' · ongoing');
+            const rows = [
+                ['Compliance Requirement', matrixComplianceInfoValue(record.compliance)],
+                ['Target Date', matrixComplianceInfoValue(target ? formatMatrixComplianceDate(record.targetDate) : '')],
+                ['Target Time', matrixComplianceInfoValue(record.targetTime)],
+                ['Office In-charge', matrixComplianceInfoValue(record.officeInCharge)],
+                ['Recurring Schedule', matrixComplianceInfoValue(recurrenceText)],
+                ['Action Taken', matrixComplianceInfoValue(record.actionTaken)],
+                ['Encoded By', matrixComplianceInfoValue(record.encodedBy)],
+                ['Date Created', matrixComplianceInfoValue(record.createdAt ? formatMatrixComplianceDate(record.createdAt) : '')],
+                ['Last Updated', matrixComplianceInfoValue(record.updatedAt ? formatMatrixComplianceDate(record.updatedAt) : '')],
+                ['Record Reference', matrixComplianceInfoValue(record.id)]
+            ];
+            const content = document.getElementById('matrixComplianceInfoContent');
+            if (content) content.innerHTML = rows.map(([label,value]) => `<div class="matrix-compliance-info-row"><span>${label}</span><strong>${value}</strong></div>`).join('');
+            const editButton = document.getElementById('matrixComplianceInfoEditBtn');
+            const currentUser = String(localStorage.getItem('loggedInUser') || '').trim().toLowerCase();
+            const canEdit = !matrixComplianceReadOnly && (matrixComplianceIsAlphaAdmin || String(record.encodedBy || '').trim().toLowerCase() === currentUser);
+            if (editButton) editButton.classList.toggle('hidden', !canEdit);
+            const modal = document.getElementById('matrixComplianceInfoModal');
+            if (modal) { modal.classList.remove('hidden'); modal.setAttribute('aria-hidden','false'); window.SPADESModalStack?.bringToFront(modal); }
+            window.matrixComplianceInfoCurrentId = String(record.id);
+        }
+
+        function closeMatrixComplianceInfoModal() {
+            const modal = document.getElementById('matrixComplianceInfoModal');
+            if (modal) { modal.classList.add('hidden'); modal.setAttribute('aria-hidden','true'); }
+            window.matrixComplianceInfoCurrentId = '';
+            window.SPADESModalStack?.refresh();
+        }
+
+        function editMatrixComplianceFromInfo() {
+            const id = String(window.matrixComplianceInfoCurrentId || '');
+            if (!id) return;
+            closeMatrixComplianceInfoModal();
+            openMatrixComplianceModal(id);
         }
 
         function openMatrixComplianceModal(id = '') {
@@ -3602,6 +3756,25 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 customAlert("Unable to load the Personnel sheet.", "Error");
                 return false;
             }
+        }
+
+        function togglePersonnelRecapPanel(forceState) {
+            const panel = document.getElementById('personnelRecapPanel');
+            const toggle = document.getElementById('personnelRecapToggle');
+            if (!panel || !toggle) return;
+            const collapsed = typeof forceState === 'boolean' ? forceState : !panel.classList.contains('is-collapsed');
+            panel.classList.toggle('is-collapsed', collapsed);
+            toggle.setAttribute('aria-expanded', String(!collapsed));
+            const accessibleLabel = collapsed ? 'Expand Recapitulation' : 'Collapse Recapitulation';
+            const iconName = collapsed ? 'fi-rr-angle-left' : 'fi-rr-angle-right';
+            toggle.setAttribute('aria-label', accessibleLabel);
+            toggle.setAttribute('title', accessibleLabel);
+            toggle.setAttribute('data-tooltip', accessibleLabel);
+            toggle.dataset.spadesIconName = iconName;
+            toggle.classList.add('spades-force-icon-only');
+            toggle.innerHTML = `<i class="fi ${iconName}" aria-hidden="true"></i><span class="spades-visually-hidden">${accessibleLabel}</span>`;
+            const layout = panel.closest('.personnel-content-layout');
+            if (layout) layout.classList.toggle('has-collapsed-recap', collapsed);
         }
 
         function rankGroup(rank) {
@@ -3758,7 +3931,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             const status = document.getElementById('personnelStatusFilter')?.value || '';
             const section = document.getElementById('personnelSectionFilter')?.value || '';
             const matches = p => {
-                const text = [p.no,p.rank,p.lastName,p.firstName,p.middleName,p.qualifiers,p.designation,p.section,p.status,p.contactNo,p.remarks,p.badgeNumber]
+                const text = [p.no,p.rank,p.lastName,p.firstName,p.middleName,p.qualifiers,p.designation,p.section,p.status,p.contactNo,p.address,p.remarks,p.badgeNumber]
                     .join(' ').toLowerCase();
                 const sectionValue = String(p.section || '').trim();
                 return (!q || text.includes(q)) &&
@@ -3849,6 +4022,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                         <td>${escapeHtml(p.section)}</td>
                         <td><span style="font-weight:600;color:${archived ? 'var(--danger)' : 'var(--success)'};">${escapeHtml(p.status || (archived ? 'Archived' : 'Active'))}</span></td>
                         <td>${escapeHtml(p.contactNo)}</td>
+                        <td class="personnel-address-cell" title="${escapeAttr(p.address || 'Not Provided')}">${escapeHtml(p.address || 'Not Provided')}</td>
                         ${archived ? `<td>${escapeHtml(p.archivedDate || '')}</td>` : `<td>${escapeHtml(p.remarks || '')}</td>`}
                         ${restoreActionCell}
                     </tr>`;
@@ -3862,7 +4036,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                     <table class="personnel-data-table${archived ? ' archived-personnel-table' : ''}">
                         <thead><tr>
                             <th>No.</th><th>Rank</th><th>Last Name</th><th>First Name</th><th>Middle Name</th>
-                            <th>Qualifiers</th><th class="personnel-copy-heading">Copy</th><th>Badge Number</th><th>Designation</th><th>Section</th><th>Status</th><th>Contact No.</th>
+                            <th>Qualifiers</th><th class="personnel-copy-heading">Copy</th><th>Badge Number</th><th>Designation</th><th>Section</th><th>Status</th><th>Contact No.</th><th>Address</th>
                             ${extraHeader}
                         </tr></thead>
                         <tbody>${bodyHtml}</tbody>
@@ -4020,7 +4194,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             const saveBtn = document.getElementById('personnelSaveBtn');
             if (!modal || !saveBtn) return customAlert('The Add Personnel form is unavailable. Please reload the page.', 'Form Error');
 
-            ['pLastName','pFirstName','pMiddleName','pQualifiers','pBadgeNumber','pDesignation','pContactNo','pSchooling','pRemarksOther','pLeaveType'].forEach(id => {
+            ['pLastName','pFirstName','pMiddleName','pQualifiers','pBadgeNumber','pDesignation','pContactNo','pAddress','pSchooling','pRemarksOther','pLeaveType'].forEach(id => {
                 const field = document.getElementById(id); if (field) field.value = '';
             });
             ['pRank','pSection','pRemarks'].forEach(id => { const field=document.getElementById(id); if(field) field.value=''; });
@@ -4053,6 +4227,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             document.getElementById('pSection').value=p.section||'';
             document.getElementById('pStatus').value=p.status||'Active';
             document.getElementById('pContactNo').value=p.contactNo||'';
+            document.getElementById('pAddress').value=p.address||'';
             populatePersonnelRemarks(p.remarks||'');
             const saveBtn = document.getElementById('personnelSaveBtn');
             saveBtn.disabled = false;
@@ -4106,6 +4281,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 section:document.getElementById('pSection').value.trim(),
                 status:document.getElementById('pStatus').value || 'Active',
                 contactNo:document.getElementById('pContactNo').value.trim(),
+                address:document.getElementById('pAddress').value.trim(),
                 remarks:getPersonnelRemarksPayload()
             };
             if(!payload.rank||!payload.lastName||!payload.firstName) return customAlert("Rank, Last Name and First Name are required.","Validation Error");
@@ -4302,11 +4478,20 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             document.getElementById('activityStatus').value = status;
         }
 
+        function setActivitySaveButtonLabel(label) {
+            const button = document.getElementById('activitySaveBtn');
+            if (!button) return;
+            const safeLabel = String(label || 'Save Activity');
+            button.setAttribute('aria-label', safeLabel);
+            button.setAttribute('title', safeLabel);
+            button.textContent = safeLabel;
+        }
+
         function openActivityModal() {
             if (!canManageActivities()) return customAlert('Only Alpha Admin and Admin users can add activities.', 'Permission Denied');
             activityEditId = null;
             document.getElementById('activityModalTitle').innerText = 'Add Activity';
-            document.getElementById('activitySaveBtn').innerText = 'Save Activity';
+            setActivitySaveButtonLabel('Save Activity');
             document.getElementById('activityTitle').value = '';
             document.getElementById('activityVenue').value = '';
             document.getElementById('activityVenueOther').value = '';
@@ -4317,6 +4502,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             document.getElementById('activityTimeTo').value = '';
             document.getElementById('activityFrequency').value = 'N/A';
             document.getElementById('activityStatus').value = 'Recurring';
+            document.getElementById('activityNotificationsEnabled').checked = true;
             resetActivityDatePicker();
             toggleActivityVenueOther();
             document.getElementById('activityModal').classList.remove('hidden');
@@ -4426,7 +4612,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             const groupDates = [...new Set(groupRecords.map(item => String(item.date || '').slice(0,10)).filter(d => /^\d{4}-\d{2}-\d{2}$/.test(d)))].sort();
             activityEditId = String(id);
             document.getElementById('activityModalTitle').innerText = 'Edit Activity';
-            document.getElementById('activitySaveBtn').innerText = 'Update Activity';
+            setActivitySaveButtonLabel('Update Activity');
             document.getElementById('activityTitle').value = a.activityTitle || '';
             if (ACTIVITY_VENUES.includes(a.assignedVenue)) {
                 document.getElementById('activityVenue').value = a.assignedVenue;
@@ -4443,6 +4629,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             document.getElementById('activityTimeTo').value = activityTimeForInput(savedRange[1] || savedRange[0] || '');
             document.getElementById('activityFrequency').value = a.frequency || 'N/A';
             document.getElementById('activityStatus').value = a.status || 'Recurring';
+            document.getElementById('activityNotificationsEnabled').checked = a.notificationsEnabled !== false;
             const firstDate = groupDates[0] || String(a.date || '').slice(0,10);
             activityCalendarMonth = new Date(firstDate + 'T00:00:00');
             activityCalendarMonth = new Date(activityCalendarMonth.getFullYear(), activityCalendarMonth.getMonth(), 1);
@@ -4472,7 +4659,9 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             const time = timeFrom && timeTo ? `${timeFrom}-${timeTo}` : ''; 
             const frequency = document.getElementById('activityFrequency').value || 'N/A';
             const dates = getSelectedActivityDates();
+            const notificationsEnabled = document.getElementById('activityNotificationsEnabled')?.checked !== false;
 
+            if (!dates.length) return customAlert('Target Date is required. Please select at least one activity date.', 'Required Target Date');
             if (!title || !venue || !requestingOffice || !concernedOffice || !timeFrom || !timeTo || timeTo <= timeFrom || !dates.length) {
                 return customAlert('Please complete all required fields and select at least one date.', 'Validation Error');
             }
@@ -4482,11 +4671,11 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 id: activityEditId,
                 userName: localStorage.getItem('loggedInUser'),
                 credential: localStorage.getItem('loggedCred') || '',
-                activityTitle: title, assignedVenue: venue, requestingOffice, concernedOffice, requestedServices, time, frequency, dates
+                activityTitle: title, assignedVenue: venue, requestingOffice, concernedOffice, requestedServices, time, frequency, dates, notificationsEnabled
             };
 
             const btn = document.getElementById('activitySaveBtn');
-            btn.disabled = true; btn.innerHTML = '<i class="fi fi-rr-spinner" aria-hidden="true"></i>'; 
+            btn.disabled = true; setActivitySaveButtonLabel('Saving Activity…'); 
             try {
                 const res = await fetch(API_URL, { method:'POST', mode:'cors', headers:{'Content-Type':'text/plain;charset=utf-8'}, body:JSON.stringify(payload) });
                 const data = await res.json();
@@ -4498,7 +4687,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             } catch (err) {
                 customAlert(err.message || 'Unable to save activity.', 'Error');
             } finally {
-                btn.disabled = false; btn.innerHTML = '<i class="fi fi-rr-disk" aria-hidden="true"></i>'; 
+                btn.disabled = false; setActivitySaveButtonLabel(wasEditing ? 'Update Activity' : 'Save Activity');
             }
         }
 
@@ -4772,6 +4961,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             document.getElementById('archivedPersonnelDetailsName').textContent = name || 'Archived Personnel';
             document.getElementById('archivedPersonnelDetailsContent').innerHTML = [
                 ['Designation', p.designation], ['Section', p.section], ['Contact', p.contactNo],
+                ['Address', p.address || 'Not Provided'],
                 ['Archived Date', p.archivedDate], ['Archived By', p.archivedBy], ['Archive Note', p.archiveAction]
             ].map(([label, value]) => `<div class="activity-detail-field"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value || '—')}</strong></div>`).join('');
             const statusSelect = document.getElementById('archivedPersonnelStatus');
@@ -5727,6 +5917,10 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             {key:'home', label:'Memo Database'},
             {key:'personnel', label:'Personnel Management'},
             {key:'activityManagement', label:'Activity Management'},
+            {key:'adminWorkflow', label:'Administrative Workflow'},
+            {key:'managementReports', label:'Management Reports'},
+            {key:'auditTrail', label:'Audit Trail'},
+            {key:'documentManagement', label:'Document & Personnel Monitoring'},
             {key:'settings', label:'Settings'},
             {key:'adminMgmt', label:'User Management'},
             {key:'usersChat', label:'Users Chat'}
@@ -5798,6 +5992,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         function switchPersonnelSubPage(sub, options = {}) {
             currentPersonnelSubPage = Object.prototype.hasOwnProperty.call(SPADES_PERSONNEL_ROUTE_LABELS, sub) ? sub : 'list';
             sub = currentPersonnelSubPage;
+            if (sub === 'list') togglePersonnelRecapPanel(true);
             const map = {
                 'list':'subPersonnelList', 'duty':'subDutyOffice', 'bmi':'subBmiMonitoring',
                 'squad':'subSquadding', 'leave':'subLeaveManagement', 'aor':'subAreaOfResponsibility'
@@ -7648,7 +7843,10 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             // Hide sidebar nav buttons for pages the user is not allowed to access.
             const navMap = {
                 'dashboard':'btnDashboard', 'home':'btnHome', 'personnel':'btnPersonnel',
-                'activityManagement':'btnActivityManagement', 'matrixCompliances':'btnMatrixCompliances', 'usersChat':'btnUsersChat', 'settings':'btnSettings'
+                'activityManagement':'btnActivityManagement', 'matrixCompliances':'btnMatrixCompliances',
+                'adminWorkflow':'btnAdminWorkflow', 'managementReports':'btnManagementReports',
+                'auditTrail':'btnAuditTrail', 'documentManagement':'btnDocumentManagement',
+                'usersChat':'btnUsersChat', 'settings':'btnSettings'
             };
             Object.keys(navMap).forEach(key => {
                 const btn = document.getElementById(navMap[key]);
@@ -7859,9 +8057,10 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 ['Designation', p.designation || '—'],
                 ['Section', p.section || '—'],
                 ['Contact Number', p.contactNo || '—'],
+                ['Address', p.address || 'Not Provided'],
                 ['Remarks', p.remarks || '—']
             ];
-            body.innerHTML = rows.map(([label, value], i) => `<div class="profile-card-row"><span class="profile-card-row-icon" aria-hidden="true">${['▣','♙','▤','▧','⌂','☎','≡'][i]}</span><span class="profile-card-row-label">${label}</span><strong>${escapeHtml(String(value))}</strong></div>`).join('');
+            body.innerHTML = rows.map(([label, value], i) => `<div class="profile-card-row"><span class="profile-card-row-icon" aria-hidden="true">${['▣','♙','▤','▧','⌂','☎','⌖','≡'][i]}</span><span class="profile-card-row-label">${label}</span><strong>${escapeHtml(String(value))}</strong></div>`).join('');
             const editButton = document.getElementById('profileCardEditBtn');
             const archiveButton = document.getElementById('profileCardArchiveBtn');
             const browseButton = document.getElementById('profileCardBrowseBtn');
@@ -8993,3 +9192,643 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 window.requestAnimationFrame(() => returnFocus.focus({preventScroll:true}));
             }
         }
+/* ======================= RHSU SPADES PHASE II FRONTEND ======================= */
+async function loadPhase2DashboardSummary() {
+    const wrap = document.getElementById('phase2DashboardCards');
+    const stamp = document.getElementById('phase2DashboardUpdated');
+    if (!wrap) return;
+    wrap.innerHTML = '<article class="phase2-dashboard-card phase2-dashboard-placeholder">Loading management information…</article>';
+    try {
+        const data = await phase2Request('get_phase2_dashboard_summary');
+        const cards = Array.isArray(data.summary) ? data.summary : [];
+        wrap.innerHTML = cards.length ? cards.map(item => `<article class="phase2-dashboard-card"><span class="phase2-dashboard-icon"><i class="fi fi-rr-${phase2Escape(item.icon || 'chart-pie')}"></i></span><div class="phase2-dashboard-label">${phase2Escape(item.label)}</div><strong>${Number(item.value || 0).toLocaleString()}</strong><small>${phase2Escape(item.detail || '')}</small></article>`).join('') : '<article class="phase2-dashboard-card phase2-dashboard-placeholder">No additional module summaries are available for this account.</article>';
+        if (stamp) stamp.textContent = 'Updated ' + String(data.generatedAt || '').replace('T',' ').slice(0,19) + ' · ' + (data.timezone || 'system time');
+    } catch (error) {
+        wrap.innerHTML = `<article class="phase2-dashboard-card phase2-dashboard-placeholder">${phase2Escape(error.message || 'Management summaries are currently unavailable.')}</article>`;
+        if (stamp) stamp.textContent = 'Unable to update';
+    }
+}
+let phase2WorkflowRecords = [];
+let phase2WorkflowUsers = [];
+let phase2CurrentWorkflow = null;
+let phase2ReportData = null;
+let phase2AuditEntries = [];
+let phase2AuditPage = 1;
+const PHASE2_AUDIT_PAGE_SIZE = 50;
+let phase2DocumentRecords = [];
+let phase2DocumentCategories = [];
+let phase2CanManageDocumentCategories = false;
+let phase2TrainingRecords = [];
+let phase2CanViewTraining = false;
+let phase2WorkflowNotificationTimer = null;
+let phase2WorkflowNotificationInFlight = false;
+let phase2WorkflowActionInFlight = false;
+let phase2TrainingSaveInFlight = false;
+let phase2ReviewerAssignInFlight = false;
+
+function phase2Escape(value) {
+    const node = document.createElement('span');
+    node.textContent = String(value == null ? '' : value);
+    return node.innerHTML;
+}
+function phase2AttributeEscape(value) { return phase2Escape(value).replace(/\"/g,'&quot;').replace(/'/g,'&#39;'); }
+function phase2LocalDateKey() {
+    const now = new Date();
+    return [now.getFullYear(),String(now.getMonth()+1).padStart(2,'0'),String(now.getDate()).padStart(2,'0')].join('-');
+}
+function phase2DateDisplay(value) {
+    if (!value) return '—';
+    const raw = String(value);
+    const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (!match) return phase2Escape(raw);
+    return `${match[2]}/${match[3]}/${match[1]}`;
+}
+function phase2CurrentUsername() { return String(localStorage.getItem('loggedInUser') || '').trim(); }
+function phase2IsAccountAdmin() { return isAlphaAdmin() || String(localStorage.getItem('userRole') || '').trim() === 'Admin'; }
+async function phase2Request(action, extra = {}) {
+    const response = await spadesAuthenticatedRead(action, extra);
+    if (!response || !response.ok) throw new Error(`Request failed (${response ? response.status : 'network'}).`);
+    let data;
+    try { data = await response.json(); } catch (error) { throw new Error('The SPADES server returned an unreadable response.'); }
+    if (!data || data.success !== true) throw new Error(data && data.error ? data.error : 'The request was rejected by the SPADES backend.');
+    return data;
+}
+async function pollPhase2WorkflowNotifications() {
+    if (phase2WorkflowNotificationInFlight || !localStorage.getItem('loggedInUser') || !localStorage.getItem('loggedCred')) return;
+    phase2WorkflowNotificationInFlight = true;
+    const pollingUser = String(localStorage.getItem('loggedInUser') || '').trim().toLowerCase();
+    try {
+        const data = await phase2Request('get_phase2_workflow_notifications');
+        if (!localStorage.getItem('loggedInUser') || String(localStorage.getItem('loggedInUser')).trim().toLowerCase() !== pollingUser) return;
+        (Array.isArray(data.notifications) ? data.notifications : []).forEach(item => {
+            const title = item.type === 'Overdue' ? 'Workflow Overdue' : item.type === 'Deadline Approaching' ? 'Workflow Deadline' : item.type || 'Workflow Update';
+            showNotification(title, item.message || item.referenceNo || 'A Phase II record was updated.', async () => {
+                const isDocumentAlert = String(item.type || '').indexOf('Document ') === 0;
+                if (isDocumentAlert) {
+                    switchTab('documentManagement');
+                    window.requestAnimationFrame(async () => {
+                        try {
+                            await loadPhase2Documents();
+                            const search = document.getElementById('phase2DocumentSearch');
+                            if (search) { search.value = item.referenceNo || ''; renderPhase2Documents(); }
+                        } catch (error) { customAlert(error.message || 'Unable to open the document register.', 'Document Notification'); }
+                    });
+                    return;
+                }
+                switchTab('adminWorkflow');
+                window.requestAnimationFrame(async () => {
+                    try {
+                        if (!(phase2WorkflowRecords || []).some(record => String(record.id) === String(item.workflowId))) await loadPhase2Workflows();
+                        if ((phase2WorkflowRecords || []).some(record => String(record.id) === String(item.workflowId))) openPhase2WorkflowDetails(item.workflowId);
+                    } catch (error) { customAlert(error.message || 'Unable to open the workflow transaction.', 'Workflow Notification'); }
+                });
+            });
+        });
+    } catch (error) {
+        // Accounts without either Workflow or Document Monitoring access are silently skipped; the server still enforces permissions.
+    } finally { phase2WorkflowNotificationInFlight = false; }
+}
+function startPhase2WorkflowNotificationMonitor() {
+    if (phase2WorkflowNotificationTimer) return;
+    pollPhase2WorkflowNotifications();
+    phase2WorkflowNotificationTimer = window.setInterval(pollPhase2WorkflowNotifications, 60000);
+}
+function stopPhase2WorkflowNotificationMonitor() {
+    if (phase2WorkflowNotificationTimer) window.clearInterval(phase2WorkflowNotificationTimer);
+    phase2WorkflowNotificationTimer = null;
+    phase2WorkflowNotificationInFlight = false;
+}
+function phase2SetBusy(el, busy, busyText) {
+    if (!el) return;
+    if (busy) { el.dataset.phase2OriginalText = el.textContent; el.disabled = true; if (busyText) el.textContent = busyText; }
+    else { el.disabled = false; if (el.dataset.phase2OriginalText) el.textContent = el.dataset.phase2OriginalText; delete el.dataset.phase2OriginalText; }
+}
+
+/* ---------- Administrative Workflow ---------- */
+async function loadPhase2Workflows() {
+    const body = document.getElementById('phase2WorkflowTable');
+    if (body) body.innerHTML = '<tr><td colspan="8" class="phase2-empty">Loading workflow transactions…</td></tr>';
+    try {
+        const data = await phase2Request('get_phase2_workflows');
+        phase2WorkflowRecords = Array.isArray(data.records) ? data.records : [];
+        phase2WorkflowUsers = Array.isArray(data.users) ? data.users : [];
+        const counts = data.counts || {};
+        const stats = [
+            ['Total Transactions', counts.total || 0], ['Pending Review', counts.pendingReview || 0],
+            ['Assigned to Me', counts.assignedToMe || 0], ['Submitted by Me', counts.submittedByMe || 0]
+        ];
+        const statsWrap = document.getElementById('phase2WorkflowStats');
+        if (statsWrap) statsWrap.innerHTML = stats.map(([label,value]) => `<article><span>${phase2Escape(label)}</span><strong>${Number(value).toLocaleString()}</strong></article>`).join('');
+        renderPhase2Workflows();
+    } catch (error) {
+        if (body) body.innerHTML = `<tr><td colspan="8" class="phase2-empty phase2-error">${phase2Escape(error.message)}</td></tr>`;
+    }
+}
+function renderPhase2Workflows() {
+    const body = document.getElementById('phase2WorkflowTable');
+    if (!body) return;
+    const q = String(document.getElementById('phase2WorkflowSearch')?.value || '').trim().toLowerCase();
+    const status = String(document.getElementById('phase2WorkflowStatusFilter')?.value || '').trim();
+    const rows = phase2WorkflowRecords.filter(record => {
+        if (status && record.status !== status) return false;
+        const line = [record.referenceNo,record.title,record.category,record.requestingOffice,record.requester,record.assignedReviewer].join(' ').toLowerCase();
+        return !q || line.includes(q);
+    });
+    if (!rows.length) {
+        body.innerHTML = '<tr><td colspan="8" class="phase2-empty">No matching administrative transactions found.</td></tr>';
+        return;
+    }
+    body.innerHTML = rows.map(record => {
+        const overdue = record.deadline && record.deadline < phase2LocalDateKey() && !['Completed','Rejected','Cancelled'].includes(record.status);
+        return `<tr>
+          <td><strong>${phase2Escape(record.referenceNo)}</strong></td>
+          <td><strong>${phase2Escape(record.title)}</strong><small>${phase2Escape(record.category)} · ${phase2Escape(record.requestingOffice || 'Office not specified')}</small></td>
+          <td>${phase2Escape(record.requester)}</td><td>${phase2Escape(record.assignedReviewer || 'Unassigned')}</td>
+          <td><span class="phase2-status phase2-status-${phase2Escape(record.status.toLowerCase().replace(/[^a-z]+/g,'-'))}">${phase2Escape(record.status)}</span>${overdue?'<small class="phase2-overdue">Overdue</small>':''}</td>
+          <td>${phase2DateDisplay(record.deadline)}</td><td>${phase2Escape(record.updatedAt || '—')}</td>
+          <td><button class="phase2-table-action" onclick="openPhase2WorkflowDetails('${phase2Escape(record.id)}')" type="button">Open</button></td>
+        </tr>`;
+    }).join('');
+}
+function openPhase2WorkflowEditor(id = '') {
+    const record = id ? phase2WorkflowRecords.find(item => String(item.id) === String(id)) : null;
+    if (record && !(isAlphaAdmin() || String(record.requester).toLowerCase() === phase2CurrentUsername().toLowerCase())) {
+        customAlert('You may edit only transactions that you submitted.', 'Permission Denied'); return;
+    }
+    if (record && !['Draft','Returned for Revision'].includes(record.status)) {
+        customAlert('Only Draft or Returned for Revision transactions may be edited.', 'Workflow'); return;
+    }
+    document.getElementById('phase2WorkflowEditId').value = record ? record.id : '';
+    document.getElementById('phase2WorkflowCategory').value = record ? record.category : '';
+    document.getElementById('phase2WorkflowOffice').value = record ? record.requestingOffice : '';
+    document.getElementById('phase2WorkflowTitle').value = record ? record.title : '';
+    document.getElementById('phase2WorkflowDeadline').value = record ? record.deadline : '';
+    document.getElementById('phase2WorkflowDescription').value = record ? record.description : '';
+    document.getElementById('phase2WorkflowEditorTitle').textContent = record ? 'Edit Administrative Request' : 'New Administrative Request';
+    document.getElementById('phase2WorkflowEditor').classList.remove('hidden');
+    window.SPADESModalStack?.bringToFront(document.getElementById('phase2WorkflowEditor'));
+}
+function closePhase2WorkflowEditor() { document.getElementById('phase2WorkflowEditor')?.classList.add('hidden'); }
+async function savePhase2WorkflowDraft(submitAfterSave) {
+    const button = document.querySelector('#phase2WorkflowEditor .phase2-form-actions .approve-btn');
+    const id = String(document.getElementById('phase2WorkflowEditId')?.value || '');
+    const payload = {
+        title:document.getElementById('phase2WorkflowTitle').value.trim(),
+        category:document.getElementById('phase2WorkflowCategory').value,
+        requestingOffice:document.getElementById('phase2WorkflowOffice').value.trim(),
+        deadline:document.getElementById('phase2WorkflowDeadline').value,
+        description:document.getElementById('phase2WorkflowDescription').value.trim()
+    };
+    if (!payload.title || !payload.category) return customAlert('Enter a transaction title and select a category.', 'Required Information');
+    phase2SetBusy(button,true,'Saving…');
+    try {
+        const data = id ? await phase2Request('update_phase2_workflow',{id,...payload}) : await phase2Request('create_phase2_workflow',payload);
+        const recordId = id || (data.record && data.record.id);
+        if (submitAfterSave && recordId) await phase2Request('transition_phase2_workflow',{id:recordId,status:'Submitted',comment:'Submitted for review.'});
+        closePhase2WorkflowEditor();
+        await loadPhase2Workflows();
+        if (recordId) await openPhase2WorkflowDetails(recordId);
+        customAlert(submitAfterSave ? 'Transaction submitted for review.' : 'Draft saved successfully.', 'Success');
+    } catch (error) { customAlert(error.message || 'Unable to save the transaction.', 'Workflow Error'); }
+    finally { phase2SetBusy(button,false); }
+}
+async function openPhase2WorkflowDetails(id) {
+    const record = phase2WorkflowRecords.find(item => String(item.id) === String(id));
+    if (!record) return customAlert('The selected transaction is no longer available. Refresh the register.', 'Workflow');
+    phase2CurrentWorkflow = record;
+    document.getElementById('phase2WorkflowDetailsTitle').textContent = record.title || 'Administrative Transaction';
+    document.getElementById('phase2WorkflowDetailsSubtitle').textContent = `${record.referenceNo} · ${record.category}`;
+    document.getElementById('phase2WorkflowComment').value = '';
+    document.getElementById('phase2WorkflowDetailsContent').innerHTML = `
+      <div class="phase2-detail-status-row"><span class="phase2-status phase2-status-${phase2Escape(record.status.toLowerCase().replace(/[^a-z]+/g,'-'))}">${phase2Escape(record.status)}</span><strong>${phase2Escape(record.referenceNo)}</strong></div>
+      <div class="phase2-detail-grid"><div><span>Requesting Office</span><strong>${phase2Escape(record.requestingOffice || '—')}</strong></div><div><span>Requester</span><strong>${phase2Escape(record.requester)}</strong></div><div><span>Assigned Reviewer</span><strong>${phase2Escape(record.assignedReviewer || 'Unassigned')}</strong></div><div><span>Assigned Office</span><strong>${phase2Escape(record.assignedOffice || '—')}</strong></div><div><span>Target Deadline</span><strong>${phase2DateDisplay(record.deadline)}</strong></div><div><span>Created</span><strong>${phase2Escape(record.createdAt || '—')}</strong></div></div>
+      <div class="phase2-detail-description"><span>Description / Details</span><p>${phase2Escape(record.description || 'No description was provided.')}</p></div>
+      ${record.latestComment ? `<div class="phase2-detail-description"><span>Latest Comment</span><p>${phase2Escape(record.latestComment)}</p></div>` : ''}`;
+    renderPhase2WorkflowActions(record);
+    const assignPanel = document.getElementById('phase2WorkflowAssignPanel');
+    const canAssign = phase2IsAccountAdmin();
+    assignPanel.classList.toggle('hidden',!canAssign);
+    if (canAssign) {
+        const select = document.getElementById('phase2WorkflowAssignedReviewer');
+        select.innerHTML = '<option value="">Unassigned</option>' + phase2WorkflowUsers.map(user => `<option value="${phase2Escape(user.username)}">${phase2Escape(user.displayName)} (${phase2Escape(user.username)})</option>`).join('');
+        select.value = record.assignedReviewer || '';
+        document.getElementById('phase2WorkflowAssignedOffice').value = record.assignedOffice || '';
+    }
+    document.getElementById('phase2WorkflowDetails').classList.remove('hidden');
+    window.SPADESModalStack?.bringToFront(document.getElementById('phase2WorkflowDetails'));
+    const history = document.getElementById('phase2WorkflowHistory');
+    history.innerHTML = '<div class="phase2-empty">Loading transaction history…</div>';
+    try {
+        const data = await phase2Request('get_phase2_workflow_history',{id:id});
+        const entries = Array.isArray(data.history) ? data.history : [];
+        history.innerHTML = entries.length ? entries.map(item => `<article class="phase2-history-entry"><span class="phase2-history-dot"></span><div><strong>${phase2Escape(item.action)}</strong><small>${phase2Escape(item.actor)} · ${phase2Escape(item.timestamp)}</small>${item.previousStatus || item.newStatus ? `<p>${phase2Escape(item.previousStatus || '—')} → ${phase2Escape(item.newStatus || '—')}</p>` : ''}${item.comment ? `<p>${phase2Escape(item.comment)}</p>` : ''}</div></article>`).join('') : '<div class="phase2-empty">No history entries yet.</div>';
+    } catch (error) { history.innerHTML = `<div class="phase2-empty phase2-error">${phase2Escape(error.message)}</div>`; }
+}
+function renderPhase2WorkflowActions(record) {
+    const wrap = document.getElementById('phase2WorkflowTransitionActions');
+    if (!wrap) return;
+    const user = phase2CurrentUsername().toLowerCase();
+    const requester = String(record.requester).toLowerCase() === user || isAlphaAdmin();
+    const reviewer = String(record.assignedReviewer || '').toLowerCase() === user || isAlphaAdmin();
+    const buttons = [];
+    if (requester && ['Draft','Returned for Revision'].includes(record.status)) {
+        buttons.push(`<button class="action-btn" onclick="openPhase2WorkflowEditor('${phase2Escape(record.id)}')" type="button">Edit Draft</button>`);
+        buttons.push(`<button class="action-btn approve-btn" onclick="applyPhase2WorkflowStatus('Submitted')" type="button">Submit for Review</button>`);
+        buttons.push(`<button class="action-btn" onclick="applyPhase2WorkflowStatus('Cancelled')" type="button">Cancel Request</button>`);
+    }
+    if (reviewer && record.status === 'Submitted') {
+        buttons.push(`<button class="action-btn approve-btn" onclick="applyPhase2WorkflowStatus('Under Review')" type="button">Start Review</button>`);
+        buttons.push(`<button class="action-btn" onclick="applyPhase2WorkflowStatus('Returned for Revision')" type="button">Return for Revision</button>`);
+    }
+    if (reviewer && record.status === 'Under Review') {
+        buttons.push(`<button class="action-btn" onclick="applyPhase2WorkflowStatus('Returned for Revision')" type="button">Return</button>`);
+        buttons.push(`<button class="action-btn approve-btn" onclick="applyPhase2WorkflowStatus('Approved')" type="button">Approve</button>`);
+        buttons.push(`<button class="action-btn phase2-danger-btn" onclick="applyPhase2WorkflowStatus('Rejected')" type="button">Reject</button>`);
+        buttons.push(`<button class="action-btn" onclick="applyPhase2WorkflowStatus('Cancelled')" type="button">Cancel</button>`);
+    }
+    if (reviewer && record.status === 'Approved') buttons.push(`<button class="action-btn approve-btn" onclick="applyPhase2WorkflowStatus('Completed')" type="button">Mark Completed</button>`);
+    wrap.innerHTML = buttons.length ? buttons.join('') : '<span class="phase2-footnote">No workflow action is available for this account and transaction status.</span>';
+}
+function closePhase2WorkflowDetails() { document.getElementById('phase2WorkflowDetails')?.classList.add('hidden'); phase2CurrentWorkflow = null; }
+async function applyPhase2WorkflowStatus(status) {
+    if (!phase2CurrentWorkflow || phase2WorkflowActionInFlight) return;
+    const comment = String(document.getElementById('phase2WorkflowComment').value || '').trim();
+    if (['Returned for Revision','Rejected'].includes(status) && !comment) return customAlert('Enter a comment explaining this action.', 'Comment Required');
+    const proceed = async () => {
+        if (phase2WorkflowActionInFlight) return;
+        phase2WorkflowActionInFlight = true;
+        const wrap = document.getElementById('phase2WorkflowTransitionActions');
+        if (wrap) wrap.querySelectorAll('button').forEach(button => { button.disabled = true; button.setAttribute('aria-busy','true'); });
+        try {
+            const workflowId = phase2CurrentWorkflow && phase2CurrentWorkflow.id;
+            if (!workflowId) return;
+            await phase2Request('transition_phase2_workflow',{id:workflowId,status:status,comment:comment});
+            await loadPhase2Workflows();
+            if (phase2CurrentWorkflow) await openPhase2WorkflowDetails(workflowId);
+            customAlert(`Transaction status updated to ${status}.`, 'Success');
+        } catch (error) { customAlert(error.message || 'The workflow action was rejected.', 'Workflow Error'); }
+        finally { phase2WorkflowActionInFlight = false; if (wrap) wrap.querySelectorAll('button').forEach(button => { button.disabled = false; button.removeAttribute('aria-busy'); }); }
+    };
+    if (status === 'Rejected' || status === 'Cancelled') customConfirm(`Confirm changing this transaction to ${status}?`, confirmed => { if (confirmed) proceed(); });
+    else await proceed();
+}
+async function assignPhase2WorkflowReviewer() {
+    if (!phase2CurrentWorkflow || phase2ReviewerAssignInFlight) return;
+    const button = document.getElementById('phase2AssignReviewerBtn');
+    phase2ReviewerAssignInFlight = true;
+    phase2SetBusy(button,true,'Saving…');
+    const workflowId = phase2CurrentWorkflow.id;
+    try {
+        await phase2Request('assign_phase2_workflow',{id:workflowId,assignedReviewer:document.getElementById('phase2WorkflowAssignedReviewer').value,assignedOffice:document.getElementById('phase2WorkflowAssignedOffice').value.trim()});
+        await loadPhase2Workflows();
+        await openPhase2WorkflowDetails(workflowId);
+        customAlert('Reviewer assignment updated.', 'Success');
+    } catch (error) { customAlert(error.message || 'Unable to assign reviewer.', 'Workflow Error'); }
+    finally { phase2ReviewerAssignInFlight = false; phase2SetBusy(button,false); }
+}
+
+/* ---------- Management Reports ---------- */
+const PHASE2_REPORT_CONFIG = {
+    activities:{title:'Activity Accomplishment Report',columns:[['date','Date'],['title','Activity'],['venue','Venue'],['requestingOffice','Requesting Office'],['concernedOffice','Concerned Office'],['time','Time'],['status','Status'],['frequency','Recurrence'],['encodedBy','Encoded By']]},
+    personnel:{title:'Personnel Summary',columns:[['no','Personnel No.'],['rank','Rank'],['name','Name'],['section','Section'],['designation','Designation'],['status','Status']]},
+    archivedPersonnel:{title:'Archived Personnel Report',columns:[['no','Personnel No.'],['rank','Rank'],['name','Name'],['section','Section'],['status','Status']]},
+    compliance:{title:'Compliance Monitoring Report',columns:[['targetDate','Target Date'],['targetTime','Target Time'],['title','Compliance'],['office','Office In-charge'],['actionTaken','Action Taken'],['frequency','Frequency'],['encodedBy','Encoded By']]},
+    workflow:{title:'Administrative Transaction Report',columns:[['referenceNo','Reference No.'],['title','Transaction'],['category','Category'],['requestingOffice','Requesting Office'],['assignedOffice','Assigned Office'],['requester','Requester'],['assignedReviewer','Assigned Reviewer'],['status','Status'],['deadline','Deadline'],['createdAt','Date Created']]},
+    documents:{title:'Document Register Report',columns:[['title','Document'],['category','Category'],['type','Type'],['personnelNo','Personnel No.'],['personnelName','Personnel Name'],['office','Office / Section'],['expirationDate','Expiration Date'],['status','Status'],['uploadedBy','Uploaded By']]},
+    training:{title:'Training and Schooling Report',columns:[['personnelNo','Personnel No.'],['personnelName','Personnel Name'],['title','Training'],['category','Category'],['dateStarted','Date Started'],['dateCompleted','Date Completed'],['venue','Venue / Institution'],['status','Status'],['encodedBy','Encoded By']]},
+    memos:{title:'Memo Records Report',columns:[['controlNo','Control No.'],['subject','Subject'],['encodedBy','Encoded By'],['date','Date']]}
+};
+function updatePhase2ReportPeriodControls() {
+    const mode = document.getElementById('phase2ReportPeriod')?.value || 'custom';
+    ['phase2ReportMonthWrap','phase2ReportQuarterWrap','phase2ReportYearWrap'].forEach(id => document.getElementById(id)?.classList.add('hidden'));
+    ['phase2ReportFromWrap','phase2ReportToWrap'].forEach(id => document.getElementById(id)?.classList.toggle('hidden', mode !== 'custom'));
+    if (mode === 'month') document.getElementById('phase2ReportMonthWrap')?.classList.remove('hidden');
+    if (mode === 'quarter') { document.getElementById('phase2ReportQuarterWrap')?.classList.remove('hidden'); document.getElementById('phase2ReportYearWrap')?.classList.remove('hidden'); }
+    if (mode === 'year') document.getElementById('phase2ReportYearWrap')?.classList.remove('hidden');
+    const year = document.getElementById('phase2ReportYear');
+    if (year && !year.value) year.value = String(new Date().getFullYear());
+    const month = document.getElementById('phase2ReportMonth');
+    if (month && !month.value) month.value = phase2LocalDateKey().slice(0,7);
+}
+function getPhase2ReportDateRange() {
+    const mode = document.getElementById('phase2ReportPeriod')?.value || 'custom';
+    if (mode === 'custom') return {dateFrom:document.getElementById('phase2ReportDateFrom')?.value || '',dateTo:document.getElementById('phase2ReportDateTo')?.value || ''};
+    let year, month;
+    if (mode === 'month') {
+        const value = String(document.getElementById('phase2ReportMonth')?.value || '');
+        if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(value)) throw new Error('Select a valid reporting month.');
+        year = Number(value.slice(0,4)); month = Number(value.slice(5,7));
+        if (year < 2000 || year > 2100) throw new Error('Enter a valid reporting year from 2000 to 2100.');
+        const lastDay = new Date(year,month,0).getDate();
+        return {dateFrom:value+'-01',dateTo:value+'-'+String(lastDay).padStart(2,'0')};
+    }
+    year = Number(document.getElementById('phase2ReportYear')?.value || 0);
+    if (!Number.isInteger(year) || year < 2000 || year > 2100) throw new Error('Enter a valid reporting year from 2000 to 2100.');
+    if (mode === 'year') return {dateFrom:year+'-01-01',dateTo:year+'-12-31'};
+    const quarter = Number(document.getElementById('phase2ReportQuarter')?.value || 1);
+    if (![1,2,3,4].includes(quarter)) throw new Error('Select a valid reporting quarter.');
+    const firstMonth = (quarter-1)*3+1;
+    const lastMonth = firstMonth+2;
+    const lastDay = new Date(year,lastMonth,0).getDate();
+    return {dateFrom:year+'-'+String(firstMonth).padStart(2,'0')+'-01',dateTo:year+'-'+String(lastMonth).padStart(2,'0')+'-'+String(lastDay).padStart(2,'0')};
+}
+function getPhase2FilteredReportRows() {
+    const key = document.getElementById('phase2ReportType')?.value || 'activities';
+    const source = phase2ReportData?.data?.[key];
+    if (!Array.isArray(source)) return [];
+    const section = String(document.getElementById('phase2ReportSectionFilter')?.value || '').trim().toLowerCase();
+    const status = String(document.getElementById('phase2ReportStatusFilter')?.value || '').trim().toLowerCase();
+    return source.filter(row => {
+        if (section) {
+            const values = [row.section,row.office,row.requestingOffice,row.concernedOffice].filter(Boolean).join(' ').toLowerCase();
+            if (!values.includes(section)) return false;
+        }
+        if (status) {
+            const value = String(row.status || row.completionStatus || '').toLowerCase();
+            if (!value.includes(status)) return false;
+        }
+        return true;
+    });
+}
+async function loadPhase2Reports() {
+    const title = document.getElementById('phase2ReportTitle');
+    if (title) title.textContent = 'Generating management report…';
+    try {
+        const {dateFrom,dateTo} = getPhase2ReportDateRange();
+        if (dateFrom && dateTo && dateFrom > dateTo) throw new Error('The From Date must not be later than the To Date.');
+        const data = await phase2Request('get_phase2_reports',{dateFrom:dateFrom,dateTo:dateTo});
+        phase2ReportData = data.report || null;
+        renderPhase2ReportSummary();
+        renderPhase2ReportView();
+    } catch (error) {
+        if (title) title.textContent = 'Unable to generate report';
+        document.getElementById('phase2ReportContent').innerHTML = `<div class="phase2-empty phase2-error">${phase2Escape(error.message)}</div>`;
+    }
+}
+function renderPhase2ReportSummary() {
+    const wrap = document.getElementById('phase2ReportSummary');
+    if (!wrap || !phase2ReportData) return;
+    const report = phase2ReportData;
+    const items = [];
+    Object.keys(report.available || {}).forEach(key => {
+        if (!report.available[key]) return;
+        const summary = report.summary[key];
+        if (key === 'personnel' && summary && typeof summary === 'object') {
+            items.push(['Personnel',`${summary.total || 0} total`,`${summary.active || 0} active · ${summary.suspended || 0} suspended · ${summary.archived || 0} archived`]);
+        } else if (summary !== undefined) items.push([key.replace(/([A-Z])/g,' $1').replace(/^./,c=>c.toUpperCase()),Number(summary).toLocaleString(),'records']);
+    });
+    wrap.innerHTML = items.length ? items.map(item => `<article><span>${phase2Escape(item[0])}</span><strong>${phase2Escape(item[1])}</strong><small>${phase2Escape(item[2] || '')}</small></article>`).join('') : '<article><span>Available datasets</span><strong>0</strong><small>No authorized source modules</small></article>';
+}
+function renderPhase2ReportView() {
+    const key = document.getElementById('phase2ReportType')?.value || 'activities';
+    const config = PHASE2_REPORT_CONFIG[key];
+    const data = phase2ReportData;
+    const title = document.getElementById('phase2ReportTitle');
+    const meta = document.getElementById('phase2ReportMeta');
+    const generated = document.getElementById('phase2ReportGeneratedAt');
+    const content = document.getElementById('phase2ReportContent');
+    if (!config || !content) return;
+    title.textContent = config.title;
+    if (!data) { content.innerHTML = '<div class="phase2-empty">Select Generate to retrieve current records.</div>'; return; }
+    const available = data.available && data.available[key];
+    if (!available) { meta.textContent = 'This dataset is unavailable because the signed-in account does not have access to its source module.'; content.innerHTML = '<div class="phase2-empty">Access to the source module is required to include this dataset in a report.</div>'; return; }
+    const rows = getPhase2FilteredReportRows();
+    const range = getPhase2ReportDateRange();
+    const from = range.dateFrom;
+    const to = range.dateTo;
+    const rangeLabel = key === 'personnel'
+        ? ' · Current roster snapshot (not date-filtered; archive report is date-filtered)'
+        : `${from || to ? ` · ${from || 'Beginning'} to ${to || 'Current'}` : ' · All available dates'}`;
+    meta.textContent = `${rows.length.toLocaleString()} records${rangeLabel} · Time zone ${data.timezone || 'configured system time'}`;
+    generated.textContent = `Generated ${String(data.generatedAt || '').replace('T',' ').slice(0,19)}`;
+    if (!rows.length) { content.innerHTML = '<div class="phase2-empty">No records match the selected report and date filters.</div>'; return; }
+    content.innerHTML = `<div class="phase2-table-wrap"><table class="phase2-table"><thead><tr>${config.columns.map(col=>`<th>${phase2Escape(col[1])}</th>`).join('')}</tr></thead><tbody>${rows.map(row=>`<tr>${config.columns.map(col=>`<td>${phase2Escape(row[col[0]] ?? '—')}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+}
+function exportPhase2ReportCsv() {
+    const key = document.getElementById('phase2ReportType')?.value || 'activities';
+    const config = PHASE2_REPORT_CONFIG[key];
+    const rows = phase2ReportData && phase2ReportData.data && Array.isArray(phase2ReportData.data[key]) ? getPhase2FilteredReportRows() : null;
+    if (!config || !rows || !(phase2ReportData.available || {})[key]) return customAlert('Generate an authorized report before exporting.', 'Export');
+    const quote = value => { let text = String(value == null ? '' : value); if (/^[\u0000-\u0020]*[=+@-]/.test(text)) text = "'" + text; return `"${text.replace(/"/g,'""')}"`; };
+    const lines = [config.columns.map(col=>quote(col[1])).join(',')];
+    rows.forEach(row=>lines.push(config.columns.map(col=>quote(row[col[0]])).join(',')));
+    const blob = new Blob(['\ufeff'+lines.join('\r\n')],{type:'text/csv;charset=utf-8;'});
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');link.href=url;link.download=`RHSU_SPADES_${key}_Report_${new Date().toISOString().slice(0,10)}.csv`;document.body.appendChild(link);link.click();link.remove();URL.revokeObjectURL(url);
+}
+
+/* ---------- Audit Trail and System Health ---------- */
+async function loadPhase2Audit() {
+    const body = document.getElementById('phase2AuditTable');
+    if (body) body.innerHTML = '<tr><td class="phase2-empty" colspan="8">Loading audit records…</td></tr>';
+    const filters = {
+        dateFrom:document.getElementById('phase2AuditFrom').value,
+        dateTo:document.getElementById('phase2AuditTo').value,
+        username:document.getElementById('phase2AuditUser').value.trim(),
+        module:document.getElementById('phase2AuditModule').value,
+        action:document.getElementById('phase2AuditAction').value.trim(),
+        query:document.getElementById('phase2AuditQuery').value.trim()
+    };
+    try {
+        const data = await phase2Request('get_phase2_audit',{filters:filters});
+        phase2AuditEntries = Array.isArray(data.entries) ? data.entries : [];
+        phase2AuditPage = 1;
+        renderPhase2Audit();
+    } catch (error) { if (body) body.innerHTML = `<tr><td class="phase2-empty phase2-error" colspan="8">${phase2Escape(error.message)}</td></tr>`; }
+}
+function renderPhase2Audit() {
+    const body = document.getElementById('phase2AuditTable'); if (!body) return;
+    const totalPages = Math.max(1,Math.ceil(phase2AuditEntries.length/PHASE2_AUDIT_PAGE_SIZE));
+    phase2AuditPage = Math.max(1,Math.min(phase2AuditPage,totalPages));
+    const start = (phase2AuditPage-1)*PHASE2_AUDIT_PAGE_SIZE;
+    const rows = phase2AuditEntries.slice(start,start+PHASE2_AUDIT_PAGE_SIZE);
+    if (!rows.length) body.innerHTML='<tr><td colspan="8" class="phase2-empty">No audit entries match the selected filters.</td></tr>';
+    else body.innerHTML = rows.map(item=>`<tr><td>${phase2Escape(item.timestamp)}</td><td><strong>${phase2Escape(item.username)}</strong></td><td>${phase2Escape(item.role)}</td><td>${phase2Escape(item.module)}</td><td>${phase2Escape(item.action)}</td><td>${phase2Escape(item.recordType ? item.recordType+' · ' : '')}${phase2Escape(item.recordId || '—')}</td><td>${phase2Escape(item.summary || '—')}</td><td><button class="phase2-table-action" onclick="openPhase2AuditDetail(${phase2AttributeEscape(JSON.stringify(item.id))})" type="button">View</button></td></tr>`).join('');
+    const pagination=document.getElementById('phase2AuditPagination');
+    if(pagination)pagination.innerHTML=phase2AuditEntries.length?`<span>Showing ${(start+1).toLocaleString()}–${Math.min(start+rows.length,phase2AuditEntries.length).toLocaleString()} of ${phase2AuditEntries.length.toLocaleString()} retrieved entries</span><div><button class="action-btn" onclick="changePhase2AuditPage(-1)" type="button" ${phase2AuditPage<=1?'disabled':''}>Previous</button><strong>Page ${phase2AuditPage} of ${totalPages}</strong><button class="action-btn" onclick="changePhase2AuditPage(1)" type="button" ${phase2AuditPage>=totalPages?'disabled':''}>Next</button></div>`:'';
+}
+function changePhase2AuditPage(delta) { phase2AuditPage=Math.max(1,phase2AuditPage+Number(delta||0));renderPhase2Audit(); }
+function openPhase2AuditDetail(id) {
+    const item=phase2AuditEntries.find(row=>String(row.id)===String(id));if(!item)return;
+    document.getElementById('phase2AuditDetailTitle').textContent=item.action||'Audit Details';
+    document.getElementById('phase2AuditDetailSubtitle').textContent=`${item.module||'Module'} · ${item.timestamp||''}`;
+    const details=[['User',item.username],['Role',item.role],['Module',item.module],['Action',item.action],['Record Type',item.recordType],['Record ID',item.recordId],['Summary',item.summary],['Previous Value',item.previousValue],['New Value',item.newValue]];
+    document.getElementById('phase2AuditDetailContent').innerHTML=`<div class="phase2-audit-detail-grid">${details.map(([label,value])=>`<section><span>${phase2Escape(label)}</span><pre>${phase2Escape(value||'—')}</pre></section>`).join('')}</div>`;
+    const modal=document.getElementById('phase2AuditDetailModal');modal.classList.remove('hidden');window.SPADESModalStack?.bringToFront(modal);
+}
+function closePhase2AuditDetail() { document.getElementById('phase2AuditDetailModal')?.classList.add('hidden'); }
+async function loadPhase2SystemHealth() {
+    const panel=document.getElementById('phase2SystemHealthPanel'),content=document.getElementById('phase2SystemHealthContent');
+    if (!isAlphaAdmin()) return customAlert('Only Alpha Admin may view system health details.','Permission Denied');
+    panel.classList.remove('hidden');content.innerHTML='<div class="phase2-empty">Checking system status…</div>';
+    try {
+        const data=await phase2Request('get_phase2_system_health');const health=data.health||{};
+        document.getElementById('phase2HealthGenerated').textContent=`Checked ${String(health.generatedAt||'').replace('T',' ').slice(0,19)}`;
+        const latest=health.latestBackup?`${health.latestBackup.name} · ${String(health.latestBackup.createdAt||'').slice(0,10)}`:'No backup metadata found';
+        content.innerHTML=`<div class="phase2-health-summary"><article><span>Spreadsheet</span><strong>${phase2Escape(health.spreadsheetName||'—')}</strong></article><article><span>Sheet Count</span><strong>${Number(health.sheetCount||0)}</strong></article><article><span>Time Zone</span><strong>${phase2Escape(health.timezone||'—')}</strong></article><article><span>Latest Backup</span><strong>${phase2Escape(latest)}</strong></article></div><div class="phase2-table-wrap"><table class="phase2-table"><thead><tr><th>Sheet</th><th>Data Rows</th><th>Columns</th></tr></thead><tbody>${(health.sheets||[]).map(sheet=>`<tr><td>${phase2Escape(sheet.name)}</td><td>${Number(sheet.rows||0).toLocaleString()}</td><td>${Number(sheet.columns||0)}</td></tr>`).join('')}</tbody></table></div>`;
+    } catch(error) { content.innerHTML=`<div class="phase2-empty phase2-error">${phase2Escape(error.message)}</div>`; }
+}
+
+
+async function verifyPhase2LatestBackup() {
+    if (!isAlphaAdmin()) return customAlert('Only Alpha Admin may verify backup accessibility.', 'Permission Denied');
+    const button = document.querySelector('#phase2SystemHealthPanel button[onclick="verifyPhase2LatestBackup()"]');
+    const result = document.getElementById('phase2BackupVerificationResult');
+    if (result) result.innerHTML = '<div class="phase2-empty">Checking the latest backup in read-only mode…</div>';
+    phase2SetBusy(button,true,'Verifying…');
+    try {
+        const data = await phase2Request('verify_phase2_latest_backup');
+        const verification = data.verification || {};
+        const verified = verification.verified === true;
+        if (result) result.innerHTML = `<div class="phase2-backup-status ${verified?'is-verified':'is-warning'}"><strong>${verified?'Backup is accessible':'Backup could not be verified'}</strong><span>${phase2Escape(verification.name || 'No backup found')} · Checked ${phase2Escape(String(verification.checkedAt || '').replace('T',' ').slice(0,19))}</span><p>${phase2Escape(verification.reason || 'No additional details were returned.')}</p>${verified?`<small>${Number(verification.sheetCount||0)} worksheets · ${(Number(verification.sizeBytes||0)/1024/1024).toFixed(2)} MB</small>`:''}</div>`;
+    } catch (error) {
+        if (result) result.innerHTML = `<div class="phase2-backup-status is-warning"><strong>Backup verification failed</strong><p>${phase2Escape(error.message || 'Unable to verify backup accessibility.')}</p></div>`;
+    } finally { phase2SetBusy(button,false); }
+}
+
+/* ---------- Document Register and Personnel Training ---------- */
+async function loadPhase2Documents() {
+    const body=document.getElementById('phase2DocumentTable');
+    if(body)body.innerHTML='<tr><td class="phase2-empty" colspan="9">Loading document records…</td></tr>';
+    try {
+        const data=await phase2Request('get_phase2_documents');
+        phase2DocumentRecords=Array.isArray(data.documents)?data.documents:[];
+        phase2DocumentCategories=Array.isArray(data.categories)?data.categories:[];
+        phase2CanManageDocumentCategories=!!data.canManageCategories;
+        phase2TrainingRecords=Array.isArray(data.training)?data.training:[];
+        phase2CanViewTraining=!!data.canViewTraining;
+        document.getElementById('phase2TrainingPanel').classList.toggle('hidden',!phase2CanViewTraining);
+        document.getElementById('phase2CategoryAdminPanel').classList.toggle('hidden',!phase2CanManageDocumentCategories);
+        renderPhase2DocumentCategoryOptions();
+        renderPhase2DocumentCategories();
+        renderPhase2Documents();
+        if(phase2CanViewTraining)renderPhase2Training();
+    } catch(error) {
+        if(body)body.innerHTML=`<tr><td class="phase2-empty phase2-error" colspan="9">${phase2Escape(error.message)}</td></tr>`;
+    }
+}
+function renderPhase2DocumentCategoryOptions(selectedValue) {
+    const select=document.getElementById('phase2DocumentCategory');if(!select)return;
+    const selected=String(selectedValue===undefined?select.value:selectedValue||'');
+    const active=phase2DocumentCategories.filter(item=>item.active);
+    const options=['<option value="">Select category</option>',...active.map(item=>`<option value="${phase2AttributeEscape(item.category)}">${phase2Escape(item.category)}</option>`)];
+    const selectedInactive=phase2DocumentCategories.find(item=>!item.active&&item.category===selected);
+    if(selectedInactive)options.push(`<option value="${phase2AttributeEscape(selectedInactive.category)}" disabled>${phase2Escape(selectedInactive.category)} (Inactive — select an active category)</option>`);
+    select.innerHTML=options.join('');
+    select.value=selected;
+}
+function renderPhase2DocumentCategories() {
+    const body=document.getElementById('phase2DocumentCategoryTable');if(!body)return;
+    if(!phase2CanManageDocumentCategories){body.innerHTML='<tr><td colspan="5" class="phase2-empty">Category settings are available to Admin accounts only.</td></tr>';return;}
+    if(!phase2DocumentCategories.length){body.innerHTML='<tr><td colspan="5" class="phase2-empty">No categories configured.</td></tr>';return;}
+    body.innerHTML=phase2DocumentCategories.map(item=>`<tr><td><strong>${phase2Escape(item.category)}</strong></td><td><span class="phase2-status phase2-status-${item.active?'approved':'cancelled'}">${item.active?'Active':'Inactive'}</span></td><td>${phase2Escape(item.updatedAt||item.createdAt||'—')}</td><td>${phase2Escape(item.updatedBy||item.createdBy||'—')}</td><td><button class="phase2-table-action" onclick="setPhase2DocumentCategoryStatus(${phase2AttributeEscape(JSON.stringify(item.category))},${!item.active})" type="button">${item.active?'Deactivate':'Reactivate'}</button></td></tr>`).join('');
+}
+async function savePhase2DocumentCategory() {
+    if(!phase2CanManageDocumentCategories)return customAlert('Only Admin accounts may manage document categories.','Permission Denied');
+    const input=document.getElementById('phase2NewDocumentCategory');const category=String(input?.value||'').trim();
+    if(!category)return customAlert('Enter a document category.','Required Information');
+    const button=document.getElementById('phase2AddDocumentCategoryBtn');phase2SetBusy(button,true,'Adding…');
+    try{const data=await phase2Request('save_phase2_document_category',{category:category});phase2DocumentCategories=Array.isArray(data.categories)?data.categories:[];input.value='';renderPhase2DocumentCategoryOptions();renderPhase2DocumentCategories();customAlert('Document category added.','Success');}
+    catch(error){customAlert(error.message||'Unable to add document category.','Category Error');}
+    finally{phase2SetBusy(button,false);}
+}
+async function setPhase2DocumentCategoryStatus(category,active) {
+    if(!phase2CanManageDocumentCategories)return customAlert('Only Admin accounts may manage document categories.','Permission Denied');
+    const action=active?'reactivate':'deactivate';
+    customConfirm(`Confirm ${action} of document category "${category}"? Existing document entries will be retained.`,async confirmed=>{
+        if(!confirmed)return;
+        try{const data=await phase2Request('set_phase2_document_category_status',{category:category,active:active});phase2DocumentCategories=Array.isArray(data.categories)?data.categories:[];renderPhase2DocumentCategoryOptions();renderPhase2DocumentCategories();customAlert(`Document category ${active?'reactivated':'deactivated'}.`,'Success');}
+        catch(error){customAlert(error.message||'Unable to update document category.','Category Error');}
+    });
+}
+function renderPhase2Documents() {
+    const body=document.getElementById('phase2DocumentTable');if(!body)return;
+    const q=String(document.getElementById('phase2DocumentSearch')?.value||'').trim().toLowerCase();
+    const rows=phase2DocumentRecords.filter(item=>item.status!=='Archived'&&[item.title,item.category,item.documentType,item.personnelNo,item.personnelName,item.office,item.uploadedBy].join(' ').toLowerCase().includes(q));
+    if(!rows.length){body.innerHTML='<tr><td colspan="9" class="phase2-empty">No document records found.</td></tr>';return;}
+    body.innerHTML=rows.map(item=>`<tr><td><strong>${phase2Escape(item.title)}</strong>${item.fileUrl?`<small><a href="${phase2Escape(item.fileUrl)}" target="_blank" rel="noopener noreferrer">Open linked Drive file</a></small>`:''}</td><td>${phase2Escape(item.category)}<small>${phase2Escape(item.documentType||'')}</small></td><td>${phase2Escape(item.personnelNo?`${item.personnelNo} · ${item.personnelName}`:'—')}</td><td>${phase2Escape(item.office||'—')}</td><td>${phase2DateDisplay(item.expirationDate)}</td><td><span class="phase2-status phase2-status-${phase2Escape(String(item.status||'').toLowerCase().replace(/[^a-z]+/g,'-'))}">${phase2Escape(item.status)}</span></td><td>v${Number(item.versionNumber||1)}</td><td>${phase2Escape(item.uploadedBy)}</td><td class="phase2-row-actions"><button class="phase2-table-action" onclick="startPhase2DocumentVersion('${phase2Escape(item.id)}')" type="button">New Version</button><button class="phase2-table-action" onclick="editPhase2Document('${phase2Escape(item.id)}')" type="button">Edit</button><button class="phase2-table-action phase2-table-danger" onclick="archivePhase2Document('${phase2Escape(item.id)}')" type="button">Archive</button></td></tr>`).join('');
+}
+function resetPhase2DocumentForm() {
+    ['phase2DocumentEditId','phase2DocumentPreviousVersionId','phase2DocumentTitle','phase2DocumentType','phase2DocumentPersonnelNo','phase2DocumentOffice','phase2DocumentUrl','phase2DocumentExpiry','phase2DocumentNotes'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+    document.getElementById('phase2DocumentCategory').value='';
+    document.getElementById('phase2DocumentFormHeading').textContent='Document Register';
+    document.getElementById('phase2DocumentSaveBtn').textContent='Save Document';
+}
+function editPhase2Document(id) {
+    const item=phase2DocumentRecords.find(doc=>String(doc.id)===String(id));if(!item)return;
+    document.getElementById('phase2DocumentEditId').value=item.id;document.getElementById('phase2DocumentPreviousVersionId').value='';
+    document.getElementById('phase2DocumentTitle').value=item.title;document.getElementById('phase2DocumentCategory').value=item.category;
+    document.getElementById('phase2DocumentType').value=item.documentType;document.getElementById('phase2DocumentPersonnelNo').value=item.personnelNo;
+    document.getElementById('phase2DocumentOffice').value=item.office;document.getElementById('phase2DocumentUrl').value=item.fileUrl;
+    document.getElementById('phase2DocumentExpiry').value=item.expirationDate;document.getElementById('phase2DocumentNotes').value=item.notes;
+    document.getElementById('phase2DocumentFormHeading').textContent=`Edit Document · v${item.versionNumber}`;
+    document.getElementById('phase2DocumentSaveBtn').textContent='Update Metadata';
+    document.getElementById('phase2DocumentTitle').focus();
+}
+function startPhase2DocumentVersion(id) {
+    const item=phase2DocumentRecords.find(doc=>String(doc.id)===String(id));if(!item)return;
+    resetPhase2DocumentForm();document.getElementById('phase2DocumentPreviousVersionId').value=item.id;
+    document.getElementById('phase2DocumentTitle').value=item.title;document.getElementById('phase2DocumentCategory').value=item.category;
+    document.getElementById('phase2DocumentType').value=item.documentType;document.getElementById('phase2DocumentPersonnelNo').value=item.personnelNo;
+    document.getElementById('phase2DocumentOffice').value=item.office;document.getElementById('phase2DocumentExpiry').value=item.expirationDate;
+    document.getElementById('phase2DocumentNotes').value='New version of '+item.title+'. '+(item.notes||'');
+    document.getElementById('phase2DocumentFormHeading').textContent=`Register New Version · next v${Number(item.versionNumber||1)+1}`;
+    document.getElementById('phase2DocumentSaveBtn').textContent='Save New Version';
+    document.getElementById('phase2DocumentUrl').value='';
+    document.getElementById('phase2DocumentTitle').focus();
+}
+async function savePhase2Document() {
+    const button=document.getElementById('phase2DocumentSaveBtn');
+    const id=document.getElementById('phase2DocumentEditId').value;
+    const previousVersionId=document.getElementById('phase2DocumentPreviousVersionId').value;
+    const payload={title:document.getElementById('phase2DocumentTitle').value.trim(),category:document.getElementById('phase2DocumentCategory').value,documentType:document.getElementById('phase2DocumentType').value.trim(),personnelNo:document.getElementById('phase2DocumentPersonnelNo').value.trim(),office:document.getElementById('phase2DocumentOffice').value.trim(),fileUrl:document.getElementById('phase2DocumentUrl').value.trim(),expirationDate:document.getElementById('phase2DocumentExpiry').value,notes:document.getElementById('phase2DocumentNotes').value.trim()};
+    if(!payload.title||!payload.category)return customAlert('Enter a document title and select a category.','Required Information');
+    phase2SetBusy(button,true,'Saving…');
+    try{await phase2Request(id?'update_phase2_document':'save_phase2_document',id?{id,...payload}:{...payload,previousVersionId:previousVersionId||''});resetPhase2DocumentForm();await loadPhase2Documents();customAlert(id?'Document metadata updated.':previousVersionId?'New document version registered.':'Document registered.','Success');}
+    catch(error){customAlert(error.message||'Unable to save document record.','Document Error');}
+    finally{phase2SetBusy(button,false);}
+}
+function archivePhase2Document(id) {
+    const item=phase2DocumentRecords.find(doc=>String(doc.id)===String(id));if(!item)return;
+    customConfirm(`Archive document record "${item.title}"? The Google Drive file will not be deleted.`,async confirmed=>{if(!confirmed)return;try{await phase2Request('archive_phase2_document',{id:id});await loadPhase2Documents();customAlert('Document metadata archived. The original file was not deleted.','Success');}catch(error){customAlert(error.message||'Unable to archive document.','Document Error');}});
+}
+function resetPhase2TrainingForm() {
+    ['phase2TrainingEditId','phase2TrainingPersonnelNo','phase2TrainingTitle','phase2TrainingCategory','phase2TrainingVenue','phase2TrainingStart','phase2TrainingCompleted','phase2TrainingUrl','phase2TrainingNotes'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+    document.getElementById('phase2TrainingStatus').value='Planned';
+}
+function editPhase2Training(id) {
+    const item=phase2TrainingRecords.find(row=>String(row.id)===String(id));if(!item)return;
+    document.getElementById('phase2TrainingEditId').value=item.id;
+    document.getElementById('phase2TrainingPersonnelNo').value=item.personnelNo;
+    document.getElementById('phase2TrainingTitle').value=item.title;
+    document.getElementById('phase2TrainingCategory').value=item.category;
+    document.getElementById('phase2TrainingVenue').value=item.venue;
+    document.getElementById('phase2TrainingStart').value=item.dateStarted;
+    document.getElementById('phase2TrainingCompleted').value=item.dateCompleted;
+    document.getElementById('phase2TrainingStatus').value=item.status;
+    document.getElementById('phase2TrainingUrl').value=item.documentUrl;
+    document.getElementById('phase2TrainingNotes').value=item.notes;
+    document.getElementById('phase2TrainingTitle').focus();
+}
+async function savePhase2Training() {
+    if(!phase2CanViewTraining)return customAlert('Personnel Management access is required to manage training records.','Permission Denied');
+    if(phase2TrainingSaveInFlight)return;
+    const payload={personnelNo:document.getElementById('phase2TrainingPersonnelNo').value.trim(),title:document.getElementById('phase2TrainingTitle').value.trim(),category:document.getElementById('phase2TrainingCategory').value.trim(),venue:document.getElementById('phase2TrainingVenue').value.trim(),dateStarted:document.getElementById('phase2TrainingStart').value,dateCompleted:document.getElementById('phase2TrainingCompleted').value,status:document.getElementById('phase2TrainingStatus').value,documentUrl:document.getElementById('phase2TrainingUrl').value.trim(),notes:document.getElementById('phase2TrainingNotes').value.trim()};
+    if(!payload.personnelNo||!payload.title||!payload.dateStarted)return customAlert('Enter a Personnel Number, Training Title, and Date Started.','Required Information');
+    const button=document.getElementById('phase2TrainingSaveBtn');
+    phase2TrainingSaveInFlight=true;phase2SetBusy(button,true,'Saving…');
+    try{const id=String(document.getElementById('phase2TrainingEditId')?.value||'');await phase2Request(id?'update_phase2_training':'save_phase2_training',id?{id,...payload}:payload);resetPhase2TrainingForm();await loadPhase2Documents();customAlert(id?'Training record updated.':'Training record saved.','Success');}
+    catch(error){customAlert(error.message||'Unable to save training record.','Training Error');}
+    finally{phase2TrainingSaveInFlight=false;phase2SetBusy(button,false);}
+}
+function renderPhase2Training() {
+    const body=document.getElementById('phase2TrainingTable');if(!body)return;
+    const rows=phase2TrainingRecords.filter(item=>item.status!=='Archived');
+    if(!rows.length){body.innerHTML='<tr><td colspan="8" class="phase2-empty">No training or schooling records have been encoded.</td></tr>';return;}
+    body.innerHTML=rows.map(item=>`<tr><td><strong>${phase2Escape(item.personnelName)}</strong><small>${phase2Escape(item.personnelNo)}</small></td><td>${phase2Escape(item.title)}</td><td>${phase2Escape(item.category||'—')}</td><td>${phase2DateDisplay(item.dateStarted)}${item.dateCompleted?' – '+phase2DateDisplay(item.dateCompleted):''}</td><td>${phase2Escape(item.venue||'—')}</td><td><span class="phase2-status phase2-status-${phase2Escape(item.status.toLowerCase())}">${phase2Escape(item.status)}</span></td><td>${phase2Escape(item.encodedBy)}</td><td><button class="phase2-table-action" onclick="editPhase2Training('${phase2Escape(item.id)}')" type="button">Edit</button><button class="phase2-table-action phase2-table-danger" onclick="archivePhase2Training('${phase2Escape(item.id)}')" type="button">Archive</button></td></tr>`).join('');
+}
+function archivePhase2Training(id) {
+    customConfirm('Archive this training record? The historical record will be retained.',async confirmed=>{if(!confirmed)return;try{await phase2Request('archive_phase2_training',{id:id});await loadPhase2Documents();customAlert('Training record archived.','Success');}catch(error){customAlert(error.message||'Unable to archive training record.','Training Error');}});
+}
+
+/* Keep the new Phase II controls initialized only when their pages are opened. */

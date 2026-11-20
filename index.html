@@ -51,9 +51,9 @@
 <span id="appBrand">REGIONAL HEADQUARTERS SUPPORT UNIT</span>
 </div>
 <div class="top-bar-right">
-<button aria-label="Refresh entire page" class="profile-btn header-icon-btn" id="pageRefreshBtn" onclick="window.location.reload()" style="font-size:20px;line-height:1;" title="Refresh entire page" type="button">↻</button>
+<button aria-label="Refresh entire page" class="profile-btn header-icon-btn spades-force-icon-only" data-spades-icon-name="fi-rr-refresh" id="pageRefreshBtn" onclick="window.location.reload()" title="Refresh entire page" type="button"><i aria-hidden="true" class="fi fi-rr-refresh"></i></button>
 <div id="datetime-display"></div>
-<button aria-label="My Profile" class="profile-btn header-icon-btn" id="profileHeaderBtn" onclick="switchTab('profile')" title="My Profile" type="button">
+<button aria-label="My Profile" class="profile-btn header-icon-btn spades-force-icon-only" data-spades-icon-name="fi-rr-user" id="profileHeaderBtn" onclick="switchTab('profile')" title="My Profile" type="button">
 <i aria-hidden="true" class="fi fi-rr-user spades-ui-icon"></i>
 </button>
 </div>
@@ -155,6 +155,22 @@
 <i aria-hidden="true" class="fi fi-rr-list-check nav-icon"></i>
 <span class="nav-text">Matrix of Compliances</span>
 </button>
+<button class="sidebar-btn phase2-nav-btn" id="btnAdminWorkflow" onclick="switchTab('adminWorkflow');">
+<i aria-hidden="true" class="fi fi-rr-flowchart nav-icon"></i>
+<span class="nav-text">Administrative Workflow</span>
+</button>
+<button class="sidebar-btn phase2-nav-btn" id="btnManagementReports" onclick="switchTab('managementReports');">
+<i aria-hidden="true" class="fi fi-rr-chart-histogram nav-icon"></i>
+<span class="nav-text">Management Reports</span>
+</button>
+<button class="sidebar-btn phase2-nav-btn" id="btnAuditTrail" onclick="switchTab('auditTrail');">
+<i aria-hidden="true" class="fi fi-rr-shield-check nav-icon"></i>
+<span class="nav-text">Audit Trail</span>
+</button>
+<button class="sidebar-btn phase2-nav-btn" id="btnDocumentManagement" onclick="switchTab('documentManagement');">
+<i aria-hidden="true" class="fi fi-rr-folder-open nav-icon"></i>
+<span class="nav-text">Document &amp; Personnel</span>
+</button>
 <button aria-label="Users Chat" class="sidebar-btn" id="btnUsersChat" onclick="switchTab('usersChat');" title="Users Chat">
 <i aria-hidden="true" class="fi fi-rr-comment-alt nav-icon"></i>
 <span class="nav-text">Users Chat</span>
@@ -240,6 +256,10 @@
 <div class="exec-kpi"><div class="exec-kpi-top"><span class="exec-kpi-symbol"><i aria-hidden="true" class="fi fi-rr-calendar-check"></i></span><span class="exec-kpi-tag">SCHEDULED</span></div><div class="label">Active Activities</div><div class="value" id="execTotalActivities">0</div><div class="sub">Scheduled activities</div></div>
 <div class="exec-kpi exec-kpi-compliance"><div class="exec-kpi-top"><span class="exec-kpi-symbol"><i aria-hidden="true" class="fi fi-rr-list-check"></i></span><span class="exec-kpi-tag">COMPLIANCE</span></div><div class="label">Matrix of Compliance</div><div class="value" id="execTotalCompliances">0</div><div class="sub">Compliance records in the register</div></div>
 <div class="exec-kpi"><div class="exec-kpi-top"><span class="exec-kpi-symbol"><i aria-hidden="true" class="fi fi-rr-user-check"></i></span><span class="exec-kpi-tag">USERS</span></div><div class="label">Encoders</div><div class="value" id="execEncoderCount">0</div><div class="sub">Users with memo records</div></div>
+</section>
+<section aria-label="Phase II management overview" class="phase2-dashboard-snapshot">
+<div class="phase2-dashboard-heading"><div><span class="phase2-eyebrow">PHASE II · MANAGEMENT OVERVIEW</span><h3>Administrative Monitoring</h3><p>Live summaries are displayed only for modules available to your account.</p></div><span class="phase2-generated-pill" id="phase2DashboardUpdated">Loading authorized summaries…</span></div>
+<div class="phase2-dashboard-grid" id="phase2DashboardCards"><article class="phase2-dashboard-card phase2-dashboard-placeholder">Loading management information…</article></div>
 </section>
 <section class="exec-details" id="execDetailsStrip"></section>
 <section aria-label="Operational intelligence section" class="exec-section-heading exec-section-heading-secondary">
@@ -375,75 +395,137 @@
 <div class="pagination-container memo-pagination hidden" id="memoPagination">
 <span id="memoPageInfo" style="font-weight:bold;">Page 1 of 1</span>
 <div class="pagination-buttons">
-<button class="page-btn" id="prevMemoBtn" onclick="changeMemoPage(-1)" type="button">Prev</button>
-<button class="page-btn" id="nextMemoBtn" onclick="changeMemoPage(1)" type="button">Next</button>
+<button class="page-btn" id="prevMemoBtn" onclick="changeMemoPage(-1)" type="button" aria-label="Previous memo page" title="Previous memo page">Prev</button>
+<button class="page-btn" id="nextMemoBtn" onclick="changeMemoPage(1)" type="button" aria-label="Next memo page" title="Next memo page">Next</button>
 </div>
 </div>
 </section>
 </div>
 <!-- PROFILE TAB -->
-<div class="hidden" id="tabProfile">
-<div class="pf-page-intro">
-  <div class="pf-page-intro-icon"><i aria-hidden="true" class="fi fi-rr-id-badge"></i></div>
-  <div class="pf-page-intro-copy"><span class="pf-page-eyebrow">PERSONNEL ACCOUNT</span><h2>My Profile</h2><p>Review your identity, contact details, account access, and recent activity in one place.</p></div>
-  <button class="pf-refresh-btn" onclick="populateProfileData()" type="button"><i aria-hidden="true" class="fi fi-rr-refresh"></i><span>Refresh Profile</span></button>
-</div>
-<input accept="image/jpeg,image/png,image/webp" id="avatarPhotoInput" onchange="uploadProfilePhoto('profile', this)" style="display:none;" type="file"/>
-<input accept="image/jpeg,image/png,image/webp" id="coverPhotoInput" onchange="uploadProfilePhoto('cover', this)" style="display:none;" type="file"/>
-<span id="profileAvatar" style="display:none;"></span>
-<div class="pf-hero glass-panel">
-  <div aria-label="SPADES static cover banner" class="pf-cover" id="profileCoverBanner">
-    <div aria-label="Profile cover actions" class="pf-cover-actions"><div class="pf-cover-action-buttons pf-profile-quick-actions">
-      <button aria-label="Change Cover Page" class="pf-cover-change-btn" onclick="document.getElementById('coverPhotoInput').click()" title="Change Cover Page" type="button"><i aria-hidden="true" class="fi fi-rr-camera"></i><span class="pf-action-label">Cover Photo</span><span class="sr-only">Change Cover Page</span></button>
-      <button aria-label="Security &amp; Authentication" onclick="openProfileModal('securitySettingsModal')" title="Security &amp; Authentication" type="button"><i aria-hidden="true" class="fi fi-rr-lock"></i><span class="pf-action-label">Security</span><span class="sr-only">Security &amp; Authentication</span></button>
-      <button aria-label="Profile Settings" onclick="openProfileModal('profileSettingsModal')" title="Profile Settings" type="button"><i aria-hidden="true" class="fi fi-rr-settings"></i><span class="pf-action-label">Edit Profile</span><span class="sr-only">Profile Settings</span></button>
-      <button aria-label="My Files" onclick="openMyFilesModal()" title="My Files" type="button"><i aria-hidden="true" class="fi fi-rr-folder"></i><span class="pf-action-label">My Files</span><span class="sr-only">My Files</span></button>
-    </div></div>
-  </div>
-  <div class="pf-hero-body">
-    <div class="pf-avatar-wrap"><button aria-label="Update profile picture" class="pf-avatar-trigger" id="profileAvatarTrigger" onclick="openProfilePictureModal()" title="Update Profile Picture" type="button">
-      <img alt="Profile" class="pf-avatar-img" id="profileAvatarImg" onerror="this.style.display='none'; const fb=document.getElementById('profileAvatarFallback'); if(fb) fb.style.display='flex';" src=""/>
-      <span class="pf-avatar-fallback" id="profileAvatarFallback">U</span><span class="pf-avatar-edit-hint"><i aria-hidden="true" class="fi fi-rr-pencil"></i> Update photo</span>
-    </button></div>
-    <div class="pf-hero-info"><span class="pf-identity-kicker">SIGNED-IN ACCOUNT</span><h2 id="profileDisplayName">User</h2><div class="pf-username">@<span id="profUsername">user</span></div><span class="profile-role-badge" id="profileRoleBadge">Regular User</span></div>
-    <div class="pf-hero-stats">
-      <div class="pf-stat"><span class="pf-stat-icon"><i aria-hidden="true" class="fi fi-rr-document"></i></span><div><strong id="profTotalMemos">0</strong><small>Total Memos Created</small></div></div>
-      <div class="pf-stat"><span class="pf-stat-icon"><i aria-hidden="true" class="fi fi-rr-calendar"></i></span><div><strong id="profAccountCreated">—</strong><small>Account Created</small></div></div>
+<div class="hidden pf-profile-page" id="tabProfile">
+  <div class="pf-page-intro">
+    <div class="pf-page-intro-icon"><i aria-hidden="true" class="fi fi-rr-id-badge"></i></div>
+    <div class="pf-page-intro-copy">
+      <span class="pf-page-eyebrow">PERSONNEL ACCOUNT</span>
+      <h2>My Profile</h2>
+      <p>Your identity, service assignment, contact information, and SPADES account overview.</p>
     </div>
+    <button aria-label="Refresh profile" class="pf-refresh-btn pf-icon-only-control" data-spades-icon-name="fi-rr-refresh" onclick="populateProfileData()" title="Refresh profile" type="button"><i aria-hidden="true" class="fi fi-rr-refresh"></i></button>
   </div>
-</div>
-<div class="pf-body-grid pf-profile-content-grid">
-  <section class="pf-left pf-info-panel glass-panel" aria-labelledby="pfPersonalInfoTitle">
-    <div class="pf-section-heading"><div><span class="pf-section-eyebrow">PROFILE DETAILS</span><h3 id="pfPersonalInfoTitle">Personal Information</h3><p>Information associated with your SPADES account.</p></div><button class="pf-section-edit-btn" onclick="openProfileModal('profileSettingsModal')" type="button"><i aria-hidden="true" class="fi fi-rr-pencil"></i><span>Edit</span></button></div>
-    <div class="pf-info-section-label"><i aria-hidden="true" class="fi fi-rr-user"></i> Identity &amp; Name</div>
-    <div class="pf-info-grid">
-      <div class="pf-info-item"><span>Rank</span><strong class="profile-value" id="profRank">Not Available</strong></div>
-      <div class="pf-info-item"><span>First Name</span><strong class="profile-value" id="profFirstName">Not Available</strong></div>
-      <div class="pf-info-item"><span>Middle Name</span><strong class="profile-value" id="profMiddleName">Not Available</strong></div>
-      <div class="pf-info-item"><span>Last Name</span><strong class="profile-value" id="profLastName">Not Available</strong></div>
-      <div class="pf-info-item"><span>Qualifier</span><strong class="profile-value" id="profQlf">Not Available</strong></div>
+  <input accept="image/jpeg,image/png,image/webp" id="avatarPhotoInput" onchange="uploadProfilePhoto('profile', this)" style="display:none;" type="file"/>
+  <input accept="image/jpeg,image/png,image/webp" id="coverPhotoInput" onchange="uploadProfilePhoto('cover', this)" style="display:none;" type="file"/>
+  <span id="profileAvatar" style="display:none;"></span>
+
+  <section class="pf-hero pf-hero-enterprise glass-panel" aria-label="Signed-in user identity">
+    <div aria-label="SPADES profile cover banner" class="pf-cover" id="profileCoverBanner">
+      <div class="pf-cover-overlay" aria-hidden="true"></div>
+      <div aria-label="Profile actions" class="pf-cover-actions">
+        <div class="pf-profile-quick-actions">
+          <button aria-label="Change cover photo" class="pf-icon-only-control" data-spades-icon-name="fi-rr-camera" onclick="document.getElementById('coverPhotoInput').click()" title="Change cover photo" type="button"><i aria-hidden="true" class="fi fi-rr-camera"></i></button>
+          <button aria-label="Security and authentication" class="pf-icon-only-control" data-spades-icon-name="fi-rr-shield-check" onclick="openProfileModal('securitySettingsModal')" title="Security and authentication" type="button"><i aria-hidden="true" class="fi fi-rr-shield-check"></i></button>
+          <button aria-label="Profile settings" class="pf-icon-only-control" data-spades-icon-name="fi-rr-settings" onclick="openProfileModal('profileSettingsModal')" title="Profile settings" type="button"><i aria-hidden="true" class="fi fi-rr-settings"></i></button>
+          <button aria-label="Open My Files" class="pf-icon-only-control" data-spades-icon-name="fi-rr-folder-open" onclick="openMyFilesModal()" title="Open My Files" type="button"><i aria-hidden="true" class="fi fi-rr-folder-open"></i></button>
+        </div>
+      </div>
     </div>
-    <div class="pf-info-section-label"><i aria-hidden="true" class="fi fi-rr-address-book"></i> Contact &amp; Access</div>
-    <div class="pf-info-grid">
-      <div class="pf-info-item"><span>Email Address</span><strong class="profile-value" id="profEmail">Not Available</strong></div>
-      <div class="pf-info-item"><span>Contact Number</span><strong class="profile-value" id="profContactNo">Not Available</strong></div>
-      <div class="pf-info-item"><span>Assigned Role</span><strong id="profAccType">Regular User</strong></div>
-      <div class="pf-info-item"><span>Access Level</span><strong class="profile-value" id="profAccessLevel">Standard</strong></div>
-      <div class="pf-info-item"><span>Account Status</span><strong class="pf-status-active">Active</strong></div>
-      <div class="pf-info-item"><span>Last Activity</span><strong class="profile-value" id="profLastActivity">Not Available</strong></div>
+    <div class="pf-hero-body">
+      <div class="pf-avatar-wrap">
+        <button aria-label="Update profile picture" class="pf-avatar-trigger" id="profileAvatarTrigger" onclick="openProfilePictureModal()" title="Update profile picture" type="button">
+          <img alt="Profile photo" class="pf-avatar-img" id="profileAvatarImg" onerror="this.style.display='none'; const fb=document.getElementById('profileAvatarFallback'); if(fb) fb.style.display='flex';" src=""/>
+          <span class="pf-avatar-fallback" id="profileAvatarFallback">U</span>
+          <span class="pf-avatar-edit-hint" aria-hidden="true"><i class="fi fi-rr-pencil"></i></span>
+        </button>
+      </div>
+      <div class="pf-hero-info">
+        <span class="pf-identity-kicker">SIGNED-IN ACCOUNT</span>
+        <h2 id="profileDisplayName">User</h2>
+        <div class="pf-username">@<span id="profUsername">user</span></div>
+        <div class="pf-identity-badges">
+          <span class="profile-role-badge" id="profileRoleBadge">Regular User</span>
+          <span class="pf-identity-meta" id="profDesignationHero">Designation not available</span>
+          <span class="pf-identity-meta" id="profSectionHero">Office / Section not available</span>
+        </div>
+      </div>
+      <div class="pf-hero-stats">
+        <div class="pf-stat pf-stat-highlight">
+          <span class="pf-stat-icon"><i aria-hidden="true" class="fi fi-rr-document"></i></span>
+          <div><strong id="profTotalMemos">0</strong><small>Total Memos Created</small></div>
+        </div>
+        <div class="pf-stat pf-stat-highlight">
+          <span class="pf-stat-icon"><i aria-hidden="true" class="fi fi-rr-id-badge"></i></span>
+          <div><strong id="profPersonnelLink">Not Linked</strong><small>Personnel Record</small></div>
+        </div>
+      </div>
     </div>
   </section>
-  <div class="pf-right">
-    <section class="pf-panel pf-recent-panel glass-panel" aria-labelledby="pfRecentMemosTitle"><div class="pf-section-heading"><div><span class="pf-section-eyebrow">YOUR ACTIVITY</span><h3 id="pfRecentMemosTitle">Recent Memos Created</h3><p>Your latest memo records in SPADES.</p></div><span class="pf-section-icon-badge"><i aria-hidden="true" class="fi fi-rr-documents"></i></span></div><div id="profileRecentMemos"></div></section>
-    <section class="pf-panel pf-quick-panel glass-panel" aria-labelledby="pfAccountToolsTitle"><div class="pf-section-heading"><div><span class="pf-section-eyebrow">ACCOUNT SHORTCUTS</span><h3 id="pfAccountToolsTitle">Account &amp; Security</h3><p>Quick access to your profile tools.</p></div></div>
-      <div class="pf-profile-shortcuts">
-        <button type="button" onclick="openProfileModal('profileSettingsModal')"><span class="pf-shortcut-icon pf-shortcut-blue"><i aria-hidden="true" class="fi fi-rr-user-pen"></i></span><span><strong>Profile Settings</strong><small>Update personal and contact details</small></span><i aria-hidden="true" class="fi fi-rr-angle-small-right"></i></button>
-        <button type="button" onclick="openProfileModal('securitySettingsModal')"><span class="pf-shortcut-icon pf-shortcut-green"><i aria-hidden="true" class="fi fi-rr-shield-check"></i></span><span><strong>Security &amp; Authentication</strong><small>Manage sign-in credentials and session</small></span><i aria-hidden="true" class="fi fi-rr-angle-small-right"></i></button>
-        <button type="button" onclick="openMyFilesModal()"><span class="pf-shortcut-icon pf-shortcut-violet"><i aria-hidden="true" class="fi fi-rr-folder-open"></i></span><span><strong>My Files</strong><small>Access your private workspace</small></span><i aria-hidden="true" class="fi fi-rr-angle-small-right"></i></button>
-      </div>
-    </section>
+
+  <div class="pf-profile-dashboard-grid">
+    <div class="pf-profile-main-column">
+      <section class="pf-info-panel pf-profile-section glass-panel" aria-labelledby="pfPersonalInfoTitle">
+        <div class="pf-section-heading">
+          <div><span class="pf-section-eyebrow">PROFILE DETAILS</span><h3 id="pfPersonalInfoTitle">Personal Information</h3><p>Registered identity and contact information associated with your account.</p></div>
+          <button aria-label="Edit profile information" class="pf-section-edit-btn pf-icon-only-control" data-spades-icon-name="fi-rr-pencil" onclick="openProfileModal('profileSettingsModal')" title="Edit profile information" type="button"><i aria-hidden="true" class="fi fi-rr-pencil"></i></button>
+        </div>
+        <div class="pf-info-section-label"><i aria-hidden="true" class="fi fi-rr-user"></i> Identity and Name</div>
+        <div class="pf-info-grid">
+          <div class="pf-info-item"><span>Rank</span><strong class="profile-value" id="profRank">Not Available</strong></div>
+          <div class="pf-info-item"><span>First Name</span><strong class="profile-value" id="profFirstName">Not Available</strong></div>
+          <div class="pf-info-item"><span>Middle Name</span><strong class="profile-value" id="profMiddleName">Not Available</strong></div>
+          <div class="pf-info-item"><span>Last Name</span><strong class="profile-value" id="profLastName">Not Available</strong></div>
+          <div class="pf-info-item"><span>Qualifier</span><strong class="profile-value" id="profQlf">Not Available</strong></div>
+          <div class="pf-info-item"><span>Badge Number</span><strong class="profile-value" id="profBadgeNumber">Not Available</strong></div>
+        </div>
+        <div class="pf-info-section-label"><i aria-hidden="true" class="fi fi-rr-address-book"></i> Contact Information</div>
+        <div class="pf-info-grid" id="pfContactInfoGroup">
+          <div class="pf-info-item"><span>Email Address</span><strong class="profile-value" id="profEmail">Not Available</strong></div>
+          <div class="pf-info-item"><span>Contact Number</span><strong class="profile-value" id="profContactNo">Not Available</strong></div>
+          <div class="pf-info-item pf-info-item-wide"><span>Home Address</span><strong class="profile-value" id="profAddress">Not Available</strong></div>
+        </div>
+      </section>
+
+      <section class="pf-info-panel pf-profile-section glass-panel" aria-labelledby="pfServiceInfoTitle">
+        <div class="pf-section-heading">
+          <div><span class="pf-section-eyebrow">PERSONNEL RECORD</span><h3 id="pfServiceInfoTitle">Service and Assignment Information</h3><p>Information retrieved from your linked Personnel record, when a unique match is available.</p></div>
+          <span class="pf-section-icon-badge"><i aria-hidden="true" class="fi fi-rr-building"></i></span>
+        </div>
+        <div class="pf-info-grid">
+          <div class="pf-info-item"><span>Designation / Position</span><strong class="profile-value" id="profDesignation">Not Available</strong></div>
+          <div class="pf-info-item"><span>Office / Section</span><strong class="profile-value" id="profSection">Not Available</strong></div>
+          <div class="pf-info-item"><span>Personnel Status</span><strong class="profile-value" id="profPersonnelStatus">Not Available</strong></div>
+          <div class="pf-info-item"><span>Personnel Record No.</span><strong class="profile-value" id="profPersonnelNo">Not Available</strong></div>
+        </div>
+      </section>
+
+      <section class="pf-panel pf-recent-panel settings-section glass-panel" id="pfRecentMemosPanel" aria-labelledby="pfRecentMemosTitle">
+        <div class="pf-section-heading"><div><span class="pf-section-eyebrow">YOUR ACTIVITY</span><h3 id="pfRecentMemosTitle">Recent Memos Created</h3><p>Your latest memo records in SPADES.</p></div><span class="pf-section-icon-badge"><i aria-hidden="true" class="fi fi-rr-documents"></i></span></div>
+        <div class="pf-recent-summary"><span>Total memo records</span><strong id="profTotalMemosRepeat">0</strong></div>
+        <div id="profileRecentMemos"></div>
+      </section>
+    </div>
+
+    <aside class="pf-profile-side-column">
+      <section class="pf-panel pf-account-panel glass-panel" aria-labelledby="pfAccountInfoTitle">
+        <div class="pf-section-heading"><div><span class="pf-section-eyebrow">SYSTEM ACCESS</span><h3 id="pfAccountInfoTitle">Account Information</h3><p>Your current SPADES account status and access level.</p></div><span class="pf-section-icon-badge"><i aria-hidden="true" class="fi fi-rr-shield-check"></i></span></div>
+        <div class="pf-account-details">
+          <div class="pf-account-detail"><span>Username</span><strong id="profUsernameAccount">Not Available</strong></div>
+          <div class="pf-account-detail"><span>Assigned Role</span><strong id="profAccType">Regular User</strong></div>
+          <div class="pf-account-detail"><span>Access Level</span><strong id="profAccessLevel">Standard User</strong></div>
+          <div class="pf-account-detail"><span>Account Status</span><strong class="pf-account-status" id="profileAccountStatus">Active</strong></div>
+          <div class="pf-account-detail"><span>Last Recorded Activity</span><strong id="profLastActivity">Not Available</strong></div>
+        </div>
+        <div class="pf-profile-completion"><div><span>Profile Information</span><strong id="profileCompletionText">—</strong></div><div class="pf-completion-track"><span id="profileCompletionBar"></span></div><small>Completeness reflects available profile fields only. Missing optional details are not errors.</small></div>
+      </section>
+
+      <section class="pf-panel pf-quick-panel glass-panel" aria-labelledby="pfAccountToolsTitle">
+        <div class="pf-section-heading"><div><span class="pf-section-eyebrow">ACCOUNT SHORTCUTS</span><h3 id="pfAccountToolsTitle">Profile Tools</h3><p>Open your account and workspace settings.</p></div></div>
+        <div class="pf-profile-shortcuts">
+          <article class="pf-shortcut-card"><span class="pf-shortcut-icon pf-shortcut-blue"><i aria-hidden="true" class="fi fi-rr-user-pen"></i></span><div><strong>Profile Settings</strong><small>Update personal and contact details</small></div><button aria-label="Open Profile Settings" class="pf-icon-only-control pf-shortcut-action" data-spades-icon-name="fi-rr-angle-small-right" onclick="openProfileModal('profileSettingsModal')" title="Open Profile Settings" type="button"><i aria-hidden="true" class="fi fi-rr-angle-small-right"></i></button></article>
+          <article class="pf-shortcut-card"><span class="pf-shortcut-icon pf-shortcut-green"><i aria-hidden="true" class="fi fi-rr-shield-check"></i></span><div><strong>Security and Authentication</strong><small>Manage sign-in credentials and session</small></div><button aria-label="Open Security and Authentication" class="pf-icon-only-control pf-shortcut-action" data-spades-icon-name="fi-rr-angle-small-right" onclick="openProfileModal('securitySettingsModal')" title="Open Security and Authentication" type="button"><i aria-hidden="true" class="fi fi-rr-angle-small-right"></i></button></article>
+          <article class="pf-shortcut-card"><span class="pf-shortcut-icon pf-shortcut-violet"><i aria-hidden="true" class="fi fi-rr-folder-open"></i></span><div><strong>My Files</strong><small>Access your private workspace</small></div><button aria-label="Open My Files" class="pf-icon-only-control pf-shortcut-action" data-spades-icon-name="fi-rr-angle-small-right" onclick="openMyFilesModal()" title="Open My Files" type="button"><i aria-hidden="true" class="fi fi-rr-angle-small-right"></i></button></article>
+        </div>
+      </section>
+    </aside>
   </div>
-</div>
 </div>
 <!-- PROFILE SETTINGS MODALS -->
 <div aria-labelledby="profilePictureModalTitle" aria-modal="true" class="modal-overlay hidden profile-settings-overlay profile-picture-overlay" id="profilePictureModal" onclick="if(event.target===this)closeProfilePictureModal()" role="dialog">
@@ -461,7 +543,7 @@
 <span id="profilePictureModalFallback">U</span>
 </div>
 <div class="profile-picture-copy"><strong>Profile picture</strong><span>Maximum file size: 4 MB. Supported formats: JPG, PNG, and WebP.</span></div>
-<button class="action-btn approve-btn profile-picture-select-btn" onclick="chooseProfilePictureFromModal()" type="button"><i aria-hidden="true" class="fi fi-rr-image"></i><span>Choose New Picture</span></button>
+<button aria-label="Choose new profile picture" class="action-btn approve-btn profile-picture-select-btn spades-force-icon-only" data-spades-icon-name="fi-rr-image" onclick="chooseProfilePictureFromModal()" title="Choose new profile picture" type="button"><i aria-hidden="true" class="fi fi-rr-image"></i></button>
 </div>
 </div>
 </div>
@@ -494,9 +576,9 @@
 </div>
 <div class="profile-security-note"><span aria-hidden="true">ⓘ</span><p>For your protection, avoid reusing passwords from other services. Sign out when using a shared device.</p></div>
 <div class="profile-modal-actions profile-modal-footer">
-<button class="profile-primary-action" onclick="updateProfile()" type="button"><span aria-hidden="true">✓</span> Save account changes</button>
-<button class="action-btn" onclick="clearProfileFields()" type="button">Clear fields</button>
-<button class="delete-btn profile-signout-action" onclick="attemptLogout()" type="button">Sign out</button>
+<button aria-label="Save account changes" class="profile-primary-action spades-force-icon-only" data-spades-icon-name="fi-rr-disk" onclick="updateProfile()" title="Save account changes" type="button"><i aria-hidden="true" class="fi fi-rr-disk"></i></button>
+<button aria-label="Clear fields" class="action-btn spades-force-icon-only" data-spades-icon-name="fi-rr-eraser" onclick="clearProfileFields()" title="Clear fields" type="button"><i aria-hidden="true" class="fi fi-rr-eraser"></i></button>
+<button aria-label="Sign out" class="delete-btn profile-signout-action spades-force-icon-only" data-spades-icon-name="fi-rr-sign-out-alt" onclick="attemptLogout()" title="Sign out" type="button"><i aria-hidden="true" class="fi fi-rr-sign-out-alt"></i></button>
 </div>
 </div>
 </div>
@@ -533,8 +615,8 @@
 <div class="profile-inline-note"><span aria-hidden="true">ⓘ</span> Your contact information is used for your profile records. Check for typing errors before saving.</div>
 </div>
 <div class="profile-modal-actions profile-modal-footer">
-<button class="profile-primary-action" onclick="savePersonalProfile()" type="button"><span aria-hidden="true">✓</span> Save profile</button>
-<button class="action-btn" onclick="closeProfileModal('profileSettingsModal')" type="button">Cancel</button>
+<button aria-label="Save profile" class="profile-primary-action spades-force-icon-only" data-spades-icon-name="fi-rr-disk" onclick="savePersonalProfile()" title="Save profile" type="button"><i aria-hidden="true" class="fi fi-rr-disk"></i></button>
+<button aria-label="Cancel profile editing" class="action-btn spades-force-icon-only" data-spades-icon-name="fi-rr-cross" onclick="closeProfileModal('profileSettingsModal')" title="Cancel profile editing" type="button"><i aria-hidden="true" class="fi fi-rr-cross"></i></button>
 </div>
 <div class="profile-settings-divider"></div>
 <div class="profile-modal-section-head preferences-heading"><span aria-hidden="true" class="profile-section-icon preferences-section-icon">⚙</span><div><h3>Profile preferences</h3><p>Personalize how information is displayed on this device.</p></div></div>
@@ -543,7 +625,7 @@
 <div class="profile-preference-row"><div><strong>Show activity summary</strong><small>Display your memo and activity summary.</small></div><label aria-label="Show activity summary" class="switch profile-preference-switch"><input checked="" id="profileShowActivity" onchange="saveProfilePreferences()" type="checkbox"/><span class="slider"></span></label></div>
 <div class="profile-preference-row"><div><strong>Show contact details</strong><small>Display contact information on your profile.</small></div><label aria-label="Show contact details" class="switch profile-preference-switch"><input checked="" id="profileShowContact" onchange="saveProfilePreferences()" type="checkbox"/><span class="slider"></span></label></div>
 </div>
-<div class="profile-modal-actions profile-utility-actions"><button class="action-btn" onclick="refreshSessionProfile()" type="button">↻ Refresh session information</button><button class="delete-btn" onclick="attemptLogout()" type="button">Sign out</button></div>
+<div class="profile-modal-actions profile-utility-actions"><button aria-label="Refresh session information" class="action-btn spades-force-icon-only" data-spades-icon-name="fi-rr-refresh" onclick="refreshSessionProfile()" title="Refresh session information" type="button"><i aria-hidden="true" class="fi fi-rr-refresh"></i></button><button aria-label="Sign out" class="delete-btn spades-force-icon-only" data-spades-icon-name="fi-rr-sign-out-alt" onclick="attemptLogout()" title="Sign out" type="button"><i aria-hidden="true" class="fi fi-rr-sign-out-alt"></i></button></div>
 </div>
 </div>
 <!-- USER INFORMATION MODAL -->
@@ -606,7 +688,7 @@
 <div class="personnel-card rhsu-summary-panel"><h4>NUP</h4><div class="count" id="personnelNUP">0</div></div>
 <div class="personnel-card rhsu-summary-panel"><h4>Other</h4><div class="count" id="personnelOther">0</div></div>
 </div>
-<div class="personnel-content-layout">
+<div class="personnel-content-layout has-collapsed-recap">
 <div class="personnel-table-content">
 <div class="personnel-toolbar">
 <input id="personnelSearch" oninput="filterPersonnel()" placeholder="Search personnel..." style="flex:1;min-width:220px;" type="text"/>
@@ -626,7 +708,9 @@
 </div>
 <div id="personnelTablesContainer"></div>
 </div>
-<aside class="personnel-recap-panel">
+<aside class="personnel-recap-panel is-collapsed" id="personnelRecapPanel">
+<button aria-label="Expand Recapitulation" class="personnel-recap-toggle spades-force-icon-only" data-spades-icon-name="fi-rr-angle-left" id="personnelRecapToggle" type="button" onclick="togglePersonnelRecapPanel()" aria-expanded="false" aria-controls="personnelRecapPanelContent" title="Expand Recapitulation" data-tooltip="Expand Recapitulation"><i class="fi fi-rr-angle-left" aria-hidden="true"></i><span class="spades-visually-hidden">Expand Recapitulation</span></button>
+<div class="personnel-recap-panel-content" id="personnelRecapPanelContent">
 <div class="settings-section glass-panel">
 <h3 style="margin-bottom:10px;">Recapitulation By Section</h3>
 <div class="rank-recap" id="personnelSectionRecap"></div>
@@ -642,6 +726,7 @@
 <div class="settings-section glass-panel">
 <h3 style="margin-bottom:10px;">Recapitulation By Rank</h3>
 <div class="rank-recap" id="personnelRankRecap"></div>
+</div>
 </div>
 </aside>
 </div>
@@ -659,9 +744,9 @@
 </div>
 <div class="duty-calendar-wrap glass-panel">
 <div class="duty-calendar-header">
-<button aria-label="Previous month" class="action-btn" onclick="changeDutyMonth(-1)" type="button">‹</button>
+<button aria-label="Previous month" class="action-btn spades-month-nav-icon-only" data-spades-icon-name="fi-rr-angle-left" onclick="changeDutyMonth(-1)" title="Previous month" type="button">‹</button>
 <strong id="dutyCalendarTitle" style="font-size:16px;color:var(--primary);">Duty Calendar</strong>
-<button aria-label="Next month" class="action-btn" onclick="changeDutyMonth(1)" type="button">›</button>
+<button aria-label="Next month" class="action-btn spades-month-nav-icon-only" data-spades-icon-name="fi-rr-angle-right" onclick="changeDutyMonth(1)" title="Next month" type="button">›</button>
 </div>
 <div class="duty-calendar-grid" id="dutyCalendarGrid"></div>
 </div>
@@ -730,9 +815,9 @@
 </div>
 <div class="duty-calendar-wrap glass-panel">
 <div class="duty-calendar-header">
-<button aria-label="Previous month" class="action-btn" onclick="changeLeaveMonth(-1)" type="button">‹</button>
+<button aria-label="Previous month" class="action-btn spades-month-nav-icon-only" data-spades-icon-name="fi-rr-angle-left" onclick="changeLeaveMonth(-1)" title="Previous month" type="button">‹</button>
 <strong id="leaveCalendarTitle" style="font-size:16px;color:var(--primary);">Leave Calendar</strong>
-<button aria-label="Next month" class="action-btn" onclick="changeLeaveMonth(1)" type="button">›</button>
+<button aria-label="Next month" class="action-btn spades-month-nav-icon-only" data-spades-icon-name="fi-rr-angle-right" onclick="changeLeaveMonth(1)" title="Next month" type="button">›</button>
 </div>
 <div class="duty-calendar-grid" id="leaveCalendarGrid"></div>
 </div>
@@ -856,9 +941,9 @@
 <button aria-label="Activity Management: Add Activity" class="action-btn approve-btn activity-calendar-add" data-spades-action-key="activity-management-add-activity" id="activityAddBtn" onclick="openActivityModal()" style="color:white;font-weight:bold;" title="Activity Management · Add Activity" type="button"><i aria-hidden="true" class="fi fi-rr-plus"></i> Add Activity</button>
 <button class="action-btn activity-view-data-btn" onclick="openActivityDataModal()" type="button"><i aria-hidden="true" class="fi fi-rr-table-list"></i> View Data</button>
 <div class="activity-calendar-nav">
-<button aria-label="Previous month" onclick="changeActivityOverviewMonth(-1)" type="button">‹</button>
+<button aria-label="Previous month" class="spades-month-nav-icon-only" data-spades-icon-name="fi-rr-angle-left" onclick="changeActivityOverviewMonth(-1)" title="Previous month" type="button">‹</button>
 <strong id="activityOverviewMonthTitle"></strong>
-<button aria-label="Next month" onclick="changeActivityOverviewMonth(1)" type="button">›</button>
+<button aria-label="Next month" class="spades-month-nav-icon-only" data-spades-icon-name="fi-rr-angle-right" onclick="changeActivityOverviewMonth(1)" title="Next month" type="button">›</button>
 <button aria-label="Go to current month" class="activity-calendar-today-btn" onclick="goToActivityOverviewToday()" type="button">Today</button>
 </div>
 </div>
@@ -889,8 +974,8 @@
 <div class="pagination-container hidden" id="archivedActivityPagination">
 <span id="archivedActivityPageInfo" style="font-weight:bold;">Page 1 of 1</span>
 <div class="pagination-buttons">
-<button class="page-btn" id="prevArchivedActivityBtn" onclick="changeArchivedActivityPage(-1)">Prev</button>
-<button class="page-btn" id="nextArchivedActivityBtn" onclick="changeArchivedActivityPage(1)">Next</button>
+<button class="page-btn" id="prevArchivedActivityBtn" onclick="changeArchivedActivityPage(-1)" aria-label="Previous archived activity page" title="Previous archived activity page">Prev</button>
+<button class="page-btn" id="nextArchivedActivityBtn" onclick="changeArchivedActivityPage(1)" aria-label="Next archived activity page" title="Next archived activity page">Next</button>
 </div>
 </div>
 </details>
@@ -917,9 +1002,9 @@
 <div class="activity-calendar-head-actions matrix-compliance-calendar-actions">
 <button aria-label="Matrix of Compliances: Add Compliance" class="action-btn approve-btn activity-calendar-add matrix-compliance-add-btn" data-spades-action-key="matrix-compliance-add-compliance" id="matrixComplianceAddBtn" onclick="openMatrixComplianceModal()" title="Matrix of Compliances · Add Compliance" type="button"><i aria-hidden="true" class="fi fi-rr-plus"></i><span>Add Compliance</span></button>
 <div aria-label="Calendar month navigation" class="activity-calendar-nav">
-<button aria-label="Previous month" onclick="changeMatrixComplianceCalendarMonth(-1)" type="button"><i aria-hidden="true" class="fi fi-rr-angle-left"></i></button>
+<button aria-label="Previous month" class="spades-month-nav-icon-only" data-spades-icon-name="fi-rr-angle-left" onclick="changeMatrixComplianceCalendarMonth(-1)" title="Previous month" type="button"><i aria-hidden="true" class="fi fi-rr-angle-left"></i></button>
 <strong id="matrixComplianceCalendarMonthTitle"></strong>
-<button aria-label="Next month" onclick="changeMatrixComplianceCalendarMonth(1)" type="button"><i aria-hidden="true" class="fi fi-rr-angle-right"></i></button>
+<button aria-label="Next month" class="spades-month-nav-icon-only" data-spades-icon-name="fi-rr-angle-right" onclick="changeMatrixComplianceCalendarMonth(1)" title="Next month" type="button"><i aria-hidden="true" class="fi fi-rr-angle-right"></i></button>
 </div>
 </div>
 </div>
@@ -952,12 +1037,87 @@
 <div aria-label="Compliance records pagination" class="pagination-container matrix-compliance-pagination hidden" id="matrixCompliancePagination">
 <span aria-live="polite" id="matrixCompliancePageInfo">Page 1 of 1</span>
 <div class="pagination-buttons">
-<button aria-label="Previous compliance page" class="page-btn" id="prevMatrixComplianceBtn" onclick="changeMatrixCompliancePage(-1)" type="button">Prev</button>
-<button aria-label="Next compliance page" class="page-btn" id="nextMatrixComplianceBtn" onclick="changeMatrixCompliancePage(1)" type="button">Next</button>
+<button aria-label="Previous compliance page" class="page-btn" id="prevMatrixComplianceBtn" onclick="changeMatrixCompliancePage(-1)" type="button" title="Previous compliance page">Prev</button>
+<button aria-label="Next compliance page" class="page-btn" id="nextMatrixComplianceBtn" onclick="changeMatrixCompliancePage(1)" type="button" title="Next compliance page">Next</button>
 </div>
 </div>
 <p class="matrix-compliance-footnote"><i aria-hidden="true" class="fi fi-rr-lock"></i> All active SPADES accounts can view the shared register. Users and Admins can manage entries they encoded; Alpha Admin can manage all entries. Accounts restricted to read-only access cannot add, edit, or delete records.</p>
 </div>
+<!-- PHASE II: ADMINISTRATIVE WORKFLOW -->
+<div class="hidden phase2-page" id="tabAdminWorkflow">
+  <header class="phase2-page-head">
+    <div><span class="phase2-eyebrow">PHASE II · ADMINISTRATIVE PROCESSING</span><h2>Administrative Workflow</h2><p>Submit, assign, review, and monitor administrative transactions with a traceable history.</p></div>
+    <div class="phase2-head-actions"><button class="action-btn" onclick="loadPhase2Workflows()" type="button"><i class="fi fi-rr-refresh"></i> Refresh</button><button class="action-btn approve-btn" onclick="openPhase2WorkflowEditor()" type="button"><i class="fi fi-rr-plus"></i> New Request</button></div>
+  </header>
+  <div class="phase2-stat-grid" id="phase2WorkflowStats"><article><span>Total Transactions</span><strong>—</strong></article><article><span>Pending Review</span><strong>—</strong></article><article><span>Assigned to Me</span><strong>—</strong></article><article><span>Submitted by Me</span><strong>—</strong></article></div>
+  <section class="phase2-panel">
+    <div class="phase2-panel-head"><div><h3>Transaction Register</h3><p>Only signed-in users with Administrative Workflow access can view this register.</p></div><label class="phase2-search"><i class="fi fi-rr-search"></i><input id="phase2WorkflowSearch" oninput="renderPhase2Workflows()" placeholder="Search reference, title, office, or person" type="search"/></label></div>
+    <div class="phase2-filter-row"><label>Status <select id="phase2WorkflowStatusFilter" onchange="renderPhase2Workflows()"><option value="">All statuses</option><option>Draft</option><option>Submitted</option><option>Under Review</option><option>Returned for Revision</option><option>Approved</option><option>Rejected</option><option>Completed</option><option>Cancelled</option></select></label></div>
+    <div class="phase2-table-wrap"><table class="phase2-table"><thead><tr><th>Reference</th><th>Transaction</th><th>Requester</th><th>Assigned Reviewer</th><th>Status</th><th>Deadline</th><th>Last Updated</th><th>Action</th></tr></thead><tbody id="phase2WorkflowTable"><tr><td colspan="8" class="phase2-empty">Open Administrative Workflow to load transactions.</td></tr></tbody></table></div>
+    <div class="phase2-footnote">Approval and review actions are limited to the assigned reviewer or Alpha Admin. Assignment is limited to Alpha Admin and authorized Admin accounts.</div>
+  </section>
+</div>
+
+<!-- PHASE II: MANAGEMENT REPORTS -->
+<div class="hidden phase2-page" id="tabManagementReports">
+  <header class="phase2-page-head"><div><span class="phase2-eyebrow">PHASE II · MANAGEMENT INFORMATION</span><h2>Management Reports</h2><p>Generate consolidated reports from records available to your account permissions.</p></div><div class="phase2-head-actions"><button class="action-btn" onclick="loadPhase2Reports()" type="button"><i class="fi fi-rr-refresh"></i> Generate</button><button class="action-btn" onclick="exportPhase2ReportCsv()" type="button"><i class="fi fi-rr-file-spreadsheet"></i> Export CSV</button><button class="action-btn approve-btn" onclick="window.print()" type="button"><i class="fi fi-rr-print"></i> Print / PDF</button></div></header>
+  <section class="phase2-panel phase2-report-controls"><div class="phase2-report-filter-grid">
+    <label>Report Type<select id="phase2ReportType" onchange="renderPhase2ReportView()"><option value="activities">Activity Accomplishment</option><option value="personnel">Personnel Summary</option><option value="archivedPersonnel">Archived Personnel</option><option value="compliance">Compliance Monitoring</option><option value="workflow">Administrative Transactions</option><option value="documents">Document Register</option><option value="training">Training and Schooling</option><option value="memos">Memo Records</option></select></label>
+    <label>Reporting Period<select id="phase2ReportPeriod" onchange="updatePhase2ReportPeriodControls()"><option value="custom">Custom Date Range</option><option value="month">Month</option><option value="quarter">Quarter</option><option value="year">Year</option></select></label>
+    <label id="phase2ReportMonthWrap" class="hidden">Month<input id="phase2ReportMonth" type="month"/></label>
+    <label id="phase2ReportQuarterWrap" class="hidden">Quarter<select id="phase2ReportQuarter"><option value="1">1st Quarter</option><option value="2">2nd Quarter</option><option value="3">3rd Quarter</option><option value="4">4th Quarter</option></select></label>
+    <label id="phase2ReportYearWrap" class="hidden">Year<input id="phase2ReportYear" type="number" min="2000" max="2100" step="1"/></label>
+    <label id="phase2ReportFromWrap">From Date<input id="phase2ReportDateFrom" type="date"/></label>
+    <label id="phase2ReportToWrap">To Date<input id="phase2ReportDateTo" type="date"/></label>
+    <label>Section / Office<input id="phase2ReportSectionFilter" type="search" placeholder="Filter section or office" oninput="renderPhase2ReportView()"/></label>
+    <label>Status<input id="phase2ReportStatusFilter" type="search" placeholder="Filter status" oninput="renderPhase2ReportView()"/></label>
+    <button class="action-btn approve-btn" onclick="loadPhase2Reports()" type="button">Apply Filters</button>
+  </div><p class="phase2-footnote">Reports use the signed-in user's permitted source modules. Personnel-linked document identifiers are withheld unless Personnel Management access is also granted. Section / Office and Status filters apply to the currently selected report when those fields exist.</p></section>
+  <div class="phase2-stat-grid" id="phase2ReportSummary"><article><span>Report Status</span><strong>Not generated</strong></article></div>
+  <section class="phase2-panel phase2-report-print-area"><div class="phase2-panel-head"><div><h3 id="phase2ReportTitle">Activity Accomplishment Report</h3><p id="phase2ReportMeta">Generate a report to display the current data.</p></div><span class="phase2-generated-pill" id="phase2ReportGeneratedAt">Not generated</span></div><div id="phase2ReportContent"><div class="phase2-empty">Select a report and click Generate.</div></div></section>
+</div>
+
+<!-- PHASE II: AUDIT TRAIL -->
+<div class="hidden phase2-page" id="tabAuditTrail">
+  <header class="phase2-page-head"><div><span class="phase2-eyebrow">PHASE II · ACCOUNTABILITY</span><h2>Audit Trail</h2><p>Review verified user activity and significant administrative actions recorded by SPADES.</p></div><div class="phase2-head-actions"><button class="action-btn" onclick="loadPhase2Audit()" type="button"><i class="fi fi-rr-refresh"></i> Refresh</button><button class="action-btn" id="phase2SystemHealthBtn" onclick="loadPhase2SystemHealth()" type="button"><i class="fi fi-rr-heart-rate"></i> System Health</button></div></header>
+  <section class="phase2-panel"><div class="phase2-audit-filter-grid"><label>From Date<input id="phase2AuditFrom" type="date"/></label><label>To Date<input id="phase2AuditTo" type="date"/></label><label>User<input id="phase2AuditUser" placeholder="Username" type="search"/></label><label>Module<select id="phase2AuditModule"><option value="">All Modules</option><option>Existing SPADES Module</option><option>Administrative Workflow</option><option>Document Management</option><option>Personnel Monitoring</option><option>System</option></select></label><label>Action<input id="phase2AuditAction" placeholder="Action contains…" type="search"/></label><label>Search<input id="phase2AuditQuery" placeholder="Record, description, or ID" type="search"/></label><button class="action-btn approve-btn" onclick="loadPhase2Audit()" type="button">Apply Filters</button></div><div class="phase2-table-wrap"><table class="phase2-table"><thead><tr><th>Date / Time</th><th>User</th><th>Role</th><th>Module</th><th>Action</th><th>Record</th><th>Summary</th><th>Details</th></tr></thead><tbody id="phase2AuditTable"><tr><td class="phase2-empty" colspan="8">Open Audit Trail to load entries.</td></tr></tbody></table></div><div class="phase2-pagination" id="phase2AuditPagination"></div><div class="phase2-footnote">Audit records are append-only at the application level and are protected by server-side module permissions. Google Sheets itself does not provide cryptographic immutability. Up to 1,500 matching entries are retrieved per query and displayed in pages.</div></section>
+  <section class="phase2-panel hidden" id="phase2SystemHealthPanel"><div class="phase2-panel-head"><div><h3>System Health</h3><p>Alpha Admin view of the active spreadsheet structure and available backup metadata.</p></div><div class="phase2-head-actions"><button class="action-btn" onclick="verifyPhase2LatestBackup()" type="button"><i class="fi fi-rr-shield-check"></i> Verify Latest Backup</button><span class="phase2-generated-pill" id="phase2HealthGenerated">Not checked</span></div></div><div id="phase2SystemHealthContent" class="phase2-health-grid"><div class="phase2-empty">Use System Health to inspect the system.</div></div><div id="phase2BackupVerificationResult" class="phase2-backup-verification" aria-live="polite"></div></section>
+</div>
+
+<!-- PHASE II: DOCUMENT AND PERSONNEL MONITORING -->
+<div class="hidden phase2-page" id="tabDocumentManagement">
+  <header class="phase2-page-head"><div><span class="phase2-eyebrow">PHASE II · RECORDS AND PERSONNEL DEVELOPMENT</span><h2>Document &amp; Personnel Monitoring</h2><p>Organize document metadata, track expiration dates, preserve version lineage, and monitor training records.</p></div><div class="phase2-head-actions"><button class="action-btn" onclick="loadPhase2Documents()" type="button"><i class="fi fi-rr-refresh"></i> Refresh</button></div></header>
+  <section class="phase2-panel hidden" id="phase2CategoryAdminPanel"><div class="phase2-panel-head"><div><h3>Document Category Settings</h3><p>Alpha Admin and Admin accounts can add categories or deactivate/reactivate them. Existing document records are retained.</p></div><span class="phase2-generated-pill">Administrator configuration</span></div><div class="phase2-form-actions"><label class="phase2-inline-field">New Category<input id="phase2NewDocumentCategory" maxlength="80" placeholder="Enter category name" type="text"/></label><button class="action-btn approve-btn" id="phase2AddDocumentCategoryBtn" onclick="savePhase2DocumentCategory()" type="button">Add Category</button></div><div class="phase2-table-wrap"><table class="phase2-table"><thead><tr><th>Category</th><th>Status</th><th>Last Updated</th><th>Updated By</th><th>Action</th></tr></thead><tbody id="phase2DocumentCategoryTable"><tr><td colspan="5" class="phase2-empty">Loading categories…</td></tr></tbody></table></div></section>
+  <section class="phase2-panel"><div class="phase2-panel-head"><div><h3 id="phase2DocumentFormHeading">Document Register</h3><p>Store files in the existing authorized Google Drive workspace, then register their Google Drive link here. Drive access controls remain in force.</p></div><span class="phase2-generated-pill">Version-aware metadata</span></div>
+    <input id="phase2DocumentEditId" type="hidden"/><input id="phase2DocumentPreviousVersionId" type="hidden"/>
+    <div class="phase2-form-grid"><label class="phase2-span-2">Document Title<input id="phase2DocumentTitle" maxlength="180" placeholder="Enter document title" type="text"/></label><label>Category<select id="phase2DocumentCategory"><option value="">Loading categories…</option></select></label><label>Document Type<input id="phase2DocumentType" maxlength="80" placeholder="e.g. PDF, Memorandum" type="text"/></label><label>Personnel Number (optional)<input id="phase2DocumentPersonnelNo" placeholder="Existing Personnel No." type="text"/></label><label>Office / Section<input id="phase2DocumentOffice" maxlength="120" placeholder="Office or section" type="text"/></label><label class="phase2-span-2">Google Drive URL (optional)<input id="phase2DocumentUrl" placeholder="https://drive.google.com/..." type="url"/></label><label>Expiration Date (optional)<input id="phase2DocumentExpiry" type="date"/></label><label class="phase2-span-2">Notes<textarea id="phase2DocumentNotes" maxlength="2000" placeholder="Additional document information" rows="2"></textarea></label></div>
+    <div class="phase2-form-actions"><button class="action-btn approve-btn" id="phase2DocumentSaveBtn" onclick="savePhase2Document()" type="button">Save Document</button><button class="action-btn" onclick="resetPhase2DocumentForm()" type="button">Clear</button></div>
+  </section>
+  <section class="phase2-panel"><div class="phase2-panel-head"><div><h3>Registered Documents</h3><p>Expired and approaching-expiration indicators are calculated from the recorded expiration date.</p></div><label class="phase2-search"><i class="fi fi-rr-search"></i><input id="phase2DocumentSearch" oninput="renderPhase2Documents()" placeholder="Search title, category, personnel, or office" type="search"/></label></div><div class="phase2-table-wrap"><table class="phase2-table"><thead><tr><th>Document</th><th>Category / Type</th><th>Personnel</th><th>Office / Section</th><th>Expiration</th><th>Status</th><th>Version</th><th>Uploaded By</th><th>Actions</th></tr></thead><tbody id="phase2DocumentTable"><tr><td class="phase2-empty" colspan="9">Open Document &amp; Personnel Monitoring to load records.</td></tr></tbody></table></div></section>
+  <section class="phase2-panel hidden" id="phase2TrainingPanel"><div class="phase2-panel-head"><div><h3>Training &amp; Schooling Records</h3><p>Training records are linked to existing personnel numbers and require Personnel Management access.</p></div></div><input id="phase2TrainingEditId" type="hidden"/><div class="phase2-form-grid"><label>Personnel Number<input id="phase2TrainingPersonnelNo" placeholder="Existing Personnel No." type="text"/></label><label>Training / Schooling Title<input id="phase2TrainingTitle" maxlength="180" placeholder="Training title" type="text"/></label><label>Category<input id="phase2TrainingCategory" maxlength="80" placeholder="Training category" type="text"/></label><label>Venue / Institution<input id="phase2TrainingVenue" maxlength="160" placeholder="Venue or institution" type="text"/></label><label>Date Started<input id="phase2TrainingStart" type="date"/></label><label>Date Completed (optional)<input id="phase2TrainingCompleted" type="date"/></label><label>Status<select id="phase2TrainingStatus"><option>Planned</option><option>Ongoing</option><option>Completed</option><option>Cancelled</option></select></label><label class="phase2-span-2">Document URL (optional)<input id="phase2TrainingUrl" placeholder="https://drive.google.com/..." type="url"/></label><label class="phase2-span-2">Notes<textarea id="phase2TrainingNotes" maxlength="2000" rows="2" placeholder="Additional information"></textarea></label></div><div class="phase2-form-actions"><button class="action-btn approve-btn" id="phase2TrainingSaveBtn" onclick="savePhase2Training()" type="button">Save Training Record</button><button class="action-btn" onclick="resetPhase2TrainingForm()" type="button">Clear</button></div><div class="phase2-table-wrap"><table class="phase2-table"><thead><tr><th>Personnel</th><th>Training</th><th>Category</th><th>Dates</th><th>Venue / Institution</th><th>Status</th><th>Encoded By</th><th>Action</th></tr></thead><tbody id="phase2TrainingTable"><tr><td class="phase2-empty" colspan="8">No training records loaded.</td></tr></tbody></table></div></section>
+  <div class="phase2-footnote">This register stores metadata and references existing Drive files; it does not move, duplicate, or replace files in My Files. Adding a new version creates a separate metadata record so earlier versions remain listed. A linked file remains accessible only to accounts authorized by Google Drive.</div>
+</div>
+
+<!-- PHASE II WORKFLOW CREATE / EDIT MODAL -->
+<div aria-labelledby="phase2WorkflowEditorTitle" aria-modal="true" class="modal-overlay hidden" id="phase2WorkflowEditor" onclick="if(event.target===this)closePhase2WorkflowEditor()" role="dialog">
+ <div class="modal-content glass-panel modal-uniform-shell phase2-dialog"><header class="modal-uniform-header"><div class="modal-uniform-header-copy"><span class="modal-uniform-kicker">ADMINISTRATIVE WORKFLOW</span><h2 id="phase2WorkflowEditorTitle">New Administrative Request</h2><p>Save a draft or submit it for review.</p></div><button class="action-btn icon-action-btn modal-uniform-close" onclick="closePhase2WorkflowEditor()" type="button" aria-label="Close"><i class="fi fi-rr-cross-small"></i></button></header>
+  <input id="phase2WorkflowEditId" type="hidden"/><div class="phase2-form-grid"><label>Transaction Category<select id="phase2WorkflowCategory"><option value="">Select category</option><option>Administrative Request</option><option>Personnel Transaction</option><option>Facilities / Logistics</option><option>Activity / Operational Support</option><option>Compliance</option><option>Document / Records</option><option>Other</option></select></label><label>Requesting Office / Section<input id="phase2WorkflowOffice" maxlength="120" placeholder="Enter office or section" type="text"/></label><label class="phase2-span-2">Transaction Title<input id="phase2WorkflowTitle" maxlength="180" placeholder="Brief transaction title" type="text"/></label><label>Target Deadline (optional)<input id="phase2WorkflowDeadline" type="date"/></label><label class="phase2-span-2">Description / Details<textarea id="phase2WorkflowDescription" maxlength="4000" rows="4" placeholder="Describe the request and relevant details"></textarea></label></div>
+  <div class="phase2-form-actions"><button class="action-btn" onclick="savePhase2WorkflowDraft(false)" type="button">Save Draft</button><button class="action-btn approve-btn" onclick="savePhase2WorkflowDraft(true)" type="button">Save &amp; Submit</button></div>
+ </div>
+</div>
+
+<!-- PHASE II WORKFLOW DETAILS MODAL -->
+<div aria-labelledby="phase2WorkflowDetailsTitle" aria-modal="true" class="modal-overlay hidden" id="phase2WorkflowDetails" onclick="if(event.target===this)closePhase2WorkflowDetails()" role="dialog">
+ <div class="modal-content glass-panel modal-uniform-shell phase2-dialog phase2-workflow-details-dialog"><header class="modal-uniform-header"><div class="modal-uniform-header-copy"><span class="modal-uniform-kicker">TRANSACTION DETAILS</span><h2 id="phase2WorkflowDetailsTitle">Administrative Transaction</h2><p id="phase2WorkflowDetailsSubtitle">Reference and processing information</p></div><button class="action-btn icon-action-btn modal-uniform-close" onclick="closePhase2WorkflowDetails()" type="button" aria-label="Close"><i class="fi fi-rr-cross-small"></i></button></header>
+  <div id="phase2WorkflowDetailsContent" class="phase2-workflow-detail-content"></div><div class="phase2-workflow-review-box"><label for="phase2WorkflowComment">Review Comment / Action Note</label><textarea id="phase2WorkflowComment" maxlength="2000" rows="3" placeholder="Enter a comment for the transaction history"></textarea><div class="phase2-form-actions" id="phase2WorkflowTransitionActions"></div></div><div class="phase2-workflow-assign-box hidden" id="phase2WorkflowAssignPanel"><h3>Assign Reviewer</h3><div class="phase2-form-grid"><label>Assigned Reviewer<select id="phase2WorkflowAssignedReviewer"><option value="">Unassigned</option></select></label><label>Assigned Office<input id="phase2WorkflowAssignedOffice" maxlength="120" placeholder="Office / section" type="text"/></label></div><div class="phase2-form-actions"><button class="action-btn approve-btn" id="phase2AssignReviewerBtn" onclick="assignPhase2WorkflowReviewer()" type="button">Save Assignment</button></div></div><div class="phase2-history-section"><h3>Transaction History</h3><div id="phase2WorkflowHistory" class="phase2-history-list"><div class="phase2-empty">Loading history…</div></div></div>
+ </div>
+</div>
+
+<!-- PHASE II AUDIT DETAIL MODAL -->
+<div aria-labelledby="phase2AuditDetailTitle" aria-modal="true" class="modal-overlay hidden" id="phase2AuditDetailModal" onclick="if(event.target===this)closePhase2AuditDetail()" role="dialog">
+ <div class="modal-content glass-panel modal-uniform-shell phase2-dialog"><header class="modal-uniform-header"><div class="modal-uniform-header-copy"><span class="modal-uniform-kicker">AUDIT RECORD</span><h2 id="phase2AuditDetailTitle">Audit Details</h2><p id="phase2AuditDetailSubtitle">Verified activity information</p></div><button class="action-btn icon-action-btn modal-uniform-close" onclick="closePhase2AuditDetail()" type="button" aria-label="Close"><i class="fi fi-rr-cross-small"></i></button></header><div class="phase2-audit-detail-content" id="phase2AuditDetailContent"></div></div>
+</div>
+
 <!-- SETTINGS TAB -->
 <div class="hidden" id="tabSettings">
 <div id="settingsMainPanel">
@@ -1109,7 +1269,7 @@
 </div>
 <div class="chatbot-footnote">AI responses can be imperfect. Do not enter passwords, PINs, or other sensitive information.</div>
 </section>
-<button aria-expanded="false" aria-label="Open SPADES AI Assistant" id="chatbot-bubble" onclick="toggleChat()" title="Chat with SPADES Assistant"><i aria-hidden="true" class="fi fi-rr-comment-dots"></i></button>
+<button aria-expanded="false" aria-label="Open SPADES AI Assistant" class="spades-force-icon-only" data-spades-icon-name="fi-rr-comment-dots" id="chatbot-bubble" onclick="toggleChat()" title="Open SPADES AI Assistant"><i aria-hidden="true" class="fi fi-rr-comment-dots"></i></button>
 </div>
 <!-- INCOMING CHAT POPUPS (Messenger-style) -->
 <div aria-atomic="false" aria-live="polite" id="incomingChatContainer"></div>
@@ -1292,6 +1452,7 @@
 </select>
 </label>
 <label class="personnel-field" for="pContactNo"><span>Contact Number</span><input autocomplete="tel" id="pContactNo" inputmode="tel" placeholder="Enter contact number" type="tel"/></label>
+<label class="personnel-field full-width" for="pAddress"><span>Address</span><textarea id="pAddress" maxlength="1200" placeholder="Enter complete residential or mailing address" rows="2"></textarea></label>
 <label class="personnel-field" for="pRemarks"><span>Remarks</span>
 <select id="pRemarks" onchange="togglePersonnelRemarksFields()">
 <option value="">Select Remarks...</option>
@@ -1332,27 +1493,29 @@
 <thead><tr><th scope="col">Date</th><th scope="col">Activity Title</th><th scope="col">Assigned Venue</th><th scope="col">Requesting Office</th><th scope="col">Concerned Office</th><th scope="col">Requested Service/s</th><th scope="col">Time</th><th scope="col">Status</th><th id="activityActionHeader" scope="col">Actions</th></tr></thead>
 <tbody id="activityTableBody"></tbody>
 </table></div>
-<div class="pagination-container hidden" id="activityPagination"><span id="activityPageInfo" style="font-weight:bold;">Page 1 of 1</span><div class="pagination-buttons"><button class="page-btn" id="prevActivityBtn" onclick="changeActivityPage(-1)">Prev</button><button class="page-btn" id="nextActivityBtn" onclick="changeActivityPage(1)">Next</button></div></div>
+<div class="pagination-container hidden" id="activityPagination"><span id="activityPageInfo" style="font-weight:bold;">Page 1 of 1</span><div class="pagination-buttons"><button class="page-btn" id="prevActivityBtn" onclick="changeActivityPage(-1)" aria-label="Previous activity page" title="Previous activity page">Prev</button><button class="page-btn" id="nextActivityBtn" onclick="changeActivityPage(1)" aria-label="Next activity page" title="Next activity page">Next</button></div></div>
 </div>
 </div>
 <div aria-labelledby="activityModalTitle" aria-modal="true" class="modal-overlay hidden" id="activityModal" onclick="if(event.target===this)closeActivityModal()" role="dialog">
 <div class="modal-content glass-panel modal-large activity-edit-modal modal-uniform-shell" style="font-family:inherit;max-width:820px;width:calc(100% - 30px);"><header class="modal-uniform-header"><div class="modal-uniform-header-copy"><span class="modal-uniform-kicker">ACTIVITY MANAGEMENT</span><h2 id="activityModalTitle">Add Activity</h2><p>Enter the activity details, schedule, and coordination information.</p></div><button aria-label="Close activity form" class="action-btn icon-action-btn modal-uniform-close" onclick="closeActivityModal()" title="Close" type="button"><i aria-hidden="true" class="fi fi-rr-cross-small"></i></button></header>
 <div class="activity-form-grid">
 <div class="full-width activity-form-field">
-<label>Date / Schedule</label>
+<label>Date / Schedule <b>*</b></label>
+<div class="activity-form-section-heading"><span class="activity-form-section-icon"><i class="fi fi-rr-calendar-lines" aria-hidden="true"></i></span><div><strong>Target Schedule</strong><small>Select at least one target date. This is required before saving.</small></div></div>
 <div class="activity-dates-box">
 <div class="activity-calendar-head">
 <div class="activity-calendar-title" id="activityCalendarTitle"></div>
 <div class="activity-calendar-nav">
-<button aria-label="Previous month" onclick="changeActivityCalendarMonth(-1)" type="button">‹</button>
-<button aria-label="Next month" onclick="changeActivityCalendarMonth(1)" type="button">›</button>
+<button aria-label="Previous month" class="spades-month-nav-icon-only" data-spades-icon-name="fi-rr-angle-left" onclick="changeActivityCalendarMonth(-1)" title="Previous month" type="button">‹</button>
+<button aria-label="Next month" class="spades-month-nav-icon-only" data-spades-icon-name="fi-rr-angle-right" onclick="changeActivityCalendarMonth(1)" title="Next month" type="button">›</button>
 </div>
 </div>
 <div class="activity-calendar-grid" id="activityCalendar"></div>
-<div style="font-size:11px;color:var(--text-muted);margin-top:8px;">Click multiple dates to select the schedule. Click a selected date again to remove it.</div>
+<div class="activity-required-hint"><i class="fi fi-rr-info" aria-hidden="true"></i> <strong>Target Date(s) *</strong> — Click one or more dates to select the activity schedule. Click a selected date again to remove it.</div>
 <div class="activity-date-list" id="activitySelectedDates"></div>
 </div>
 </div>
+<div class="activity-form-section-heading"><span class="activity-form-section-icon"><i class="fi fi-rr-clipboard-list" aria-hidden="true"></i></span><div><strong>Activity Information</strong><small>Provide the activity title, venue, and coordinating offices.</small></div></div>
 <div class="activity-form-field full-width">
 <label for="activityTitle">Activity Title</label>
 <input id="activityTitle" placeholder="Activity Title" type="text"/>
@@ -1402,6 +1565,7 @@
 <input id="activityStatus" readonly="" type="text" value="Recurring"/>
 </div>
 </div>
+<div class="activity-notification-setting"><label class="activity-notification-toggle" for="activityNotificationsEnabled"><input id="activityNotificationsEnabled" type="checkbox" checked/><span class="activity-toggle-track" aria-hidden="true"></span><span><strong>Enable Activity Notifications</strong><small>Use the existing 3-hour and 1-hour in-app reminders for this activity.</small></span></label><div class="activity-notification-levels"><span><i class="fi fi-rr-bell" aria-hidden="true"></i> 3 hours before</span><span><i class="fi fi-rr-bell" aria-hidden="true"></i> 1 hour before</span></div></div>
 <div style="display:flex;gap:10px;margin-top:20px;">
 <button aria-label="Save Activity Record" class="approve-btn" id="activitySaveBtn" onclick="saveActivity()" style="flex:1;margin:0;color:white;font-family:inherit;" title="Save Activity Record" type="button">Save Activity</button>
 <button onclick="closeActivityModal()" style="flex:1;margin:0;background:#e2e8f0;color:#475569;font-family:inherit;" type="button">Cancel</button>
@@ -1566,9 +1730,9 @@
 <label style="font-size:13px;font-weight:600;">Select Leave Dates (multiple)</label>
 <div style="border:1px solid var(--border-color);border-radius:var(--radius-sm);padding:10px;margin-bottom:8px;background:rgba(0,0,0,0.02);">
 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-<button class="action-btn" onclick="changeLeavePickerMonth(-1)" style="margin:0;padding:2px 10px;font-size:13px;" type="button">‹</button>
+<button aria-label="Previous month" class="action-btn spades-month-nav-icon-only" data-spades-icon-name="fi-rr-angle-left" onclick="changeLeavePickerMonth(-1)" style="margin:0;padding:2px 10px;font-size:13px;" title="Previous month" type="button">‹</button>
 <strong id="leavePickerTitle" style="font-size:13px;color:var(--primary);"></strong>
-<button class="action-btn" onclick="changeLeavePickerMonth(1)" style="margin:0;padding:2px 10px;font-size:13px;" type="button">›</button>
+<button aria-label="Next month" class="action-btn spades-month-nav-icon-only" data-spades-icon-name="fi-rr-angle-right" onclick="changeLeavePickerMonth(1)" style="margin:0;padding:2px 10px;font-size:13px;" title="Next month" type="button">›</button>
 </div>
 <div class="duty-calendar-grid" id="leavePickerCalendar" style="gap:2px;"></div>
 <div style="font-size:11px;color:var(--text-muted);margin-top:6px;">Click a date to toggle it on/off. Selected dates appear below.</div>
@@ -1720,6 +1884,13 @@
 </form>
 </div>
 </div>
+<!-- MATRIX OF COMPLIANCES: READ-ONLY INFORMATION -->
+<div aria-labelledby="matrixComplianceInfoTitle" aria-modal="true" class="modal-overlay hidden" id="matrixComplianceInfoModal" onclick="if(event.target===this)closeMatrixComplianceInfoModal()" role="dialog" style="z-index:2365;">
+<div class="modal-content glass-panel matrix-compliance-modal matrix-compliance-info-modal" tabindex="-1">
+<div class="matrix-compliance-modal-header"><div><span class="matrix-compliance-kicker">COMPLIANCE INFORMATION</span><h2 id="matrixComplianceInfoTitle">Compliance Information</h2><p>Review the available details of this compliance requirement.</p></div><button aria-label="Close compliance information" class="action-btn icon-action-btn matrix-compliance-modal-close" onclick="closeMatrixComplianceInfoModal()" title="Close compliance information" type="button"><i class="fi fi-rr-cross-small" aria-hidden="true"></i></button></div>
+<div class="matrix-compliance-info-content" id="matrixComplianceInfoContent"></div>
+<div class="matrix-compliance-form-footer"><button class="action-btn matrix-compliance-cancel-btn" onclick="closeMatrixComplianceInfoModal()" type="button"><i class="fi fi-rr-cross" aria-hidden="true"></i><span>Close</span></button><button class="action-btn matrix-compliance-save-btn hidden" id="matrixComplianceInfoEditBtn" onclick="editMatrixComplianceFromInfo()" type="button"><i class="fi fi-rr-edit" aria-hidden="true"></i><span>Edit Compliance</span></button></div>
+</div></div>
 <!-- MY FILES: ACCOUNT-OWNED GOOGLE DRIVE DIRECTORY -->
 <div aria-labelledby="myFilesTitle" aria-modal="true" class="modal-overlay hidden" id="myFilesModal" onclick="if(event.target===this)closeMyFilesModal()" role="dialog" style="z-index:2350;">
 <div class="modal-content glass-panel my-files-modal" tabindex="-1">

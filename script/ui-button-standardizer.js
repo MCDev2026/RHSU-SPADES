@@ -1,7 +1,6 @@
 /* -------------------------------------------------------------------------
    SPADES GLOBAL ICON BUTTON STANDARDIZER
-   Action controls use consistent icon-only buttons with accessible names and
-   native title tooltips. Navigation and content-selection controls retain text.
+   Action buttons retain visible text labels outside data tables. Dense table-row actions remain icon-only with accessible names and tooltips.
    ------------------------------------------------------------------------- */
 (function initializeSpadesIconButtons() {
   'use strict';
@@ -13,10 +12,80 @@
     '.users-chat-dropdown-global', '.chat-user-item', '.um-account-name',
     '.my-files-file-name', '.folder-entry-main', '.xlsx-sheet-tab',
     '.chat-mode-tab', '.users-chat-format-toolbar button',
-    '.header-icon-btn', '.profile-btn', '.nav-toggle-btn',
+    '.nav-toggle-btn',
     // This prominent page-level action keeps both its plus icon and visible text.
     '#memoDatabaseAddBtn'
   ].join(',');
+
+  // Modal and popup close controls are always X-only. This runs before the
+  // general action-button label standardizer so their accessible name and
+  // tooltip remain available without adding a visible text label.
+  const MODAL_CLOSE_SELECTOR = [
+    '.modal-close-control', '.spades-modal-close', '.profile-modal-close',
+    '.profile-card-close', '.activity-details-close', '.activity-data-close',
+    '.activity-edit-close', '.modal-uniform-close', '.my-files-close-btn',
+    '.matrix-compliance-modal-close', '.chatbot-close',
+    '.users-chat-dropdown-close', '.users-chat-minimized-close',
+    '.incoming-chat-close'
+  ].join(',');
+  const MODAL_SURFACE_SELECTOR = [
+    '.modal-overlay', '.profile-settings-overlay', '[role="dialog"]',
+    '#chatbot-window', '.incoming-chat-popup', '.users-chat-dropdown'
+  ].join(',');
+
+  const PASSWORD_VISIBILITY_SELECTOR = '.credential-visibility-toggle, .alpha-credential-eye';
+
+  // These controls intentionally remain icon-only even though the general button
+  // standardizer restores visible labels elsewhere in the application.
+  const FORCE_ICON_ONLY_SELECTOR = [
+    '.spades-force-icon-only', '.pf-icon-only-control', '.spades-month-nav-icon-only',
+    '#chatbot-bubble',
+    '#profileHeaderBtn', '#pageRefreshBtn', '#prevMemoBtn', '#nextMemoBtn',
+    '#prevActivityBtn', '#nextActivityBtn', '#prevArchivedActivityBtn', '#nextArchivedActivityBtn',
+    '#prevMatrixComplianceBtn', '#nextMatrixComplianceBtn', '#personnelRecapToggle',
+    '.profile-settings-overlay .profile-modal-actions button:not(.credential-visibility-toggle)',
+    '.profile-settings-overlay .profile-utility-actions button',
+    '.profile-picture-overlay .profile-picture-select-btn'
+  ].join(',');
+
+  function isModalCloseButton(button) {
+    if (!(button instanceof HTMLButtonElement)) return false;
+    if (button.matches(MODAL_CLOSE_SELECTOR) || button.classList.contains('spades-modal-icon-close')) return true;
+    if (!button.closest(MODAL_SURFACE_SELECTOR)) return false;
+    const aria = (button.getAttribute('aria-label') || '').trim();
+    const title = (button.getAttribute('title') || button.getAttribute('data-tooltip') || '').trim();
+    const visibleText = (button.textContent || '').replace(/\s+/g, ' ').trim();
+    return /^close(?:\s|$)/i.test(aria) || /^close(?:\s|$)/i.test(title) || /^close$/i.test(visibleText);
+  }
+
+  function standardizeModalCloseButton(button) {
+    if (!isModalCloseButton(button)) return false;
+
+    button.classList.add('spades-modal-icon-close');
+    button.classList.remove('spades-icon-labeled', 'spades-icon-primary', 'spades-icon-approve', 'spades-icon-danger');
+    button.classList.add('spades-modal-close-neutral');
+    button.type = 'button';
+    button.setAttribute('aria-label', 'Close');
+    button.setAttribute('title', 'Close');
+    button.setAttribute('data-tooltip', 'Close');
+    button.setAttribute('data-spades-tooltip', 'Close');
+    button.dataset.spadesModalCloseNormalized = 'true';
+
+    // Rebuild only the button contents; native/inline click handlers and all
+    // modal-specific close behavior remain attached to the original button.
+    const hasGlyph = !!button.querySelector('.spades-modal-close-glyph');
+    const hasOnlyCloseContents = hasGlyph && button.querySelector('.spades-modal-close-sr');
+    if (!hasOnlyCloseContents) {
+      const icon = document.createElement('i');
+      icon.className = 'fi fi-rr-cross-small spades-modal-close-glyph';
+      icon.setAttribute('aria-hidden', 'true');
+      const srLabel = document.createElement('span');
+      srLabel.className = 'spades-visually-hidden spades-modal-close-sr';
+      srLabel.textContent = 'Close';
+      button.replaceChildren(icon, srLabel);
+    }
+    return true;
+  }
 
   // Page-scoped create actions intentionally use distinct icons and tooltip
   // labels. This prevents multiple generic “Add” controls from being confused
@@ -117,6 +186,8 @@
 
   function resolveIcon(label, button) {
     const clean = String(label || '').trim();
+    const forcedIcon = String(button?.dataset?.spadesIconName || '').trim();
+    if (forcedIcon) return { icon: forcedIcon, kind: 'neutral' };
     if (/^[‹←]|\b(prev|previous|back)\b/i.test(clean)) return ICON_RULES.find(x => x.test.test('previous'));
     if (/^[›→]|\b(next|forward)\b/i.test(clean)) return ICON_RULES.find(x => x.test.test('next'));
     if (/^[×✕✖]|\b(close|cancel|dismiss)\b/i.test(clean)) return ICON_RULES.find(x => x.test.test('close'));
@@ -126,68 +197,173 @@
 
   function shouldSkip(button) {
     if (!(button instanceof HTMLButtonElement)) return true;
-    if (button.matches(EXCLUDED) || button.closest('#navSidebar, .users-chat-format-toolbar')) return true;
+    if (isModalCloseButton(button) || button.matches(EXCLUDED) || button.closest('#navSidebar, .users-chat-format-toolbar')) return true;
     // Preserve buttons that are rich content controls rather than actions.
     if (button.querySelector('img, canvas, video, audio, .users-chat-unread-badge, .notification-title, .notification-msg')) return true;
     if (!getLabel(button)) return true;
     return false;
   }
 
-  function renderIconButton(button, label, rule) {
-    const profile = PAGE_ACTION_PROFILES[button.dataset.spadesActionKey || ''];
-    const resolvedRule = profile || rule;
+  function applyButtonMetadata(button, label, rule, profile) {
     const baseLabel = profile ? profile.label : label;
     const contextLabel = profile ? profile.context : '';
-    const accessibleLabel = [baseLabel, contextLabel].filter(Boolean).join(' · ')
-      .replace(/[×✕✖＋+‹›←→↑↓↻↺]/g, '').replace(/\s+/g, ' ').trim() || label;
+    const accessibleLabel = [baseLabel, contextLabel].filter(Boolean).join(' · ').replace(/[×✕✖＋+‹›←→↑↓↻↺]/g, '').replace(/\s+/g, ' ').trim() || label;
     const tooltipLabel = profile ? `${profile.context} — ${profile.label}` : accessibleLabel;
-
     button.dataset.spadesOriginalLabel = accessibleLabel;
     button.dataset.spadesIconized = 'true';
-    button.classList.add('spades-icon-only');
-    button.classList.remove('spades-icon-primary', 'spades-icon-approve', 'spades-icon-danger', 'spades-icon-neutral');
-    button.classList.add('spades-icon-' + resolvedRule.kind);
     button.setAttribute('aria-label', accessibleLabel);
     button.setAttribute('title', tooltipLabel);
     button.setAttribute('data-tooltip', tooltipLabel);
-    button.setAttribute('data-spades-icon', resolvedRule.icon);
+    button.setAttribute('data-spades-icon', (profile || rule).icon);
+    button.classList.remove('spades-icon-primary','spades-icon-approve','spades-icon-danger','spades-icon-neutral');
+    button.classList.add('spades-icon-' + (profile || rule).kind);
+    return {accessibleLabel, tooltipLabel, rule:(profile || rule)};
+  }
 
+  function renderIconButton(button, label, rule) {
+    // Dense data-table actions intentionally remain icon-only.
+    const profile = PAGE_ACTION_PROFILES[button.dataset.spadesActionKey || ''];
+    const meta = applyButtonMetadata(button, label, rule, profile);
+    button.classList.add('spades-icon-only');
+    button.classList.remove('spades-icon-labeled');
     const icon = document.createElement('i');
-    icon.className = 'fi ' + resolvedRule.icon + ' spades-action-icon';
+    icon.className = 'fi ' + meta.rule.icon + ' spades-action-icon';
     icon.setAttribute('aria-hidden', 'true');
     const srLabel = document.createElement('span');
     srLabel.className = 'spades-visually-hidden';
-    srLabel.textContent = accessibleLabel;
+    srLabel.textContent = meta.accessibleLabel;
     button.replaceChildren(icon, srLabel);
+  }
+
+  function renderLabeledButton(button, label, rule) {
+    const profile = PAGE_ACTION_PROFILES[button.dataset.spadesActionKey || ''];
+    const originalText = (button.textContent || '').replace(/\s+/g, ' ').trim();
+    const isProgress = /^(saving|submitting|verifying|processing|loading|uploading|deleting|refreshing)(?:\b|\.{0,3})/i.test(originalText);
+    const meta = applyButtonMetadata(button, label, rule, profile);
+    button.classList.remove('spades-icon-only');
+    button.classList.add('spades-icon-labeled');
+    const visibleText = originalText.replace(/^\s*[＋+↻↺‹›←→↑↓×✕✖]\s*/, '').trim();
+    const visibleLabel = isProgress
+      ? originalText
+      : (profile ? profile.label : (visibleText || String(label || '').split(' · ').pop().trim() || meta.accessibleLabel));
+
+    // Preserve an existing icon even when it is nested inside a text wrapper.
+    let icon = button.querySelector('.spades-action-icon') || button.querySelector('i,svg');
+    if (!icon) {
+      icon = document.createElement('i');
+      icon.className = 'fi ' + meta.rule.icon + ' spades-action-icon';
+      icon.setAttribute('aria-hidden', 'true');
+    } else {
+      icon.classList.add('spades-action-icon');
+      icon.setAttribute('aria-hidden', 'true');
+    }
+    if (icon.parentElement !== button) button.insertBefore(icon, button.firstChild);
+
+    // Reuse a visible label or a previously generated screen-reader label.
+    // If none exists, reuse a non-icon text wrapper before creating a new span.
+    let textNode = button.querySelector('.spades-visible-button-label') || button.querySelector('.spades-visually-hidden');
+    if (textNode === icon || (textNode && textNode.contains(icon))) textNode = null;
+    if (!textNode) {
+      textNode = Array.from(button.children).find(child => child !== icon && !child.matches('i,svg') && !child.contains(icon) && String(child.textContent || '').trim());
+    }
+    if (!textNode) {
+      textNode = document.createElement('span');
+      button.appendChild(textNode);
+    }
+    textNode.classList.remove('spades-visually-hidden');
+    textNode.classList.add('spades-visible-button-label');
+    textNode.textContent = visibleLabel;
+
+    // Remove duplicate text wrappers and direct text while preserving any
+    // additional decorative icons. This avoids icon + label + old-label duplication.
+    Array.from(button.childNodes).forEach(node => {
+      if (node === icon || node === textNode) return;
+      if (node.nodeType === Node.TEXT_NODE && String(node.textContent || '').trim()) node.remove();
+      else if (node.nodeType === Node.ELEMENT_NODE && !node.matches('i,svg') && !node.contains(icon) && String(node.textContent || '').trim()) node.remove();
+    });
+    button.dataset.spadesLabelled = 'true';
+  }
+
+  function standardizePasswordVisibilityButton(button) {
+    if (!(button instanceof HTMLButtonElement) || !button.matches(PASSWORD_VISIBILITY_SELECTOR)) return false;
+
+    const inputWrap = button.parentElement;
+    const relatedInput = inputWrap?.querySelector('input[type="password"], input[type="text"]');
+    const pressed = button.getAttribute('aria-pressed') === 'true' || relatedInput?.type === 'text';
+    const label = (button.getAttribute('aria-label') || (pressed ? 'Hide password' : 'Show password')).trim();
+
+    button.type = 'button';
+    button.classList.add('spades-icon-only', 'spades-password-visibility-icon');
+    button.classList.remove('spades-icon-labeled', 'spades-icon-primary', 'spades-icon-approve', 'spades-icon-danger');
+    button.dataset.spadesOriginalLabel = label;
+    button.dataset.spadesIconized = 'true';
+    button.setAttribute('aria-label', label);
+    button.setAttribute('title', label);
+    button.setAttribute('data-tooltip', label);
+    button.setAttribute('data-spades-tooltip', label);
+    button.setAttribute('aria-pressed', pressed ? 'true' : 'false');
+
+    // Keep the existing eye / eye-off SVG. The visibility toggle handlers update
+    // this SVG when the password is revealed or concealed; replacing it with a
+    // static icon would remove that useful state indicator.
+    let svg = button.querySelector('svg');
+    if (!svg) {
+      svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      svg.setAttribute('viewBox', '0 0 24 24');
+      svg.innerHTML = '<path d="M2.5 12s3.4-6.5 9.5-6.5 9.5 6.5 9.5 6.5-3.4 6.5-9.5 6.5S2.5 12 2.5 12Z"></path><circle cx="12" cy="12" r="3"></circle>';
+    }
+    svg.setAttribute('aria-hidden', 'true');
+
+    let srLabel = button.querySelector('.spades-password-visibility-sr');
+    if (!srLabel) {
+      srLabel = document.createElement('span');
+      srLabel.className = 'spades-visually-hidden spades-password-visibility-sr';
+    }
+    srLabel.textContent = label;
+    if (button.children.length !== 2 || button.children[0] !== svg || button.children[1] !== srLabel) {
+      button.replaceChildren(svg, srLabel);
+    }
+    return true;
+  }
+
+  function isForceIconOnlyButton(button, label) {
+    if (!(button instanceof HTMLButtonElement)) return false;
+    if (button.matches(FORCE_ICON_ONLY_SELECTOR)) return true;
+    const clean = String(label || '').replace(/^[‹←↞↤↢↰↶↻↺]+\s*/, '').replace(/\s*[›→↠↦↣↱↷]+$/, '').trim();
+    return /^my profile$/i.test(clean) || /^refresh(?:\b|$)/i.test(clean) || /^(?:prev|previous|next)(?:\s+(?:page|record|activity|memo|compliance))?$/i.test(clean);
   }
 
   function iconize(button) {
     if (!(button instanceof HTMLButtonElement)) return;
-
-    // App workflows sometimes replace button text with transient states such as
-    // “Saving…”. Restore the icon presentation and preserve the action label;
-    // non-transient labels (e.g. Add -> Update) refresh the tooltip and icon.
-    if (button.dataset.spadesIconized === 'true') {
-      if (button.querySelector('.spades-action-icon')) return;
-      const changedText = (button.textContent || '').replace(/\s+/g, ' ').trim();
-      const isProgressText = /^(saving|submitting|verifying|processing|loading|uploading|deleting|refreshing)(?:\b|\.{0,3})/i.test(changedText);
-      const label = isProgressText ? (button.dataset.spadesOriginalLabel || button.getAttribute('aria-label') || 'Action') : (changedText || button.dataset.spadesOriginalLabel || 'Action');
-      const rule = resolveIcon(label, button);
-      renderIconButton(button, label, rule);
-      if (isProgressText) {
-        button.dataset.spadesAutoBusy = 'true';
-        button.setAttribute('aria-busy', 'true');
-      } else if (button.dataset.spadesAutoBusy === 'true') {
-        button.removeAttribute('aria-busy');
-        delete button.dataset.spadesAutoBusy;
-      }
+    if (standardizePasswordVisibilityButton(button)) return;
+    const label= getLabel(button) || button.dataset.spadesOriginalLabel || button.getAttribute('aria-label') || 'Action';
+    const rule = resolveIcon(label, button);
+    if (isForceIconOnlyButton(button, label)) {
+      const desiredIconClass = 'fi ' + rule.icon + ' spades-action-icon';
+      const currentIcon = button.querySelector('.spades-action-icon');
+      const isAlreadyCorrect = button.dataset.spadesForceIconOnlyDone === 'true' && currentIcon && currentIcon.className === desiredIconClass && button.querySelector('.spades-visually-hidden');
+      if (!isAlreadyCorrect) renderIconButton(button, label, rule);
+      button.dataset.spadesForceIconOnlyDone = 'true';
       return;
     }
-
     if (shouldSkip(button)) return;
-    const label = getLabel(button);
-    if (!label) return;
-    renderIconButton(button, label, resolveIcon(label, button));
+    if (button.closest('table')) {
+      if (button.dataset.spadesIconized === 'true' && button.querySelector('.spades-action-icon')) return;
+      renderIconButton(button, label, rule);
+      return;
+    }
+    // Retain full, visible button labels everywhere outside table action cells.
+    const existingVisible = button.querySelector('.spades-visible-button-label');
+    if (button.dataset.spadesLabelled === 'true' && existingVisible) {
+      const currentText = (button.textContent || '').replace(/\s+/g,' ').trim();
+      const isProgress = /^(saving|submitting|verifying|processing|loading|uploading|deleting|refreshing)(?:\b|\.{0,3})/i.test(currentText);
+      const nextLabel = isProgress
+        ? currentText
+        : ((PAGE_ACTION_PROFILES[button.dataset.spadesActionKey || ''] || {}).label || existingVisible.textContent.trim() || (label && label !== 'Action' ? label.split(' · ').pop().trim() : ''));
+      if (nextLabel && existingVisible.textContent !== nextLabel) existingVisible.textContent = nextLabel;
+      return;
+    }
+    renderLabeledButton(button, label, rule);
   }
 
   function standardizeGroups(root) {
@@ -195,16 +371,17 @@
     const candidates = new Set();
     if (scope instanceof HTMLButtonElement) candidates.add(scope);
     scope.querySelectorAll?.('button').forEach(button => candidates.add(button));
-    candidates.forEach(iconize);
-
-    // Keep sibling action icons aligned and anchored at the conventional end of
-    // a form/modal action row without touching navigation or content toolbars.
     candidates.forEach(button => {
-      if (!button.classList.contains('spades-icon-only')) return;
+      if (!standardizeModalCloseButton(button) && !standardizePasswordVisibilityButton(button)) iconize(button);
+    });
+
+    // Keep sibling action buttons aligned without touching navigation or content toolbars.
+    candidates.forEach(button => {
+      if (!button.classList.contains('spades-icon-only') && !button.classList.contains('spades-icon-labeled')) return;
       const parent = button.parentElement;
       if (!parent || !parent.isConnected) return;
       const directActions = Array.from(parent.children).filter(node =>
-        node instanceof HTMLButtonElement && node.classList.contains('spades-icon-only'));
+        node instanceof HTMLButtonElement && (node.classList.contains('spades-icon-only') || node.classList.contains('spades-icon-labeled')));
       if (directActions.length > 1) parent.classList.add('spades-icon-action-group');
     });
   }
@@ -216,14 +393,19 @@
         record.addedNodes.forEach(node => {
           if (node.nodeType === Node.ELEMENT_NODE) standardizeGroups(node);
         });
-        if (record.type === 'childList' && record.target instanceof Element && record.target.matches('button')) {
-          iconize(record.target);
+        if (record.type === 'childList' && record.target instanceof HTMLButtonElement) {
+          if (!standardizeModalCloseButton(record.target) && !standardizePasswordVisibilityButton(record.target)) iconize(record.target);
         }
       });
     });
     observer.observe(document.body, { childList: true, subtree: true });
     window.SPADESIconButtonObserver = observer;
     window.SPADESPageActionProfiles = PAGE_ACTION_PROFILES;
+    window.SPADESModalCloseStandardizer = {
+      normalize: standardizeModalCloseButton,
+      selector: MODAL_CLOSE_SELECTOR,
+      normalizePasswordVisibility: standardizePasswordVisibilityButton
+    };
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init, { once: true });
