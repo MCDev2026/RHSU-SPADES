@@ -243,6 +243,7 @@
   async function loadProofReaderDashboard(force) {
     if (state.loading) return;
     if (!getCurrentUsername()) return;
+    const listViewportSnapshot = window.SPADESListViewport?.capture?.();
     state.loading = true;
     state.isAlphaAdmin = false;
     setVisible('proofReaderSettingsBtn',false);
@@ -264,6 +265,7 @@
       if (typeof showNotification === 'function') showNotification('Admin Proof Reader', error.message);
     } finally {
       state.loading = false;
+      await window.SPADESListViewport?.restore?.(listViewportSnapshot);
     }
   }
 

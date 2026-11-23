@@ -181,6 +181,190 @@
     }
 })();
 
+
+
+/* -------------------------------------------------------------------------
+   SPADES LIST VIEWPORT PRESERVATION
+   Keeps the reader's current list position stable while background or manual
+   data loaders refresh/rebuild list contents. It stores both scroll offsets
+   and a visible-row anchor so the same record remains in view when possible.
+   ------------------------------------------------------------------------- */
+(function initializeSpadesListViewportPreserver() {
+    'use strict';
+
+    const LIST_SCROLL_SELECTOR = [
+        '.table-wrapper', '.um-table-scroll', '.proofreader-table-wrap',
+        '.my-files-table-wrap', '.my-files-content', '.chat-user-list',
+        '.users-chat-page-user-list', '.squad-carousel', '.squad-members-wrap',
+        '.duty-sequence-list', '.bmi-personnel-list', '.leave-personnel-table',
+        '.area-personnel-list', '.activity-data-table-wrap',
+        '.matrix-compliance-table-wrap', '.area-overview-table-wrap',
+        '.proofreader-designation-list', '.rank-recap', '.exec-list',
+        '.exec-venue-list', '.memo-summary-list', '.spades-backup-list',
+        '.exec-log-scroll', '.memo-table-wrapper', '#profileRecentMemos',
+        '#folderBrowserList', '#squadMemberList', '#areaPersonnelList',
+        '#proofReaderDesignationList', '#proofReaderAnnotationList',
+        '#activityDayListBody', '#chatDropdownUserList'
+    ].join(',');
+
+    const ANCHOR_SELECTOR = [
+        'tbody tr', '[data-myfiles-row]', '[data-proof-reader-id]',
+        '[data-matrix-compliance-id]', '.chat-user-item',
+        '.personnel-clickable-row', '.exec-row', '[data-note-card]',
+        '.area-card', 'li', 'article'
+    ].join(',');
+
+    const IDENTITY_ATTRIBUTES = [
+        'data-myfiles-row', 'data-proof-reader-id', 'data-matrix-compliance-id',
+        'data-personnel-record', 'data-note-card', 'data-id', 'data-username', 'data-record-id'
+    ];
+
+    // The saved viewport is restored after rendering even if the temporary
+    // loading state collapsed the scroll area in the meantime.
+
+    function isVisible(element) {
+        if (!element || !element.isConnected) return false;
+        const style = window.getComputedStyle(element);
+        return style.display !== 'none' && style.visibility !== 'hidden' &&
+            element.getClientRects().length > 0;
+    }
+
+    function cssEscape(value) {
+        if (window.CSS && typeof window.CSS.escape === 'function') return window.CSS.escape(value);
+        return String(value).replace(/[^a-zA-Z0-9_-]/g, character => '\\' + character);
+    }
+
+    // Build a stable-enough selector from the nearest ID or the DOM path. This
+    // also resolves list wrappers that are recreated by a parent innerHTML write.
+    function getElementPath(element) {
+        const parts = [];
+        let node = element;
+        while (node && node.nodeType === 1 && node !== document.documentElement) {
+            if (node.dataset && node.dataset.spadesScrollKey) {
+                parts.unshift('[data-spades-scroll-key="' + String(node.dataset.spadesScrollKey).replace(/\"/g, '\\\"') + '"]');
+                break;
+            }
+            if (node.id) {
+                parts.unshift('#' + cssEscape(node.id));
+                break;
+            }
+            const tag = node.tagName.toLowerCase();
+            let position = 1;
+            for (let sibling = node.previousElementSibling; sibling; sibling = sibling.previousElementSibling) {
+                if (sibling.tagName === node.tagName) position++;
+            }
+            parts.unshift(tag + ':nth-of-type(' + position + ')');
+            node = node.parentElement;
+        }
+        return parts.join(' > ');
+    }
+
+    function getAnchorItems(container) {
+        return Array.from(container.querySelectorAll(ANCHOR_SELECTOR)).filter(item => {
+            if (!item.getClientRects().length) return false;
+            const text = String(item.textContent || '').replace(/\s+/g, ' ').trim();
+            return !!text;
+        });
+    }
+
+    function captureAnchor(container) {
+        const containerRect = container.getBoundingClientRect();
+        const visibleItems = getAnchorItems(container).filter(item => {
+            const rect = item.getBoundingClientRect();
+            return rect.bottom > containerRect.top + 1 && rect.top < containerRect.bottom - 1;
+        });
+        const item = visibleItems[0];
+        if (!item) return null;
+
+        let identity = null;
+        for (const attribute of IDENTITY_ATTRIBUTES) {
+            if (item.hasAttribute(attribute)) {
+                identity = {attribute, value: item.getAttribute(attribute)};
+                break;
+            }
+        }
+
+        const text = String(item.textContent || '').replace(/\s+/g, ' ').trim();
+        return {
+            identity,
+            text: text.slice(0, 180),
+            index: getAnchorItems(container).indexOf(item),
+            offsetTop: item.getBoundingClientRect().top - containerRect.top
+        };
+    }
+
+    function capture() {
+        const positions = [];
+        document.querySelectorAll(LIST_SCROLL_SELECTOR).forEach(element => {
+            if (!isVisible(element)) return;
+            const canScrollY = element.scrollHeight > element.clientHeight + 2;
+            const canScrollX = element.scrollWidth > element.clientWidth + 2;
+            if (!canScrollY && !canScrollX) return;
+            positions.push({
+                path: getElementPath(element),
+                top: element.scrollTop,
+                left: element.scrollLeft,
+                anchor: canScrollY ? captureAnchor(element) : null
+            });
+        });
+
+        return {
+            windowX: window.scrollX || 0,
+            windowY: window.scrollY || 0,
+            positions
+        };
+    }
+
+    function findAnchor(container, anchor) {
+        if (!anchor) return null;
+        const items = getAnchorItems(container);
+        if (anchor.identity) {
+            const matchingIdentity = items.find(item =>
+                item.getAttribute(anchor.identity.attribute) === anchor.identity.value
+            );
+            if (matchingIdentity) return matchingIdentity;
+        }
+        if (anchor.text) {
+            const exact = items.find(item => String(item.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 180) === anchor.text);
+            if (exact) return exact;
+        }
+        return items[anchor.index] || null;
+    }
+
+    function restore(snapshot) {
+        if (!snapshot) return Promise.resolve();
+        return new Promise(resolve => {
+            const requestFrame = window.requestAnimationFrame || (callback => window.setTimeout(callback, 16));
+            requestFrame(() => requestFrame(() => {
+                if (Math.abs((window.scrollY || 0) - snapshot.windowY) > 1 ||
+                    Math.abs((window.scrollX || 0) - snapshot.windowX) > 1) {
+                    window.scrollTo(snapshot.windowX, snapshot.windowY);
+                }
+
+                snapshot.positions.forEach(position => {
+                    let element = null;
+                    try { element = document.querySelector(position.path); } catch (_) {}
+                    if (!element || !isVisible(element)) return;
+
+                    const anchor = findAnchor(element, position.anchor);
+                    if (anchor && position.anchor) {
+                        const containerRect = element.getBoundingClientRect();
+                        const anchorRect = anchor.getBoundingClientRect();
+                        const delta = (anchorRect.top - containerRect.top) - position.anchor.offsetTop;
+                        if (Number.isFinite(delta) && Math.abs(delta) > 0.5) element.scrollTop += delta;
+                    } else {
+                        element.scrollTop = position.top;
+                    }
+                    element.scrollLeft = position.left;
+                });
+                resolve();
+            }));
+        });
+    }
+
+    window.SPADESListViewport = Object.freeze({capture, restore});
+})();
+
 const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUAf04mJqqHLcVfSsEC9Ku8bcYWd5KZ2S1H_zzGWs8zE-kS/exec";
         const ALPHA_ADMIN_NAME_CACHE_KEY = 'spadesAlphaAdminName';
         const ALPHA_ADMIN_NAME_CACHE_TIME_KEY = 'spadesAlphaAdminNameCachedAt';
@@ -3212,7 +3396,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
 
         async function loadAdminUsers() {
             const tbody = document.getElementById('adminUsersTableBody');
-            if (tbody) tbody.innerHTML = '<tr><td colspan="6" class="um-table-empty"><span class="um-loading-dot"></span> Loading user accounts…</td></tr>';
+            if (tbody && !tbody.querySelector('tr:not(.um-table-empty)')) tbody.innerHTML = '<tr><td colspan="6" class="um-table-empty"><span class="um-loading-dot"></span> Loading user accounts…</td></tr>';
             const userName = localStorage.getItem('loggedInUser') || '';
             try {
                 const [usersResponse, announcementResponse] = await Promise.all([
@@ -3524,7 +3708,6 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             try {
                 const result = await postPersonnelMutation(matrixComplianceAuthPayload('get_matrix_compliances'));
                 matrixComplianceRecords = Array.isArray(result.records) ? result.records : [];
-                currentMatrixCompliancePage = 1;
                 matrixComplianceReadOnly = !!result.readOnly;
                 matrixComplianceIsAlphaAdmin = !!result.alphaAdmin;
                 const addButton = document.getElementById('matrixComplianceAddBtn');
@@ -4145,7 +4328,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                     const restoreActionCell = showRestoreAction
                         ? `<td class="personnel-actions-cell"><button type="button" class="action-btn approve-btn" title="Restore personnel" aria-label="Restore ${escapeAttr((p.rank||'')+' '+(p.firstName||'')+' '+(p.lastName||''))}" onclick="event.stopPropagation();restorePersonnel(${Number(p.archiveRow)})" onkeydown="event.stopPropagation()" style="font-size:12px;padding:6px 10px;width:auto;min-width:76px;height:auto;">↻ Restore</button></td>`
                         : '';
-                    return `<tr class="personnel-clickable-row" ${clickAction} tabindex="0" role="button" aria-label="View personnel ${escapeAttr((p.rank||'')+' '+(p.firstName||'')+' '+(p.lastName||''))}" onkeydown="if((event.key==='Enter'||event.key===' ')&&!event.target.closest('button,a,input,select,textarea')){event.preventDefault();${archived ? `openArchivedPersonnelDetails(${Number(p.archiveRow)})` : `openPersonnelProfile(${Number(p.no)})`};}">
+                    return `<tr class="personnel-clickable-row" data-personnel-record="${recordKey}" data-personnel-archived="${archived ? 'true' : 'false'}" ${clickAction} tabindex="0" role="button" aria-label="View personnel ${escapeAttr((p.rank||'')+' '+(p.firstName||'')+' '+(p.lastName||''))}" onkeydown="if((event.key==='Enter'||event.key===' ')&&!event.target.closest('button,a,input,select,textarea')){event.preventDefault();${archived ? `openArchivedPersonnelDetails(${Number(p.archiveRow)})` : `openPersonnelProfile(${Number(p.no)})`};}">
                         <td>${index + 1}</td>
                         <td>${escapeHtml(p.rank)}</td>
                         <td>${escapeHtml(p.lastName)}</td>
@@ -4167,8 +4350,9 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 const extraHeader = archived
                     ? `<th>Archived Date</th>${showRestoreAction ? '<th id="personnelActionHeader">Action</th>' : ''}`
                     : '<th>Remarks</th>';
+                const scrollKey = archived ? 'personnel-archived' : 'personnel-active-' + String(title || 'section').toLowerCase().replace(/[^a-z0-9]+/g, '-');
                 return `<h3 style="margin-top:25px;margin-bottom:10px;color:${archived ? 'var(--danger)' : 'var(--primary)'};font-size:16px;">${escapeHtml(title)}</h3>
-                <div class="table-wrapper" style="margin-bottom:20px;margin-top:0;">
+                <div class="table-wrapper" data-spades-scroll-key="${escapeAttr(scrollKey)}" style="margin-bottom:20px;margin-top:0;">
                     <table class="personnel-data-table${archived ? ' archived-personnel-table' : ''}">
                         <thead><tr>
                             <th>No.</th><th>Rank</th><th>Last Name</th><th>First Name</th><th>Middle Name</th>
@@ -5192,7 +5376,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 allActivities = Array.isArray(data.activities) ? data.activities : [];
                 archivedActivities = Array.isArray(data.archived) ? data.archived : [];
                 // Backend status synchronization keeps current-date rows Ongoing and past rows archived.
-                filterActivities();
+                filterActivities(true);
                 renderArchivedActivities();
                 renderActivityOverviewCalendar();
                 updateActivityPermissions();
@@ -5205,13 +5389,13 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             }
         }
 
-        function filterActivities() {
+        function filterActivities(preserveCurrentPage = false) {
             const q = (document.getElementById('activitySearch').value || '').trim().toLowerCase();
             filteredActivities = allActivities.filter(a =>
                 [a.date,a.activityTitle,a.assignedVenue,a.requestingOffice,a.concernedOffice,a.requestedServices,a.time,a.frequency,a.status]
                 .join(' ').toLowerCase().includes(q)
             );
-            currentActivityPage = 1;
+            if (!preserveCurrentPage) currentActivityPage = 1;
             renderActivities();
         }
 
@@ -5569,12 +5753,16 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 });
 
                 const encoderSelect = document.getElementById('filterEncoder');
+                const selectedEncoder = encoderSelect.value;
                 encoderSelect.innerHTML = '<option value="">All Encoders</option>';
-                Array.from(encoders).sort().forEach(enc => encoderSelect.innerHTML += `<option value="${enc}">${enc}</option>`);
+                Array.from(encoders).sort().forEach(enc => encoderSelect.innerHTML += `<option value="${escapeAttr(enc)}">${escapeHtml(enc)}</option>`);
+                encoderSelect.value = encoders.has(selectedEncoder) ? selectedEncoder : '';
 
                 const yearSelect = document.getElementById('filterYear');
+                const selectedYear = yearSelect.value;
                 yearSelect.innerHTML = '<option value="">All Years</option>';
-                Array.from(years).sort((a,b) => b-a).forEach(yr => yearSelect.innerHTML += `<option value="${yr}">${yr}</option>`);
+                Array.from(years).sort((a,b) => b-a).forEach(yr => yearSelect.innerHTML += `<option value="${escapeAttr(yr)}">${escapeHtml(yr)}</option>`);
+                yearSelect.value = years.has(selectedYear) ? selectedYear : '';
 
                 updateDashboard();
 
@@ -5583,7 +5771,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                     if (savedSearch) document.getElementById('searchInput').value = savedSearch;
                 }
                 
-                searchTable(); 
+                searchTable(true); 
                 if (!document.getElementById('tabDashboard').classList.contains('hidden')) renderExecutiveDashboard();
             } catch (err) { }
         }
@@ -5874,7 +6062,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             }
         }
 
-        function searchTable() {
+        function searchTable(preserveCurrentPage = false) {
             const input = document.getElementById('searchInput').value.toLowerCase();
             const categoryFilter = document.getElementById('filterCategory').value;
             const encoderFilter = document.getElementById('filterEncoder').value;
@@ -5913,7 +6101,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
 
                 return matchesSearch && matchesCategory && matchesEncoder && matchesMonth && matchesYear && matchesDay;
             });
-            currentMemoPage = 1;
+            if (!preserveCurrentPage) currentMemoPage = 1;
             renderMemoTable();
         }
 
@@ -8675,7 +8863,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             const body = document.getElementById('myFilesTableBody');
             const refreshButton = document.querySelector('#myFilesModal [data-myfiles-refresh]');
             if (refreshButton) { refreshButton.disabled = true; refreshButton.setAttribute('aria-busy', 'true'); }
-            if (body) body.innerHTML = '<tr><td colspan="5" class="my-files-empty-cell"><span class="my-files-spinner"></span> Loading your account files…</td></tr>';
+            if (body && !body.querySelector('tr[data-myfiles-row]')) body.innerHTML = '<tr><td colspan="5" class="my-files-empty-cell"><span class="my-files-spinner"></span> Loading your account files…</td></tr>';
             setMyFilesNotice('Connecting securely to your account directory…');
             try {
                 const result = await callMyFilesApi('list_user_files');
@@ -9503,3 +9691,38 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         }
 
 /* Admin Proof Reader is loaded from script/admin-proof-reader.js. */
+
+/* Preserve list scroll/visible-record position across all data-loading entry points. */
+(function installSpadesListLoaderWrappers() {
+    'use strict';
+    const names = [
+        'loadData', 'loadAdminUsers', 'loadPersonnel', 'loadAllPersonnelManagementData',
+        'loadDutySequence', 'loadBmiRecords', 'loadSquads', 'loadLeaveEntries', 'loadAreas',
+        'loadActivities', 'loadMatrixCompliances', 'loadMyFiles', 'loadSpadesBackupList',
+        'loadChatUsers', 'fetchPersonnelFolderListing', 'fetchActivityLogs',
+        'loadExecutiveDashboard', 'populateProfileData'
+    ];
+
+    names.forEach(name => {
+        const original = window[name];
+        if (typeof original !== 'function' || original.__spadesListViewportWrapped) return;
+        const wrapped = function (...args) {
+            const snapshot = window.SPADESListViewport?.capture?.();
+            let result;
+            try {
+                result = original.apply(this, args);
+            } catch (error) {
+                window.SPADESListViewport?.restore?.(snapshot);
+                throw error;
+            }
+            if (result && typeof result.then === 'function') {
+                return result.finally(() => window.SPADESListViewport?.restore?.(snapshot));
+            }
+            window.SPADESListViewport?.restore?.(snapshot);
+            return result;
+        };
+        Object.defineProperty(wrapped, '__spadesListViewportWrapped', {value: true});
+        window[name] = wrapped;
+    });
+})();
+
