@@ -12554,7 +12554,7 @@ body.dark-mode #tabMatrixCompliances > .matrix-compliance-page-controls {
 #userProfileViewModal .um-user-info-footer {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 14px;
   margin-top: 18px;
   padding-top: 15px;
