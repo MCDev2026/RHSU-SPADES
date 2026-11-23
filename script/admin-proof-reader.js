@@ -20,6 +20,14 @@
     current: null,
     currentDocument: null,
     pdfObjectUrl: null,
+    pdfDocument: null,
+    annotations: [],
+    pendingSelection: null,
+    editingAnnotationId: '',
+    canAnnotate: false,
+    previewContent: '',
+    previewMode: 'text',
+    finalEditorVisible: false,
     notificationTimer: null,
     notificationBusy: false,
     loading: false,
@@ -457,11 +465,297 @@
   function clearPdfPreview() {
     if (state.pdfObjectUrl) URL.revokeObjectURL(state.pdfObjectUrl);
     state.pdfObjectUrl = null;
+    state.pdfDocument = null;
     const frame = byId('proofReaderPdfPreview');
     if (frame) frame.removeAttribute('src');
+    const pages = byId('proofReaderPdfPages');
+    if (pages) pages.innerHTML = '';
+    setVisible('proofReaderPdfFallback',false);
   }
   function setVisible(id, visible) { const element = byId(id); if (element) element.classList.toggle('hidden', !visible); }
   function setText(id, value) { const element = byId(id); if (element) element.textContent = value == null || value === '' ? '—' : String(value); }
+  function setAnnotationButtonLabel(editing) {
+    const button = byId('proofReaderAddAnnotationBtn');
+    if (button) button.innerHTML = editing ? '<i class="fi fi-rr-disk" aria-hidden="true"></i><span>Save Changes</span>' : '<i class="fi fi-rr-plus" aria-hidden="true"></i><span>Add Note</span>';
+  }
+
+  function renderProofReaderTextPreview() {
+    const target = byId('proofReaderDocumentPreview');
+    if (!target) return;
+    const content = String(state.previewContent || '');
+    const annotations = (state.annotations || []).filter(item => Number.isInteger(Number(item.startOffset)) && Number.isInteger(Number(item.endOffset)) && Number(item.startOffset) >= 0 && Number(item.endOffset) > Number(item.startOffset) && Number(item.endOffset) <= content.length)
+      .sort((a,b) => Number(a.startOffset) - Number(b.startOffset));
+    let html = '', cursor = 0;
+    annotations.forEach(annotation => {
+      const start = Number(annotation.startOffset), end = Number(annotation.endOffset);
+      if (start < cursor) return; // Ignore conflicting legacy ranges rather than corrupting preview markup.
+      html += escapeHtml(content.slice(cursor,start));
+      html += `<mark data-note-id="${escapeHtml(annotation.id)}" data-note-category="${escapeHtml(annotation.category)}" title="${escapeHtml(annotation.category + ': ' + annotation.note)}">${escapeHtml(content.slice(start,end))}</mark>`;
+      cursor = end;
+    });
+    html += escapeHtml(content.slice(cursor));
+    target.innerHTML = content ? `<pre class="proofreader-preview-text">${html}</pre>` : '<div class="proofreader-empty">No text content is available for preview. Download the original file to inspect its full layout.</div>';
+  }
+
+  function renderProofReaderAnnotationList() {
+    const target = byId('proofReaderAnnotationList');
+    if (!target) return;
+    const items = Array.isArray(state.annotations) ? state.annotations : [];
+    setText('proofReaderAnnotationCount',`${items.length} ${items.length === 1 ? 'note' : 'notes'}`);
+    if (!items.length) {
+      target.innerHTML = '<div class="proofreader-empty">No proofreading notes have been submitted.</div>';
+      return;
+    }
+    target.innerHTML = items.map((item,index) => {
+      const reference = item.selectedText ? `“${item.selectedText}”` : (item.pageNumber ? `Page ${item.pageNumber}${item.location ? ' · ' + item.location : ''}` : (item.location || 'General note'));
+      const actions = state.canAnnotate ? `<div class="proofreader-annotation-card-actions"><button type="button" title="Edit note" aria-label="Edit note ${index+1}" onclick="editProofReaderAnnotation('${escapeHtml(item.id)}')"><i class="fi fi-rr-edit" aria-hidden="true"></i></button><button type="button" title="Remove note" aria-label="Remove note ${index+1}" onclick="removeProofReaderAnnotation('${escapeHtml(item.id)}')"><i class="fi fi-rr-trash" aria-hidden="true"></i></button></div>` : '';
+      return `<article class="proofreader-annotation-card" data-category="${escapeHtml(item.category)}" data-note-card="${escapeHtml(item.id)}"><div class="proofreader-annotation-card-head"><strong>${escapeHtml(item.category || 'Note')}</strong>${actions}</div><blockquote>${escapeHtml(reference)}</blockquote><p>${escapeHtml(item.note || '')}</p>${item.createdBy ? `<small>Added by ${escapeHtml(item.createdBy)}${item.createdAt ? ' · ' + escapeHtml(displayDate(item.createdAt)) : ''}</small>` : ''}</article>`;
+    }).join('');
+  }
+
+  function captureProofReaderSelection() {
+    const selection = window.getSelection && window.getSelection();
+    if (!selection || selection.isCollapsed || !selection.rangeCount) {
+      setText('proofReaderSelectionStatus','Select a word, sentence, or paragraph in the document preview first.');
+      return false;
+    }
+    const range = selection.getRangeAt(0);
+    const selectedText = selection.toString();
+    if (!selectedText || !selectedText.trim()) {
+      setText('proofReaderSelectionStatus','The selection is empty. Select readable document text.');
+      return false;
+    }
+    const textPreview = byId('proofReaderDocumentPreview');
+    if (state.previewMode === 'text' && textPreview && textPreview.contains(range.commonAncestorContainer)) {
+      const root = textPreview.querySelector('.proofreader-preview-text');
+      if (!root) return false;
+      const beforeStart = document.createRange();
+      beforeStart.selectNodeContents(root);
+      beforeStart.setEnd(range.startContainer,range.startOffset);
+      const beforeEnd = document.createRange();
+      beforeEnd.selectNodeContents(root);
+      beforeEnd.setEnd(range.endContainer,range.endOffset);
+      const startOffset = beforeStart.toString().length;
+      const endOffset = beforeEnd.toString().length;
+      if (endOffset <= startOffset) return false;
+      state.pendingSelection = {selectedText:selectedText,startOffset:startOffset,endOffset:endOffset,pageNumber:null,rects:[],location:''};
+    } else if (state.previewMode === 'pdf') {
+      const nodeElement = node => node && (node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement);
+      const startPage = nodeElement(range.startContainer)?.closest('.proofreader-pdf-page');
+      const endPage = nodeElement(range.endContainer)?.closest('.proofreader-pdf-page');
+      if (!startPage || startPage !== endPage || !startPage.querySelector('.proofreader-pdf-text-layer')?.contains(range.commonAncestorContainer)) {
+        setText('proofReaderSelectionStatus','Select text within one PDF page at a time, then use the selected-text action.');
+        return false;
+      }
+      const pageRect = startPage.getBoundingClientRect();
+      const rects = Array.from(range.getClientRects()).map(rect => {
+        const x = Math.max(0,Math.min(1,(rect.left-pageRect.left)/pageRect.width));
+        const y = Math.max(0,Math.min(1,(rect.top-pageRect.top)/pageRect.height));
+        const right = Math.max(x,Math.min(1,(rect.right-pageRect.left)/pageRect.width));
+        const bottom = Math.max(y,Math.min(1,(rect.bottom-pageRect.top)/pageRect.height));
+        return {x:x,y:y,width:right-x,height:bottom-y};
+      }).filter(rect => rect.width > 0 && rect.height > 0);
+      state.pendingSelection = {selectedText:selectedText,startOffset:null,endOffset:null,pageNumber:Number(startPage.dataset.pageNumber || 0),rects:rects,location:''};
+    } else {
+      setText('proofReaderSelectionStatus','The selected text is outside the active document preview.');
+      return false;
+    }
+    setText('proofReaderSelectedText',selectedText);
+    setText('proofReaderSelectionStatus','Selected text is ready. Add a category and note in the notepad.');
+    const pageInput = byId('proofReaderAnnotationPage');
+    if (pageInput && state.pendingSelection.pageNumber) pageInput.value = String(state.pendingSelection.pageNumber);
+    return true;
+  }
+
+  function addProofReaderAnnotation() {
+    if (!state.canAnnotate) return;
+    const category = String(byId('proofReaderAnnotationType')?.value || 'Correction');
+    const note = String(byId('proofReaderAnnotationNote')?.value || '').trim();
+    const location = String(byId('proofReaderAnnotationLocation')?.value || '').trim().slice(0,240);
+    const pageValue = String(byId('proofReaderAnnotationPage')?.value || '').trim();
+    const pageNumber = pageValue ? Number(pageValue) : (state.pendingSelection?.pageNumber || null);
+    if (!note) return setText('proofReaderWorkspaceNotice','Enter the correction, revision, suggestion, or observation before adding the note.');
+    if (state.previewMode === 'pdf' && (!Number.isInteger(pageNumber) || pageNumber < 1 || (state.pdfDocument && pageNumber > state.pdfDocument.numPages))) return setText('proofReaderWorkspaceNotice','Enter a valid PDF page number or select text on a PDF page before adding the note.');
+    const selection = state.pendingSelection || {};
+    const annotation = {
+      id:state.editingAnnotationId || (window.crypto?.randomUUID ? window.crypto.randomUUID() : `pr-${Date.now()}-${Math.random().toString(36).slice(2,9)}`),
+      category:category,selectedText:String(selection.selectedText || ''),
+      startOffset:Number.isInteger(selection.startOffset) ? selection.startOffset : null,
+      endOffset:Number.isInteger(selection.endOffset) ? selection.endOffset : null,
+      pageNumber:Number.isInteger(pageNumber) ? pageNumber : null,
+      rects:Array.isArray(selection.rects) ? selection.rects : [],location:location,note:note
+    };
+    if (state.previewMode === 'text' && annotation.startOffset != null) {
+      const overlap = state.annotations.some(item => item.id !== state.editingAnnotationId && item.startOffset != null && annotation.startOffset < Number(item.endOffset) && annotation.endOffset > Number(item.startOffset));
+      if (overlap) return setText('proofReaderWorkspaceNotice','That text range overlaps an existing highlight. Edit or remove the earlier note before adding another overlapping highlight.');
+    }
+    if (state.editingAnnotationId) {
+      const index = state.annotations.findIndex(item => item.id === state.editingAnnotationId);
+      if (index >= 0) state.annotations[index] = annotation;
+    } else state.annotations.push(annotation);
+    state.editingAnnotationId = '';
+    state.pendingSelection = null;
+    if (byId('proofReaderAnnotationNote')) byId('proofReaderAnnotationNote').value = '';
+    if (byId('proofReaderAnnotationLocation')) byId('proofReaderAnnotationLocation').value = '';
+    if (byId('proofReaderAnnotationPage')) byId('proofReaderAnnotationPage').value = '';
+    setText('proofReaderSelectedText','No text selected. A general note or page-specific note can still be added.');
+    setText('proofReaderSelectionStatus','Note added to the review draft.');
+    setText('proofReaderWorkspaceNotice','The note is saved in this review draft and will be stored when you submit the review result.');
+    setAnnotationButtonLabel(false);
+    setVisible('proofReaderCancelAnnotationEditBtn',false);
+    renderProofReaderAnnotationList();
+    if (state.previewMode === 'text') renderProofReaderTextPreview();
+    else if (state.previewMode === 'pdf') renderProofReaderPdfHighlights();
+  }
+
+  function editProofReaderAnnotation(id) {
+    if (!state.canAnnotate) return;
+    const item = state.annotations.find(annotation => annotation.id === id);
+    if (!item) return;
+    state.editingAnnotationId = id;
+    state.pendingSelection = {selectedText:item.selectedText || '',startOffset:item.startOffset,endOffset:item.endOffset,pageNumber:item.pageNumber,rects:Array.isArray(item.rects)?item.rects:[],location:item.location || ''};
+    if (byId('proofReaderAnnotationType')) byId('proofReaderAnnotationType').value = item.category || 'Correction';
+    if (byId('proofReaderAnnotationNote')) byId('proofReaderAnnotationNote').value = item.note || '';
+    if (byId('proofReaderAnnotationPage')) byId('proofReaderAnnotationPage').value = item.pageNumber || '';
+    if (byId('proofReaderAnnotationLocation')) byId('proofReaderAnnotationLocation').value = item.location || '';
+    setText('proofReaderSelectedText',item.selectedText || 'No text anchor; this is a general or page-specific note.');
+    setAnnotationButtonLabel(true);
+    setVisible('proofReaderCancelAnnotationEditBtn',true);
+    byId('proofReaderAnnotationNote')?.focus();
+  }
+
+  function cancelProofReaderAnnotationEdit() {
+    state.editingAnnotationId = '';
+    state.pendingSelection = null;
+    if (byId('proofReaderAnnotationNote')) byId('proofReaderAnnotationNote').value = '';
+    if (byId('proofReaderAnnotationPage')) byId('proofReaderAnnotationPage').value = '';
+    if (byId('proofReaderAnnotationLocation')) byId('proofReaderAnnotationLocation').value = '';
+    setText('proofReaderSelectedText','No text selected. A general note or page-specific note can still be added.');
+    setAnnotationButtonLabel(false);
+    setVisible('proofReaderCancelAnnotationEditBtn',false);
+  }
+
+  function removeProofReaderAnnotation(id) {
+    if (!state.canAnnotate) return;
+    state.annotations = state.annotations.filter(item => item.id !== id);
+    if (state.editingAnnotationId === id) cancelProofReaderAnnotationEdit();
+    renderProofReaderAnnotationList();
+    if (state.previewMode === 'text') renderProofReaderTextPreview();
+    else if (state.previewMode === 'pdf') renderProofReaderPdfHighlights();
+  }
+
+  function openProofReaderAnnotation(id) {
+    const noteId = String(id || '');
+    const card = Array.from(byId('proofReaderAnnotationList')?.querySelectorAll('[data-note-card]') || [])
+      .find(element => element.dataset.noteCard === noteId);
+    card?.scrollIntoView({behavior:'smooth',block:'nearest'});
+    if (state.previewMode === 'pdf') {
+      const annotation = (state.annotations || []).find(item => String(item.id) === noteId);
+      const pageNumber = Number(annotation?.pageNumber || 0);
+      const page = pageNumber ? byId('proofReaderPdfPages')?.querySelector(`.proofreader-pdf-page[data-page-number="${pageNumber}"]`) : null;
+      page?.scrollIntoView({behavior:'smooth',block:'center'});
+    }
+  }
+
+  function toggleProofReaderFinalEditor() {
+    if (!state.currentDocument?.canFinalRevise) return;
+    state.finalEditorVisible = !state.finalEditorVisible;
+    const currentMode = state.current?.editorMode || 'text';
+    if (currentMode === 'pdf') return;
+    setVisible('proofReaderDocumentPreviewWrap',!state.finalEditorVisible && state.previewMode === 'text');
+    setVisible('proofReaderPdfPreviewWrap',!state.finalEditorVisible && state.previewMode === 'pdf');
+    setVisible('proofReaderTextEditorWrap',state.finalEditorVisible);
+    const button = byId('proofReaderEditFinalToggle');
+    if (button) button.innerHTML = state.finalEditorVisible ? '<i class="fi fi-rr-eye" aria-hidden="true"></i><span>View Annotated Document</span>' : '<i class="fi fi-rr-edit" aria-hidden="true"></i><span>Edit Final Revision</span>';
+  }
+
+  function renderProofReaderPdfHighlights() {
+    const pages = byId('proofReaderPdfPages');
+    if (!pages) return;
+    pages.querySelectorAll('.proofreader-pdf-annotation-overlay').forEach(node => node.remove());
+    pages.querySelectorAll('.proofreader-pdf-page').forEach(page => {
+      const pageNumber = Number(page.dataset.pageNumber || 0);
+      const overlay = document.createElement('div');
+      overlay.className = 'proofreader-pdf-annotation-overlay';
+      (state.annotations || []).filter(item => Number(item.pageNumber) === pageNumber && Array.isArray(item.rects)).forEach(item => {
+        item.rects.forEach(rect => {
+          const mark = document.createElement('div');
+          mark.className = 'proofreader-pdf-highlight';
+          mark.dataset.noteId = item.id || '';
+          mark.dataset.category = item.category || 'Correction';
+          mark.title = `${item.category}: ${item.note}`;
+          mark.style.left = `${Math.max(0,Number(rect.x)||0)*100}%`;
+          mark.style.top = `${Math.max(0,Number(rect.y)||0)*100}%`;
+          mark.style.width = `${Math.min(1,Number(rect.width)||0)*100}%`;
+          mark.style.height = `${Math.min(1,Number(rect.height)||0)*100}%`;
+          overlay.appendChild(mark);
+        });
+      });
+      page.appendChild(overlay);
+    });
+  }
+
+  async function renderProofReaderPdf(base64) {
+    const host = byId('proofReaderPdfPages');
+    const fallback = byId('proofReaderPdfFallback');
+    if (!host || !base64) return;
+    host.innerHTML = '';
+    const bytes = Uint8Array.from(atob(base64), character => character.charCodeAt(0));
+    const blob = new Blob([bytes],{type:'application/pdf'});
+    if (!window.pdfjsLib || typeof window.pdfjsLib.getDocument !== 'function' || typeof window.pdfjsLib.renderTextLayer !== 'function') {
+      state.pdfObjectUrl = URL.createObjectURL(blob);
+      const frame = byId('proofReaderPdfPreview');
+      if (frame) frame.src = state.pdfObjectUrl;
+      setVisible('proofReaderPdfFallback',true);
+      return;
+    }
+    try {
+      window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+      const pdf = await window.pdfjsLib.getDocument({data:bytes}).promise;
+      state.pdfDocument = pdf;
+      const availableWidth = Math.max(360,(host.clientWidth || 700)-32);
+      for (let pageNumber=1; pageNumber<=pdf.numPages; pageNumber++) {
+        const page = await pdf.getPage(pageNumber);
+        const natural = page.getViewport({scale:1});
+        const scale = Math.min(1.35,Math.max(.65,availableWidth/natural.width));
+        const viewport = page.getViewport({scale:scale});
+        const pageWrap = document.createElement('div');
+        pageWrap.className = 'proofreader-pdf-page';
+        pageWrap.dataset.pageNumber = String(pageNumber);
+        pageWrap.style.width = `${viewport.width}px`;
+        pageWrap.style.height = `${viewport.height}px`;
+        const canvas = document.createElement('canvas');
+        const outputScale = Math.max(1,Math.min(2,window.devicePixelRatio || 1));
+        canvas.width = Math.floor(viewport.width*outputScale);
+        canvas.height = Math.floor(viewport.height*outputScale);
+        canvas.style.width = `${viewport.width}px`;
+        canvas.style.height = `${viewport.height}px`;
+        pageWrap.appendChild(canvas);
+        const textLayer = document.createElement('div');
+        textLayer.className = 'proofreader-pdf-text-layer textLayer';
+        textLayer.style.width = `${viewport.width}px`;
+        textLayer.style.height = `${viewport.height}px`;
+        pageWrap.appendChild(textLayer);
+        host.appendChild(pageWrap);
+        const context = canvas.getContext('2d',{alpha:false});
+        context.setTransform(outputScale,0,0,outputScale,0,0);
+        await page.render({canvasContext:context,viewport:viewport}).promise;
+        const textContent = await page.getTextContent();
+        const textTask = window.pdfjsLib.renderTextLayer({textContent:textContent,container:textLayer,viewport:viewport,textDivs:[]});
+        if (textTask && textTask.promise) await textTask.promise;
+        else await textTask;
+      }
+      setVisible('proofReaderPdfFallback',false);
+      renderProofReaderPdfHighlights();
+    } catch (error) {
+      console.warn('PDF.js preview unavailable; falling back to native PDF preview:',error);
+      host.innerHTML = '';
+      state.pdfObjectUrl = URL.createObjectURL(blob);
+      const frame = byId('proofReaderPdfPreview');
+      if (frame) frame.src = state.pdfObjectUrl;
+      setVisible('proofReaderPdfFallback',true);
+    }
+  }
   function renderDetailGrid(record, data) {
     const target = byId('proofReaderDetailGrid');
     if (!target) return;
@@ -487,61 +781,82 @@
       setText('proofReaderWorkspaceSubtitle','Retrieving authorized document details.');
       setVisible('proofReaderReviewActions',false); setVisible('proofReaderSenderActions',false); setVisible('proofReaderReadonlyActions',false);
       modalOpen('proofReaderWorkspaceModal');
+      clearPdfPreview();
       const result = await api('get_proofreading_document',{requestId:requestId});
       state.current = result.request;
       state.currentDocument = result;
+      state.annotations = Array.isArray(result.annotations) ? result.annotations : [];
+      state.canAnnotate = !!result.canReview;
+      state.pendingSelection = null;
+      state.editingAnnotationId = '';
+      state.finalEditorVisible = false;
       const record = result.request;
       setText('proofReaderWorkspaceTitle',record.title);
       setText('proofReaderWorkspaceSubtitle',`${record.referenceNo} · ${record.currentFileName || record.originalFileName || 'Document'}`);
-      setText('proofReaderWorkspaceMeta',`${record.status} · Version ${record.revisionNumber}`);
+      setText('proofReaderWorkspaceMeta',`${record.status} · Version ${record.revisionNumber}${result.annotationVersion ? ` · Annotations for version ${result.annotationVersion}` : ''}`);
       renderDetailGrid(record,result);
       renderHistory(result.history);
       const editable = !!(result.canReview || result.canFinalRevise);
-      const textMode = record.editorMode === 'text';
-      setVisible('proofReaderTextEditorWrap',textMode);
-      setVisible('proofReaderPdfPreviewWrap',!textMode && !!result.pdfBase64);
+      const currentMode = record.editorMode === 'pdf' ? 'pdf' : 'text';
+      const previewMode = result.annotationEditorMode === 'pdf' || result.annotationEditorMode === 'text' ? result.annotationEditorMode : currentMode;
+      const previewContent = result.annotationEditorMode === 'text' && typeof result.annotationContent === 'string' ? result.annotationContent : result.content || '';
+      const previewPdf = result.annotationPdfBase64 || result.pdfBase64 || '';
+      state.previewMode = previewMode;
+      state.previewContent = previewContent;
+      setVisible('proofReaderDocumentPreviewWrap',previewMode === 'text');
+      setVisible('proofReaderPdfPreviewWrap',previewMode === 'pdf' && !!previewPdf);
+      setVisible('proofReaderTextEditorWrap',false);
+      setVisible('proofReaderEditFinalToggle',!!result.canFinalRevise && currentMode === 'text');
       setVisible('proofReaderReviewActions',!!result.canReview);
       setVisible('proofReaderSenderActions',!!result.canFinalRevise);
       setVisible('proofReaderReadonlyActions',!editable);
-      setVisible('proofReaderRevisionUploadWrap',editable && (!textMode || true));
+      setVisible('proofReaderRevisionUploadWrap',!!result.canFinalRevise || (!!result.canReview && currentMode === 'pdf'));
+      setVisible('proofReaderAnnotationControls',!!result.canReview);
       if (byId('proofReaderEditor')) {
         byId('proofReaderEditor').value = result.content || '';
-        byId('proofReaderEditor').readOnly = !editable;
-        byId('proofReaderEditor').setAttribute('aria-readonly',editable ? 'false' : 'true');
+        byId('proofReaderEditor').readOnly = !result.canFinalRevise;
+        byId('proofReaderEditor').setAttribute('aria-readonly',result.canFinalRevise ? 'false' : 'true');
       }
       if (byId('proofReaderRemark')) byId('proofReaderRemark').value = '';
       if (byId('proofReaderComments')) byId('proofReaderComments').value = '';
       if (byId('proofReaderRevisionUpload')) byId('proofReaderRevisionUpload').value = '';
+      if (byId('proofReaderAnnotationNote')) byId('proofReaderAnnotationNote').value = '';
+      if (byId('proofReaderAnnotationPage')) byId('proofReaderAnnotationPage').value = '';
+      if (byId('proofReaderAnnotationLocation')) byId('proofReaderAnnotationLocation').value = '';
+      setText('proofReaderSelectedText','No text selected. A general note or page-specific note can still be added.');
+      setAnnotationButtonLabel(false);
+      setVisible('proofReaderCancelAnnotationEditBtn',false);
       const originalName = record.originalFileName || 'Original uploaded document';
       const originalExt = (originalName.match(/\.([a-z0-9]+)$/i) || [,'file'])[1].toUpperCase();
-      setText('proofReaderOriginalFileName', originalName);
-      setText('proofReaderOriginalFileType', originalExt);
-      setText('proofReaderOriginalFileTitle', originalExt === 'DOCX' ? 'Original uploaded Word document' : 'Original uploaded file');
-      setVisible('proofReaderOriginalFileCard', true);
-      setVisible('proofReaderCurrentFileCard', true);
-      if (textMode) {
+      setText('proofReaderOriginalFileName',originalName);
+      setText('proofReaderOriginalFileType',originalExt);
+      setText('proofReaderOriginalFileTitle',originalExt === 'DOCX' ? 'Original uploaded Word document' : 'Original uploaded file');
+      setVisible('proofReaderOriginalFileCard',true);
+      setVisible('proofReaderCurrentFileCard',true);
+      if (currentMode === 'text') {
         setText('proofReaderCurrentFileTitle','Current editable Word copy');
         setText('proofReaderCurrentFileName',`${record.title || 'Document'} - Current Working Copy.docx`);
         setText('proofReaderCurrentFileType','DOCX');
         setText('proofReaderDownloadBtnLabel','Download Current .DOCX');
-        setText('proofReaderEditorHeading','Editable Document Content');
-        setText('proofReaderEditorMode',editable ? 'Edit the document text and submit your review. The original Word file is available above.' : 'Read-only text workspace. Download the Word file above to view the original layout.');
-        setText('proofReaderVersionPill',`Version ${record.revisionNumber} · DOCX`);
       } else {
         setText('proofReaderCurrentFileTitle','Current PDF document');
         setText('proofReaderCurrentFileName',record.currentFileName || record.originalFileName || 'Current PDF document');
         setText('proofReaderCurrentFileType','PDF');
         setText('proofReaderDownloadBtnLabel','Download Current PDF');
-        setText('proofReaderEditorHeading','PDF Document Preview');
-        setText('proofReaderEditorMode','PDF is preview-only. Upload a corrected copy for revisions.');
-        setText('proofReaderVersionPill',`Version ${record.revisionNumber} · PDF`);
-        clearPdfPreview();
-        const bytes = Uint8Array.from(atob(result.pdfBase64 || ''), char => char.charCodeAt(0));
-        state.pdfObjectUrl = URL.createObjectURL(new Blob([bytes],{type:'application/pdf'}));
-        const frame = byId('proofReaderPdfPreview');
-        if (frame) frame.src = state.pdfObjectUrl;
       }
-      const notice = editable ? (result.canReview ? 'Review the document, make corrections if needed, select a remark, and submit the review.' : 'Review the proofreading comments, revise the document, then submit your final revision.') : 'This record is available for viewing only.';
+      if (previewMode === 'text') {
+        setText('proofReaderEditorHeading',result.annotationVersion ? 'Reviewed Document Preview' : 'Document Preview');
+        setText('proofReaderEditorMode',state.canAnnotate ? 'Select document text and add linked proofreading notes in the notepad.' : 'Read-only preview with submitted proofreading notes and highlights.');
+        setText('proofReaderVersionPill',`Version ${result.annotationVersion || record.revisionNumber} · TEXT`);
+        renderProofReaderTextPreview();
+      } else {
+        setText('proofReaderEditorHeading',result.annotationVersion ? 'Reviewed PDF Preview' : 'PDF Document Preview');
+        setText('proofReaderEditorMode',state.canAnnotate ? 'Select PDF text, or add a page-specific note in the notepad.' : 'PDF is preview-only. Submitted highlights and notes are shown when available.');
+        setText('proofReaderVersionPill',`Version ${result.annotationVersion || record.revisionNumber} · PDF`);
+        await renderProofReaderPdf(previewPdf);
+      }
+      renderProofReaderAnnotationList();
+      const notice = result.canReview ? 'Review the uploaded document, add highlighted corrections or suggestions in the notepad, select a remark, and submit the review result.' : result.canFinalRevise ? 'Review the Proofreader’s annotations. For text documents, use Edit Final Revision when ready; then submit or upload the corrected file.' : 'This record is available for viewing only. Submitted annotations are read-only.';
       setText('proofReaderWorkspaceNotice',notice);
       window.SPADESModalStack?.refresh?.();
     } catch (error) {
@@ -554,6 +869,12 @@
     clearPdfPreview();
     state.current = null;
     state.currentDocument = null;
+    state.annotations = [];
+    state.pendingSelection = null;
+    state.editingAnnotationId = '';
+    state.canAnnotate = false;
+    state.previewContent = '';
+    state.finalEditorVisible = false;
     modalClose('proofReaderWorkspaceModal');
   }
   async function submitProofReaderReview() {
@@ -570,9 +891,17 @@
     try {
       if (button) { button._busy = true; button.disabled = true; button.setAttribute('aria-busy','true'); }
       setText('proofReaderWorkspaceNotice','Saving proofreading result…');
-      const payload = {requestId:record.id,remark:remark,comments:comments};
+      const payload = {
+        requestId:record.id,remark:remark,comments:comments,
+        annotations:(state.annotations || []).map(item => ({
+          category:item.category,selectedText:item.selectedText || '',
+          startOffset:item.startOffset == null ? null : Number(item.startOffset),
+          endOffset:item.endOffset == null ? null : Number(item.endOffset),
+          pageNumber:item.pageNumber == null ? null : Number(item.pageNumber),
+          rects:Array.isArray(item.rects) ? item.rects : [],location:item.location || '',note:item.note || ''
+        }))
+      };
       if (selectedFile) Object.assign(payload,await readFileAsBase64(selectedFile));
-      else if (record.editorMode === 'text') payload.revisionContent = String(byId('proofReaderEditor')?.value || '');
       const result = await api('submit_proofreading_review',payload);
       setText('proofReaderWorkspaceNotice',`Review saved: ${result.status}.`);
       closeProofReaderWorkspace();
@@ -690,6 +1019,13 @@
   window.openProofReaderDocument = openProofReaderDocument;
   window.closeProofReaderWorkspace = closeProofReaderWorkspace;
   window.submitProofReaderReview = submitProofReaderReview;
+  window.captureProofReaderSelection = captureProofReaderSelection;
+  window.addProofReaderAnnotation = addProofReaderAnnotation;
+  window.editProofReaderAnnotation = editProofReaderAnnotation;
+  window.cancelProofReaderAnnotationEdit = cancelProofReaderAnnotationEdit;
+  window.removeProofReaderAnnotation = removeProofReaderAnnotation;
+  window.openProofReaderAnnotation = openProofReaderAnnotation;
+  window.toggleProofReaderFinalEditor = toggleProofReaderFinalEditor;
   window.downloadProofReaderCurrentDocument = downloadProofReaderCurrentDocument;
   window.downloadProofReaderOriginalDocument = downloadProofReaderOriginalDocument;
   window.resubmitProofReaderFinalVersion = resubmitProofReaderFinalVersion;
@@ -699,5 +1035,21 @@
   document.addEventListener('DOMContentLoaded', () => {
     // Script is deferred, so DOM is generally already parsed; this hook also covers unusual loads.
     if (byId('proofReaderTableBody')) renderProofReaderTable();
+    byId('proofReaderDocumentPreview')?.addEventListener('click',event => {
+      const mark = event.target.closest && event.target.closest('mark[data-note-id]');
+      if (mark) openProofReaderAnnotation(mark.dataset.noteId);
+    });
+    byId('proofReaderAnnotationList')?.addEventListener('click',event => {
+      const card = event.target.closest && event.target.closest('[data-note-card]');
+      if (!card) return;
+      const noteId = card.dataset.noteCard;
+      if (state.previewMode === 'text') {
+        const mark = Array.from(byId('proofReaderDocumentPreview')?.querySelectorAll('mark[data-note-id]') || [])
+          .find(element => element.dataset.noteId === noteId);
+        mark?.scrollIntoView({behavior:'smooth',block:'center'});
+      } else {
+        openProofReaderAnnotation(noteId);
+      }
+    });
   });
 })();

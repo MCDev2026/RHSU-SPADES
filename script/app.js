@@ -140,6 +140,33 @@
             attributeFilter: ['class', 'hidden']
         });
 
+        // A final safety net for legacy close controls: their own handlers run first
+        // and perform module cleanup; if a handler is missing or fails to hide its
+        // owning overlay, close that exact dialog and repaint the stack.
+        document.addEventListener('click', event => {
+            const control = event.target && event.target.closest && event.target.closest(
+                'button.modal-uniform-close,button.modal-close-control,button.matrix-compliance-modal-close,button.profile-card-close,button.my-files-close-btn,button[data-modal-close],.modal-content button[aria-label*="close" i]'
+            );
+            if (!control) return;
+            const owner = control.closest(MODAL_SELECTOR);
+            if (!owner) return;
+            window.setTimeout(() => {
+                if (!isVisible(owner)) { refreshStack(); return; }
+                // Retry an explicitly declared inline close callback if one exists.
+                const inline = String(control.getAttribute('onclick') || '');
+                const callback = inline.match(/^\s*([A-Za-z_$][\w$]*)\s*\(/);
+                if (callback && typeof window[callback[1]] === 'function') {
+                    try { window[callback[1]](); } catch (error) { console.warn('Modal close callback failed:', error); }
+                }
+                if (isVisible(owner)) {
+                    owner.classList.add('hidden');
+                    owner.setAttribute('aria-hidden', 'true');
+                    owner.removeAttribute('aria-modal');
+                }
+                refreshStack();
+            }, 0);
+        }, false);
+
         window.SPADESModalStack = Object.freeze({
             bringToFront,
             refresh: refreshStack,
@@ -307,6 +334,8 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         let chatMessagesTimer = null;
         let chatbotHistory = [];
         let chatbotRequestInFlight = false;
+        let chatbotAttachmentFile = null;
+        const CHATBOT_MAX_ATTACHMENT_BYTES = 8 * 1024 * 1024;
         let chatUsersLoaded = false;
         let chatAttachmentFile = null;
         const CHAT_MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
@@ -1302,9 +1331,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             if (!message && !chatAttachmentFile) return;
             if (chatMode === 'private' && !chatSelectedUser) return customAlert('Select a user before sending a private message.', 'Chat');
             const btn = document.querySelector('.users-chat-send');
-            const btnLabel = btn?.querySelector('span');
-            if (btn) { btn.disabled = true; btn.setAttribute('aria-busy', 'true'); }
-            if (btnLabel) btnLabel.textContent = 'Sending…';
+            if (btn) { btn.disabled = true; btn.setAttribute('aria-busy', 'true'); btn.setAttribute('aria-label', 'Sending message'); }
             try {
                 const auth = chatCredentialPayload();
                 let attachment = null;
@@ -1355,7 +1382,6 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 customAlert(err.message || 'Unable to send message.', 'Chat Error');
             } finally {
                 if (btn) { btn.disabled = false; btn.removeAttribute('aria-busy'); }
-                if (btnLabel) btnLabel.textContent = 'Send';
                 input?.focus();
             }
         }
@@ -1699,17 +1725,64 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             }
         }
 
+        function chatbotAttachmentMime(file) {
+            const name = String(file?.name || '').toLowerCase();
+            const type = String(file?.type || '').toLowerCase();
+            if (name.endsWith('.pdf') || type === 'application/pdf') return 'application/pdf';
+            if (name.endsWith('.png') || type === 'image/png') return 'image/png';
+            if (name.endsWith('.jpg') || name.endsWith('.jpeg') || type === 'image/jpeg') return 'image/jpeg';
+            if (name.endsWith('.webp') || type === 'image/webp') return 'image/webp';
+            if (name.endsWith('.txt') || type === 'text/plain') return 'text/plain';
+            return '';
+        }
+
+        function handleChatbotAttachmentChange(event) {
+            const file = event?.target?.files?.[0] || null;
+            if (!file) { clearChatbotAttachment(); return; }
+            const mimeType = chatbotAttachmentMime(file);
+            if (!mimeType) {
+                clearChatbotAttachment();
+                customAlert('Choose a PDF, TXT, PNG, JPG, or WEBP file. Other formats are not supported by the AI attachment service.', 'Unsupported Attachment');
+                return;
+            }
+            const limit = mimeType === 'text/plain' ? 512 * 1024 : CHATBOT_MAX_ATTACHMENT_BYTES;
+            if (!file.size || file.size > limit) {
+                clearChatbotAttachment();
+                customAlert(mimeType === 'text/plain' ? 'TXT attachments are limited to 512 KB.' : 'AI attachments are limited to 8 MB.', 'Attachment Too Large');
+                return;
+            }
+            chatbotAttachmentFile = file;
+            const name = document.getElementById('chatbotAttachmentName');
+            const preview = document.getElementById('chatbotAttachmentPreview');
+            if (name) name.textContent = `${file.name} · ${formatChatFileSize(file.size)}`;
+            preview?.classList.remove('hidden');
+        }
+
+        function clearChatbotAttachment() {
+            chatbotAttachmentFile = null;
+            const input = document.getElementById('chatbotFileInput');
+            const preview = document.getElementById('chatbotAttachmentPreview');
+            const name = document.getElementById('chatbotAttachmentName');
+            if (input) input.value = '';
+            if (name) name.textContent = '';
+            preview?.classList.add('hidden');
+        }
+
         async function sendChatbotMessage() {
             const input = document.getElementById('chatInput');
             const sendButton = document.getElementById('chatSendBtn');
+            const attachButton = document.getElementById('chatbotAttachBtn');
             const text = String(input?.value || '').trim();
-            if (!text || chatbotRequestInFlight) return;
+            const selectedFile = chatbotAttachmentFile;
+            if ((!text && !selectedFile) || chatbotRequestInFlight) return;
             if (text.length > 1600) return appendChatbotMessage('bot', 'Please keep your question under 1,600 characters.');
 
+            const question = text || 'Please examine the attached file and summarize its contents, important points, and any concerns.';
             chatbotRequestInFlight = true;
             if (input) input.value = '';
-            if (sendButton) { sendButton.disabled = true; sendButton.setAttribute('aria-busy', 'true'); }
-            appendChatbotMessage('user', text);
+            if (sendButton) { sendButton.disabled = true; sendButton.setAttribute('aria-busy', 'true'); sendButton.setAttribute('aria-label', 'Sending message'); }
+            if (attachButton) attachButton.disabled = true;
+            appendChatbotMessage('user', selectedFile ? `${question}\n📎 ${selectedFile.name}` : question);
             const typing = appendChatbotMessage('bot', 'Thinking…', 'chatbot-typing');
 
             try {
@@ -1717,10 +1790,14 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                     action: 'ai_chat',
                     username: localStorage.getItem('loggedInUser') || '',
                     credential: localStorage.getItem('loggedCred') || '',
-                    message: text,
+                    message: question,
                     history: chatbotHistory.slice(-8),
                     currentPage: getCurrentSpadesPageKey()
                 };
+                if (selectedFile) {
+                    const base64 = await readChatFileAsBase64(selectedFile);
+                    payload.attachment = {name:selectedFile.name,mimeType:chatbotAttachmentMime(selectedFile),size:selectedFile.size,base64:base64};
+                }
                 const response = await fetch(API_URL, {
                     method: 'POST', mode: 'cors',
                     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
@@ -1733,8 +1810,9 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 if (!answer) throw new Error('The AI assistant returned an empty response.');
                 if (typing) typing.remove();
                 appendChatbotMessage('bot', answer);
-                chatbotHistory.push({ role: 'user', content: text }, { role: 'assistant', content: answer });
+                chatbotHistory.push({ role: 'user', content: selectedFile ? `${question} [Attached file: ${selectedFile.name}]` : question }, { role: 'assistant', content: answer });
                 chatbotHistory = chatbotHistory.slice(-12);
+                clearChatbotAttachment();
             } catch (error) {
                 if (typing) typing.remove();
                 const message = String(error?.message || 'AI service unavailable');
@@ -1751,7 +1829,8 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 console.warn('SPADES AI request failed:', message);
             } finally {
                 chatbotRequestInFlight = false;
-                if (sendButton) { sendButton.disabled = false; sendButton.removeAttribute('aria-busy'); }
+                if (sendButton) { sendButton.disabled = false; sendButton.removeAttribute('aria-busy'); sendButton.setAttribute('aria-label', 'Send message'); }
+                if (attachButton) attachButton.disabled = false;
                 input?.focus();
             }
         }

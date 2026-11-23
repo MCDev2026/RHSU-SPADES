@@ -907,7 +907,7 @@
 <i aria-hidden="true" class="fi fi-rr-paperclip"></i>
 </button>
 <div aria-multiline="true" class="users-chat-input" contenteditable="true" data-placeholder="Write a message..." id="usersChatInput" oninput="updateChatFormatState()" onkeydown="handleUsersChatKeydown(event)" role="textbox"></div>
-<button class="users-chat-send" onclick="sendUsersChatMessage()" type="button"><i aria-hidden="true" class="fi fi-rr-paper-plane"></i><span>Send</span></button>
+<button aria-label="Send message" class="users-chat-send" onclick="sendUsersChatMessage()" title="Send message" type="button"><i aria-hidden="true" class="fi fi-rr-paper-plane"></i><span>Send</span></button>
 </div>
 <div class="users-chat-note">Attachments are stored in Dropbox and automatically deleted after 7 days. Maximum file size: 10 MB.</div>
 </div>
@@ -1221,22 +1221,62 @@
 
 <!-- ADMIN PROOF READER: DOCUMENT WORKSPACE -->
 <div aria-labelledby="proofReaderWorkspaceTitle" aria-modal="true" class="modal-overlay hidden" id="proofReaderWorkspaceModal" onclick="if(event.target===this)closeProofReaderWorkspace()" role="dialog" style="z-index:2390;">
-  <div class="modal-content glass-panel modal-uniform-shell proofreader-workspace-modal"><header class="modal-uniform-header"><div class="modal-uniform-header-copy"><span class="modal-uniform-kicker" id="proofReaderWorkspaceKicker">DOCUMENT REVIEW</span><h2 id="proofReaderWorkspaceTitle">Document Information</h2><p id="proofReaderWorkspaceSubtitle">Review document content and request information.</p></div><button class="action-btn icon-action-btn modal-uniform-close" onclick="closeProofReaderWorkspace()" type="button" aria-label="Close" title="Close"><i class="fi fi-rr-cross-small" aria-hidden="true"></i></button></header>
+  <div class="modal-content glass-panel modal-uniform-shell proofreader-workspace-modal">
+    <header class="modal-uniform-header">
+      <div class="modal-uniform-header-copy">
+        <span class="modal-uniform-kicker" id="proofReaderWorkspaceKicker">DOCUMENT REVIEW</span>
+        <h2 id="proofReaderWorkspaceTitle">Document Information</h2>
+        <p id="proofReaderWorkspaceSubtitle">Review document content and request information.</p>
+      </div>
+      <button class="action-btn icon-action-btn modal-uniform-close" onclick="closeProofReaderWorkspace()" type="button" aria-label="Close proofreading workspace" title="Close"><i class="fi fi-rr-cross-small" aria-hidden="true"></i></button>
+    </header>
     <div class="proofreader-workspace-meta" id="proofReaderWorkspaceMeta"></div>
     <div class="proofreader-workspace-layout">
-      <section class="proofreader-editor-panel"><div class="proofreader-editor-toolbar"><div><strong id="proofReaderEditorHeading">Document Content</strong><small id="proofReaderEditorMode">Editable working copy</small></div><div class="proofreader-editor-tools"><span id="proofReaderVersionPill" class="proofreader-version-pill">Original</span></div></div>
+      <section class="proofreader-editor-panel" aria-label="Document preview">
+        <div class="proofreader-editor-toolbar">
+          <div><strong id="proofReaderEditorHeading">Document Preview</strong><small id="proofReaderEditorMode">Select text to attach a proofreading note.</small></div>
+          <div class="proofreader-editor-tools">
+            <span id="proofReaderVersionPill" class="proofreader-version-pill">Original</span>
+            <button class="action-btn proofreader-edit-final-toggle hidden" id="proofReaderEditFinalToggle" onclick="toggleProofReaderFinalEditor()" type="button"><i class="fi fi-rr-edit" aria-hidden="true"></i><span>Edit Final Revision</span></button>
+          </div>
+        </div>
         <section class="proofreader-document-files" aria-label="Proofreading document files">
-          <div class="proofreader-document-files-heading"><div><strong>Document Files</strong><small>Actual files accessible to the sender and assigned Proof Reader</small></div><i class="fi fi-rr-folder-open" aria-hidden="true"></i></div>
-          <article id="proofReaderOriginalFileCard" class="proofreader-document-file-card hidden"><div class="proofreader-document-file-icon"><i class="fi fi-rr-file-word" aria-hidden="true"></i></div><div class="proofreader-document-file-copy"><strong id="proofReaderOriginalFileTitle">Original uploaded Word document</strong><small id="proofReaderOriginalFileName">Original document.docx</small></div><span id="proofReaderOriginalFileType" class="proofreader-filetype-pill">DOCX</span><button id="proofReaderDownloadOriginalBtn" class="action-btn" type="button" onclick="downloadProofReaderOriginalDocument()" title="Download the exact original uploaded file" aria-label="Download original uploaded file"><i class="fi fi-rr-download" aria-hidden="true"></i><span>Download Original</span></button></article>
-          <article id="proofReaderCurrentFileCard" class="proofreader-document-file-card hidden"><div class="proofreader-document-file-icon current"><i class="fi fi-rr-file-word" aria-hidden="true"></i></div><div class="proofreader-document-file-copy"><strong id="proofReaderCurrentFileTitle">Current editable Word copy</strong><small id="proofReaderCurrentFileName">Current Working Copy.docx</small></div><span id="proofReaderCurrentFileType" class="proofreader-filetype-pill">DOCX</span><button id="proofReaderDownloadBtn" class="action-btn approve-btn" type="button" onclick="downloadProofReaderCurrentDocument()" title="Download the latest proofreading version as a file" aria-label="Download current document file"><i class="fi fi-rr-download" aria-hidden="true"></i><span id="proofReaderDownloadBtnLabel">Download Current .DOCX</span></button></article>
+          <div class="proofreader-document-files-heading"><div><strong>Document Files</strong><small>Private files accessible only to the sender and designated Proof Reader</small></div><i class="fi fi-rr-folder-open" aria-hidden="true"></i></div>
+          <article id="proofReaderOriginalFileCard" class="proofreader-document-file-card hidden"><div class="proofreader-document-file-icon"><i class="fi fi-rr-file-word" aria-hidden="true"></i></div><div class="proofreader-document-file-copy"><strong id="proofReaderOriginalFileTitle">Original uploaded document</strong><small id="proofReaderOriginalFileName">Original document</small></div><span id="proofReaderOriginalFileType" class="proofreader-filetype-pill">DOCX</span><button id="proofReaderDownloadOriginalBtn" class="action-btn" type="button" onclick="downloadProofReaderOriginalDocument()" title="Download the exact original uploaded file" aria-label="Download original uploaded file"><i class="fi fi-rr-download" aria-hidden="true"></i><span>Download Original</span></button></article>
+          <article id="proofReaderCurrentFileCard" class="proofreader-document-file-card hidden"><div class="proofreader-document-file-icon current"><i class="fi fi-rr-file-word" aria-hidden="true"></i></div><div class="proofreader-document-file-copy"><strong id="proofReaderCurrentFileTitle">Current document</strong><small id="proofReaderCurrentFileName">Current document file</small></div><span id="proofReaderCurrentFileType" class="proofreader-filetype-pill">DOCX</span><button id="proofReaderDownloadBtn" class="action-btn approve-btn" type="button" onclick="downloadProofReaderCurrentDocument()" title="Download the latest document file" aria-label="Download current document file"><i class="fi fi-rr-download" aria-hidden="true"></i><span id="proofReaderDownloadBtnLabel">Download Current File</span></button></article>
         </section>
-        <div id="proofReaderTextEditorWrap" class="proofreader-text-editor-wrap"><textarea id="proofReaderEditor" spellcheck="true" aria-label="Document content editor" placeholder="Document content will appear here."></textarea></div>
-        <div id="proofReaderPdfPreviewWrap" class="proofreader-pdf-preview-wrap hidden"><iframe id="proofReaderPdfPreview" title="Proofreading PDF preview"></iframe></div>
-        <div id="proofReaderRevisionUploadWrap" class="proofreader-revision-upload hidden"><label for="proofReaderRevisionUpload">Upload corrected document</label><input id="proofReaderRevisionUpload" type="file" accept=".docx,.txt,.html,.htm,.pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/zip,text/plain,text/html,application/pdf"/><small>DOCX, TXT, HTML/HTM, or PDF · Maximum 10 MB. Required when uploading a corrected file or revising a PDF.</small></div>
+        <div id="proofReaderDocumentPreviewWrap" class="proofreader-document-preview-wrap">
+          <div class="proofreader-preview-toolbar"><span id="proofReaderSelectionStatus" aria-live="polite">Select words, a sentence, or a paragraph, then choose “Use Selected Text”.</span><button class="action-btn proofreader-use-selection-btn" id="proofReaderUseSelectionBtn" onclick="captureProofReaderSelection()" type="button"><i class="fi fi-rr-highlighter" aria-hidden="true"></i><span>Use Selected Text</span></button></div>
+          <div id="proofReaderDocumentPreview" class="proofreader-document-preview" role="document" aria-label="Uploaded document content"></div>
+        </div>
+        <div id="proofReaderTextEditorWrap" class="proofreader-text-editor-wrap hidden"><label class="proofreader-final-editor-label" for="proofReaderEditor">Final revision text</label><textarea id="proofReaderEditor" spellcheck="true" aria-label="Final revision document content" placeholder="Document content will appear here."></textarea></div>
+        <div id="proofReaderPdfPreviewWrap" class="proofreader-pdf-preview-wrap hidden">
+          <div id="proofReaderPdfPages" class="proofreader-pdf-pages" aria-label="PDF document pages"></div>
+          <div id="proofReaderPdfFallback" class="proofreader-pdf-fallback hidden"><p>Selectable PDF text preview is unavailable in this browser session. You can still add page-specific proofreading notes.</p><iframe id="proofReaderPdfPreview" title="Proofreading PDF preview"></iframe></div>
+        </div>
+        <div id="proofReaderRevisionUploadWrap" class="proofreader-revision-upload hidden"><label for="proofReaderRevisionUpload">Upload corrected document</label><input id="proofReaderRevisionUpload" type="file" accept=".docx,.txt,.html,.htm,.pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/zip,text/plain,text/html,application/pdf"/><small>DOCX, TXT, HTML/HTM, or PDF · Maximum 10 MB. Required when returning a corrected PDF.</small></div>
       </section>
-      <aside class="proofreader-review-panel"><div class="proofreader-detail-section"><h3>Request Details</h3><div id="proofReaderDetailGrid" class="proofreader-detail-grid"></div></div><div class="proofreader-review-actions hidden" id="proofReaderReviewActions"><h3>Proofreading Decision</h3><label class="proofreader-field">Remark<select id="proofReaderRemark"><option value="">Select proofreading remark…</option><option>For Revision</option><option>For Correction</option><option>Approved</option><option>Disapproved</option><option>Disregard</option></select></label><label class="proofreader-field">Review Comments<textarea id="proofReaderComments" rows="4" maxlength="4000" placeholder="Explain the review result or corrections"></textarea></label><button class="action-btn approve-btn" id="proofReaderSubmitReviewBtn" onclick="submitProofReaderReview()" type="button">Submit Review Result</button></div><div class="proofreader-sender-actions hidden" id="proofReaderSenderActions"><h3>Final Revision</h3><p>The reviewed copy and comments are provided above. Revise the content or upload a corrected file, then resubmit it for proofreading.</p><button class="action-btn approve-btn" id="proofReaderResubmitBtn" onclick="resubmitProofReaderFinalVersion()" type="button">Submit Final Revision</button></div><div class="proofreader-readonly-actions hidden" id="proofReaderReadonlyActions"><p>This request is currently closed or not editable by your role.</p></div><div class="proofreader-history-section"><h3>Revision History</h3><div id="proofReaderHistory" class="proofreader-history-timeline"><div class="proofreader-empty">No history loaded.</div></div></div></aside>
+      <aside class="proofreader-review-panel" aria-label="Proofreading notes and review controls">
+        <section class="proofreader-detail-section"><h3>Request Details</h3><div id="proofReaderDetailGrid" class="proofreader-detail-grid"></div></section>
+        <section class="proofreader-notepad" id="proofReaderNotepad">
+          <div class="proofreader-notepad-heading"><div><span class="proofreader-notepad-eyebrow">ANNOTATION WORKSPACE</span><h3>Proofreader Notepad</h3></div><span class="proofreader-note-count" id="proofReaderAnnotationCount">0 notes</span></div>
+          <div class="proofreader-annotation-controls" id="proofReaderAnnotationControls">
+            <label class="proofreader-field" for="proofReaderAnnotationType">Note Category<select id="proofReaderAnnotationType"><option value="Correction">Correction</option><option value="Revision">Revision</option><option value="Suggestion">Suggestion</option><option value="Observation">Observation</option></select></label>
+            <div class="proofreader-selected-reference"><span>Selected document content</span><p id="proofReaderSelectedText">No text selected. A general note or page-specific note can still be added.</p></div>
+            <div class="proofreader-annotation-location-grid"><label class="proofreader-field" for="proofReaderAnnotationPage">Page number <small>(PDF or page-based note)</small><input id="proofReaderAnnotationPage" type="number" min="1" max="9999" placeholder="Optional"/></label><label class="proofreader-field" for="proofReaderAnnotationLocation">Location <small>(optional)</small><input id="proofReaderAnnotationLocation" type="text" maxlength="240" placeholder="e.g. Paragraph 2, final section"/></label></div>
+            <label class="proofreader-field" for="proofReaderAnnotationNote">Revision / Correction / Suggestion<textarea id="proofReaderAnnotationNote" rows="4" maxlength="4000" placeholder="Explain what should be revised, corrected, clarified, or considered…"></textarea></label>
+            <div class="proofreader-annotation-actions"><button class="action-btn approve-btn" id="proofReaderAddAnnotationBtn" onclick="addProofReaderAnnotation()" type="button"><i class="fi fi-rr-plus" aria-hidden="true"></i><span>Add Note</span></button><button class="action-btn hidden" id="proofReaderCancelAnnotationEditBtn" onclick="cancelProofReaderAnnotationEdit()" type="button">Cancel Edit</button></div>
+          </div>
+          <div class="proofreader-annotation-list-heading"><strong>Notes and Highlights</strong><small>Each note remains linked to its selected text or page location.</small></div>
+          <div id="proofReaderAnnotationList" class="proofreader-annotation-list" aria-live="polite"><div class="proofreader-empty">No proofreading notes yet.</div></div>
+        </section>
+        <div class="proofreader-review-actions hidden" id="proofReaderReviewActions"><h3>Proofreading Decision</h3><label class="proofreader-field" for="proofReaderRemark">Remark<select id="proofReaderRemark"><option value="">Select proofreading remark…</option><option>For Revision</option><option>For Correction</option><option>Approved</option><option>Disapproved</option><option>Disregard</option></select></label><label class="proofreader-field" for="proofReaderComments">Review Comments<textarea id="proofReaderComments" rows="4" maxlength="4000" placeholder="Explain the review result or provide general comments…"></textarea></label><button class="action-btn approve-btn" id="proofReaderSubmitReviewBtn" onclick="submitProofReaderReview()" type="button"><i class="fi fi-rr-paper-plane" aria-hidden="true"></i><span>Submit Review Result</span></button></div>
+        <div class="proofreader-sender-actions hidden" id="proofReaderSenderActions"><h3>Final Revision</h3><p>Review the Proofreader’s highlighted source document and notes. Open the final revision editor or upload a corrected file, then resubmit it for proofreading.</p><button class="action-btn approve-btn" id="proofReaderResubmitBtn" onclick="resubmitProofReaderFinalVersion()" type="button">Submit Final Revision</button></div>
+        <div class="proofreader-readonly-actions hidden" id="proofReaderReadonlyActions"><p>This request is currently closed or not editable by your role.</p></div>
+        <div class="proofreader-history-section"><h3>Revision History</h3><div id="proofReaderHistory" class="proofreader-history-timeline"><div class="proofreader-empty">No history loaded.</div></div></div>
+      </aside>
     </div>
-    <div class="proofreader-workspace-footer"><span id="proofReaderWorkspaceNotice" aria-live="polite">Only the sender and designated Proof Reader can access this document.</span></div>
+    <div class="proofreader-workspace-footer"><span id="proofReaderWorkspaceNotice" aria-live="polite">Only the sender and designated Proof Reader can access this document and its annotations.</span></div>
   </div>
 </div>
 
@@ -1385,11 +1425,18 @@
 <div aria-live="polite" aria-relevant="additions" class="chat-messages" id="chatMessages" role="log">
 <div class="chat-msg bot">Hello! I’m your SPADES assistant. Ask me about memo workflows, personnel tools, activity records, profile settings, or how to use the portal.</div>
 </div>
+<div class="chatbot-attachment-preview hidden" id="chatbotAttachmentPreview" aria-live="polite">
+  <i class="fi fi-rr-paperclip" aria-hidden="true"></i>
+  <span id="chatbotAttachmentName"></span>
+  <button type="button" class="chatbot-attachment-remove" onclick="clearChatbotAttachment()" aria-label="Remove attachment" title="Remove attachment">×</button>
+</div>
 <div class="chat-input-area">
 <input aria-label="Message the SPADES AI Assistant" autocomplete="off" id="chatInput" maxlength="1600" onkeydown="handleChat(event)" placeholder="Ask about SPADES…" type="text"/>
+<input accept=".pdf,.txt,.png,.jpg,.jpeg,.webp,application/pdf,text/plain,image/png,image/jpeg,image/webp" aria-label="Choose a file for the AI assistant" class="chatbot-file-input" id="chatbotFileInput" onchange="handleChatbotAttachmentChange(event)" type="file"/>
+<button aria-label="Attach file" class="chatbot-attach-btn" id="chatbotAttachBtn" onclick="document.getElementById('chatbotFileInput').click()" title="Attach file" type="button"><i aria-hidden="true" class="fi fi-rr-paperclip"></i></button>
 <button aria-label="Send message" id="chatSendBtn" onclick="sendChatbotMessage()" title="Send message" type="button"><i aria-hidden="true" class="fi fi-rr-paper-plane"></i></button>
 </div>
-<div class="chatbot-footnote">AI responses can be imperfect. Do not enter passwords, PINs, or other sensitive information.</div>
+<div class="chatbot-footnote">AI responses can be imperfect. Supported attachments: PDF, TXT, PNG, JPG, and WEBP (maximum 8 MB). Do not upload passwords or sensitive personal information.</div>
 </section>
 <button aria-expanded="false" aria-label="Open SPADES AI Assistant" class="spades-force-icon-only" data-spades-icon-name="fi-rr-comment-dots" id="chatbot-bubble" onclick="toggleChat()" title="Open SPADES AI Assistant"><i aria-hidden="true" class="fi fi-rr-comment-dots"></i></button>
 </div>
@@ -2113,6 +2160,7 @@
 <div class="file-preview-meta-row"><span id="previewMeta"></span><span class="file-preview-local-note">Office files use a page-layout preview when available. Download always returns the original file.</span></div>
 </div>
 </div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js" defer></script>
 <script src="script/admin-proof-reader.js" defer></script>
 </body>
 </html>
