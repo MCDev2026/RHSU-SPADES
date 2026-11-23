@@ -3926,6 +3926,83 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             renderPersonnelTable(rows, archiveRows);
         }
 
+        function getPersonnelExportRowsInDisplayOrder() {
+            const q = (document.getElementById('personnelSearch')?.value || '').trim().toLowerCase();
+            const rank = document.getElementById('personnelRankFilter')?.value || '';
+            const status = document.getElementById('personnelStatusFilter')?.value || '';
+            const section = document.getElementById('personnelSectionFilter')?.value || '';
+            const matches = p => {
+                const text = [p.no,p.rank,p.lastName,p.firstName,p.middleName,p.qualifiers,p.designation,p.section,p.status,p.contactNo,p.address,p.remarks,p.badgeNumber]
+                    .map(value => String(value == null ? '' : value)).join(' ').toLowerCase();
+                const sectionValue = String(p.section || '').trim();
+                return (!q || text.includes(q)) &&
+                    (!rank || String(p.rank || '') === rank) &&
+                    (!status || String(p.status || '') === status) &&
+                    (!section || (section === '__blank__' ? !sectionValue : sectionValue.toLowerCase() === section.toLowerCase()));
+            };
+            const rankOrder = {PBGEN:1,PCOL:2,PLTCOL:3,PMAJ:4,PCPT:5,PLT:6,PEMS:7,PCMS:8,PSMS:9,PMSG:10,PSSG:11,PCPL:12,PAT:13,NUP:14};
+            const sortPersonnel = rows => rows.slice().sort((a,b) => {
+                const aRank = String(a.rank || '').trim().toUpperCase();
+                const bRank = String(b.rank || '').trim().toUpperCase();
+                return (rankOrder[aRank] || 99) - (rankOrder[bRank] || 99) || String(a.lastName || '').localeCompare(String(b.lastName || ''));
+            });
+            const active = sortPersonnel((Array.isArray(allPersonnel) ? allPersonnel : []).filter(matches));
+            const archived = sortPersonnel((Array.isArray(archivedPersonnel) ? archivedPersonnel : []).filter(matches));
+            const groups = new Map();
+            const detached = [], dsOther = [];
+            active.forEach(person => {
+                const sectionName = String(person.section || '').trim() || 'Unspecified';
+                const normalized = sectionName.toLowerCase();
+                if (normalized === 'detached service') { detached.push(person); return; }
+                if (normalized === 'ds to other office/unit') { dsOther.push(person); return; }
+                if (!groups.has(sectionName)) groups.set(sectionName, []);
+                groups.get(sectionName).push(person);
+            });
+            const preferredOrder = ['Admin Section','General Services Section','Special Services Band','Base Police'];
+            const orderedSections = [];
+            preferredOrder.forEach(name => {
+                const actual = [...groups.keys()].find(key => key.toLowerCase() === name.toLowerCase());
+                if (actual) orderedSections.push(actual);
+            });
+            [...groups.keys()].filter(key => !orderedSections.some(item => item.toLowerCase() === key.toLowerCase())).sort((a,b) => a.localeCompare(b)).forEach(key => orderedSections.push(key));
+            const result = [];
+            const appendGroup = (groupName, people, archivedFlag) => people.forEach((person, index) => result.push({person, groupName, archived:archivedFlag, displayNo:index + 1}));
+            orderedSections.forEach(name => appendGroup(name, groups.get(name), false));
+            appendGroup('Detached Service', detached, false);
+            appendGroup('DS to Other Office/Unit', dsOther, false);
+            appendGroup('Archived', archived, true);
+            return result;
+        }
+
+        async function downloadPersonnelListExcel() {
+            if (!Array.isArray(allPersonnel) || !Array.isArray(archivedPersonnel)) {
+                return customAlert('Personnel records are not ready. Refresh the Personnel List and try again.', 'Excel Export');
+            }
+            const exportRows = getPersonnelExportRowsInDisplayOrder();
+            if (!exportRows.length) return customAlert('No personnel records match the current search and filters.', 'Excel Export');
+            const button = document.getElementById('personnelDownloadExcelBtn');
+            if (button) { button.disabled = true; button.setAttribute('aria-busy','true'); }
+            try {
+                const headers = ['Record Type','Section Group','No.','Rank','Last Name','First Name','Middle Name','Qualifiers','Badge Number','Designation','Section','Status','Contact No.','Address','Remarks','Archived Date'];
+                const rows = exportRows.map(({person:p,groupName,archived,displayNo}) => [
+                    archived ? 'Archived' : 'Current List', groupName, displayNo, p.rank || '', p.lastName || '', p.firstName || '', p.middleName || '', p.qualifiers || '',
+                    p.badgeNumber || '', p.designation || '', p.section || '', p.status || (archived ? 'Archived' : 'Active'), p.contactNo || '', p.address || '',
+                    archived ? '' : (p.remarks || ''), archived ? (p.archivedDate || '') : ''
+                ]);
+                const today = new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Manila',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+                const result = await downloadSpadesExcelWorkbook({
+                    title:'RHSU Personnel List', sheetName:'Personnel List', fileName:`RHSU_Personnel_List_${today}.xlsx`,
+                    headers, rows, widths:[16,28,8,12,20,20,20,18,18,26,28,16,18,34,28,18]
+                });
+                customAlert(`${result.rowCount} personnel record(s) exported successfully. The workbook follows the current filters and displayed section order.`, 'Excel Download');
+            } catch (error) {
+                console.error('Personnel List Excel export failed:', error);
+                customAlert(error.message || 'Unable to generate the Personnel List Excel workbook.', 'Excel Export Error');
+            } finally {
+                if (button) { button.disabled = false; button.removeAttribute('aria-busy'); }
+            }
+        }
+
         function renderPersonnelTable(rows, archiveRows) {
             const can = canPersonnelAction('list', 'edit') || canPersonnelAction('list', 'delete') || canPersonnelAction('list', 'add');
             const container = document.getElementById('personnelTablesContainer');
@@ -4490,30 +4567,31 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
 
         function formatActivityTime(value) {
             if (value === null || value === undefined) return '';
-
+            if (typeof value === 'number' && Number.isFinite(value) && value >= 0 && value < 1) {
+                const minutes = Math.round(value * 1440) % 1440;
+                const hour24 = Math.floor(minutes / 60);
+                const minute = minutes % 60;
+                const hour12 = hour24 % 12 || 12;
+                return `${String(hour12).padStart(2, '0')}:${String(minute).padStart(2, '0')} ${hour24 >= 12 ? 'PM' : 'AM'}`;
+            }
             const raw = String(value).trim();
             if (!raw) return '';
+            if (/^(?:0|0?\.\d+|\.\d+)$/.test(raw)) {
+                const fraction = Number(raw);
+                if (Number.isFinite(fraction) && fraction >= 0 && fraction < 1) return formatActivityTime(fraction);
+            }
             const rangeParts = raw.split(/\s*(?:-|–|to)\s*/i);
             if (rangeParts.length === 2) return `${formatActivityTime(rangeParts[0])} – ${formatActivityTime(rangeParts[1])}`;
 
-            // Google Sheets may return a time-only cell as a full Date string,
-            // e.g. "Sat Dec 30 1899 08:30:00 GMT+0800 (...)".
-            const dateTimeMatch = raw.match(/(?:^|\s)(\d{1,2}):(\d{2})(?::\d{2})?\s*(?:GMT[+-]\d{4})?/i);
-            if (dateTimeMatch) {
-                let hours = Number(dateTimeMatch[1]);
-                const minutes = Number(dateTimeMatch[2]);
-
-                if (
-                    Number.isFinite(hours) &&
-                    hours >= 0 &&
-                    hours <= 23 &&
-                    Number.isFinite(minutes) &&
-                    minutes >= 0 &&
-                    minutes <= 59
-                ) {
-                    const suffix = hours >= 12 ? 'PM' : 'AM';
-                    hours = hours % 12 || 12;
-                    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')} ${suffix}`;
+            // Recognize explicit AM/PM values before extracting times from a
+            // Date string; otherwise the Date-string matcher can mistake the
+            // space before "02:30 PM" for a date/time boundary and lose PM.
+            const match12 = raw.match(/^(\d{1,2}):(\d{2})(?::\d{2})?\s*([AaPp][Mm])$/);
+            if (match12) {
+                const hours = Number(match12[1]);
+                const minutes = Number(match12[2]);
+                if (hours >= 1 && hours <= 12 && minutes >= 0 && minutes <= 59) {
+                    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')} ${match12[3].toUpperCase()}`;
                 }
             }
 
@@ -4529,22 +4607,39 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 }
             }
 
-            // Normal 12-hour value: 08:30 AM, 02:30 PM, etc.
-            const match12 = raw.match(/^(\d{1,2}):(\d{2})(?::\d{2})?\s*([AaPp][Mm])$/);
-            if (match12) {
-                const hours = Number(match12[1]);
-                const minutes = Number(match12[2]);
-                if (hours >= 1 && hours <= 12 && minutes >= 0 && minutes <= 59) {
-                    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')} ${match12[3].toUpperCase()}`;
+            // Google Sheets may return a time-only cell as a full Date string,
+            // e.g. "Sat Dec 30 1899 08:30:00 GMT+0800 (...)".
+            const dateTimeMatch = raw.match(/(?:^|\s)(\d{1,2}):(\d{2})(?::\d{2})?\s*([AaPp][Mm])?\s*(?:GMT[+-]\d{4})?/i);
+            if (dateTimeMatch) {
+                let hours = Number(dateTimeMatch[1]);
+                const minutes = Number(dateTimeMatch[2]);
+                const explicitSuffix = dateTimeMatch[3] ? dateTimeMatch[3].toUpperCase() : '';
+                const validHours = explicitSuffix ? hours >= 1 && hours <= 12 : hours >= 0 && hours <= 23;
+                if (validHours && minutes >= 0 && minutes <= 59) {
+                    const suffix = explicitSuffix || (hours >= 12 ? 'PM' : 'AM');
+                    if (explicitSuffix) hours = (hours % 12) + (suffix === 'PM' ? 12 : 0);
+                    hours = hours % 12 || 12;
+                    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')} ${suffix}`;
                 }
             }
-
             return raw;
         }
 
         function activityTimeForInput(value) {
-            const raw = String(value == null ? '' : value).trim();
-            const match24 = raw.match(/^(\\d{1,2}):(\\d{2})$/);
+            if (typeof value === 'number' && Number.isFinite(value) && value >= 0 && value < 1) {
+                const totalMinutes = Math.round(value * 1440) % 1440;
+                return `${String(Math.floor(totalMinutes / 60)).padStart(2, '0')}:${String(totalMinutes % 60).padStart(2, '0')}`;
+            }
+            let raw = String(value == null ? '' : value).trim();
+            if (!raw) return '';
+            if (/^(?:0|0?\.\d+|\.\d+)$/.test(raw)) {
+                const fraction = Number(raw);
+                if (Number.isFinite(fraction) && fraction >= 0 && fraction < 1) {
+                    const totalMinutes = Math.round(fraction * 1440) % 1440;
+                    return `${String(Math.floor(totalMinutes / 60)).padStart(2, '0')}:${String(totalMinutes % 60).padStart(2, '0')}`;
+                }
+            }
+            const match24 = raw.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
             if (match24) {
                 const hours = Number(match24[1]);
                 const minutes = Number(match24[2]);
@@ -4552,7 +4647,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                     return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
                 }
             }
-            const match12 = raw.match(/^(\\d{1,2}):(\\d{2})\\s*([AaPp][Mm])$/);
+            const match12 = raw.match(/^(\d{1,2}):(\d{2})(?::\d{2})?\s*([AaPp][Mm])$/);
             if (match12) {
                 let hours = Number(match12[1]);
                 const minutes = Number(match12[2]);
@@ -4563,13 +4658,16 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                     return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
                 }
             }
+            // Normalize older Google Sheets Date-string representations through the shared formatter.
+            const formatted = formatActivityTime(raw);
+            if (formatted && formatted !== raw) return activityTimeForInput(formatted);
             return '';
         }
 
         function activityLegacyGroupSignature(activity) {
             return [activity.activityTitle, activity.assignedVenue, activity.requestingOffice,
                 activity.concernedOffice, activity.time, activity.frequency, activity.encodedBy]
-                .map(value => String(value || '').trim().toLowerCase()).join('¦');
+                .map(value => String(value == null ? '' : value).trim().toLowerCase()).join('¦');
         }
 
         function getActivityGroupRecords(activity) {
@@ -4604,7 +4702,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             document.getElementById('activityRequestingOffice').value = a.requestingOffice || '';
             document.getElementById('activityConcernedOffice').value = a.concernedOffice || '';
             document.getElementById('activityRequestedServices').value = a.requestedServices || '';
-            const savedRange = String(a.time || '').split(/\s*(?:-|–|to)\s*/i);
+            const savedRange = String(a.time == null ? '' : a.time).split(/\s*(?:-|–|to)\s*/i);
             document.getElementById('activityTimeFrom').value = activityTimeForInput(savedRange[0] || '');
             document.getElementById('activityTimeTo').value = activityTimeForInput(savedRange[1] || savedRange[0] || '');
             document.getElementById('activityFrequency').value = a.frequency || 'N/A';
@@ -4622,6 +4720,19 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         function closeActivityModal() {
             document.getElementById('activityModal').classList.add('hidden');
             activityEditId = null;
+        }
+
+        function clearQueuedActivityRemindersForRecords(recordIds) {
+            const ids = new Set((Array.isArray(recordIds) ? recordIds : []).map(value => String(value == null ? '' : value).trim()).filter(Boolean));
+            if (!ids.size || !Array.isArray(scheduledAlertQueue)) return 0;
+            const removed = [];
+            scheduledAlertQueue = scheduledAlertQueue.filter(alert => {
+                const stale = String(alert?.recordType || '').toLowerCase() === 'activity' && ids.has(String(alert?.recordId || ''));
+                if (stale) removed.push(String(alert.alertKey || ''));
+                return !stale;
+            });
+            removed.forEach(key => { if (key) scheduledAlertQueueKeys.delete(key); });
+            return removed.length;
         }
 
         async function saveActivity() {
@@ -4646,6 +4757,10 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 return customAlert('Please complete all required fields and select at least one date.', 'Validation Error');
             }
             const wasEditing = !!activityEditId;
+            const originalActivity = wasEditing ? (allActivities || []).find(item => String(item.id) === String(activityEditId)) : null;
+            const affectedActivityIds = wasEditing
+                ? getActivityGroupRecords(originalActivity).map(item => String(item.id || '')).filter(Boolean)
+                : [];
             const payload = {
                 action: wasEditing ? 'update_activity' : 'add_activity',
                 id: activityEditId,
@@ -4660,10 +4775,14 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 const res = await fetch(API_URL, { method:'POST', mode:'cors', headers:{'Content-Type':'text/plain;charset=utf-8'}, body:JSON.stringify(payload) });
                 const data = await res.json();
                 if (!data.success) throw new Error(data.error || 'Unable to save activity.');
+                if (wasEditing) clearQueuedActivityRemindersForRecords(affectedActivityIds);
                 logActivity(`${wasEditing ? 'updated' : 'added'} activity: "${title}"`);
                 closeActivityModal();
                 customAlert(wasEditing ? 'Activity updated successfully.' : 'Activity added successfully.', 'Success');
                 await loadActivities();
+                // Re-check the existing server-side 3-hour / 1-hour reminder ledger
+                // against the confirmed saved activity values. The ledger key prevents duplicates.
+                if (typeof pollScheduledAlerts === 'function') await pollScheduledAlerts();
             } catch (err) {
                 customAlert(err.message || 'Unable to save activity.', 'Error');
             } finally {
@@ -4790,7 +4909,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             const locked = !!item.locked;
             const activityName = String(activity.activityTitle || 'Untitled activity');
             const statusLabel = archived ? 'Archived' : String(activity.status || activityStatusForDate(activity.date) || 'Scheduled');
-            const rawTime = String(activity.time || '').trim();
+            const rawTime = String(activity.time == null ? '' : activity.time).trim();
             const firstTime = rawTime.split(/\s*(?:-|–|to)\s*/i)[0] || '';
             const timeValue = activityTimeForInput(firstTime) || activityTimeForInput(formatActivityTime(firstTime));
             const timeLabel = timeValue ? formatActivityTime(timeValue) : '';
@@ -4874,7 +4993,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             bindActivityCalendarDetails(host);
         }
         function getActivityTimeRange(activity) {
-            const raw = String(activity && activity.time || '').trim();
+            const raw = String(activity && activity.time != null ? activity.time : '').trim();
             const parts = raw.split(/\s*(?:-|–|to)\s*/i);
             const startText = activityTimeForInput(parts[0] || '') || activityTimeForInput(formatActivityTime(parts[0] || ''));
             const endText = activityTimeForInput(parts[1] || '') || activityTimeForInput(formatActivityTime(parts[1] || ''));
@@ -7490,6 +7609,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 areas = [];
             }
             renderAreaCards();
+            renderAreaOverviewTable();
             return loaded;
         }
         let areaDragId = null;
@@ -7503,16 +7623,82 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             const canEdit = canPersonnelAction('aor', 'edit');
             container.innerHTML = areas.map(a => {
                 const canEditThisArea = canEdit && isCurrentUserRecordOwner(a.createdBy);
+                const assignedCount = Array.isArray(a.personnel) ? a.personnel.length : 0;
                 return `<div class="area-card glass-panel" draggable="${canEditThisArea?'true':'false'}" data-area-id="${escapeAttr(a.areaId)}"
                     onclick="openAreaDetails('${escapeAttr(a.areaId)}')" role="button" tabindex="0" aria-label="View details for ${escapeAttr(a.areaName)}"
                     ${canEditThisArea ? `ondragstart="areaCardDragStart(event, '${escapeAttr(a.areaId)}')" ondragover="areaCardDragOver(event)" ondragleave="areaCardDragLeave(event)" ondrop="areaCardDrop(event, '${escapeAttr(a.areaId)}')" ondragend="areaCardDragEnd(event)"` : ''}>
                     <div class="area-card-icon" aria-hidden="true">&#9635;</div>
                     <h4 style="margin:8px 0 4px;color:var(--primary);">${escapeHtml(a.areaName)}</h4>
                     <div style="font-size:12px;color:var(--text-muted);">${escapeHtml(a.camp||'PRO 1 Camp')}</div>
-                    <div style="margin-top:10px;font-size:13px;"><strong>${a.personnel.length}</strong> personnel assigned</div>
+                    <div style="margin-top:10px;font-size:13px;"><strong>${assignedCount}</strong> personnel assigned</div>
                     <div style="margin-top:6px;font-size:11px;color:var(--text-muted);">${canEditThisArea ? 'Drag your area cards to reorder &bull; ' : ''}Click to view personnel in-charge</div>
                 </div>`;
             }).join('');
+            renderAreaOverviewTable();
+        }
+
+        function renderAreaOverviewTable() {
+            const body = document.getElementById('areaOverviewTableBody');
+            const count = document.getElementById('areaOverviewCount');
+            if (!body) return;
+            const records = Array.isArray(areas) ? areas : [];
+            if (count) count.textContent = `${records.length} ${records.length === 1 ? 'area' : 'areas'}`;
+            if (!records.length) {
+                body.innerHTML = '<tr><td colspan="5" class="area-overview-empty">No Areas of Responsibility have been recorded.</td></tr>';
+                return;
+            }
+            body.innerHTML = records.map((area, index) => {
+                const assigned = Array.isArray(area.personnel) ? area.personnel : [];
+                const names = assigned.map(person => personnelFullName(person)).filter(Boolean);
+                return `<tr>
+                    <td class="area-overview-number">${index + 1}</td>
+                    <td><strong>${escapeHtml(area.areaName || '—')}</strong></td>
+                    <td>${escapeHtml(area.camp || 'PRO 1 Camp')}</td>
+                    <td class="area-overview-personnel">${names.length ? names.map(name => `<span>${escapeHtml(name)}</span>`).join('') : '<span class="area-overview-muted">No personnel assigned</span>'}</td>
+                    <td class="area-overview-count-cell">${assigned.length}</td>
+                </tr>`;
+            }).join('');
+        }
+
+        function openAreaOverviewModal() {
+            renderAreaOverviewTable();
+            const modal = document.getElementById('areaOverviewModal');
+            if (!modal) return;
+            modal.classList.remove('hidden');
+            modal.setAttribute('aria-hidden','false');
+            window.SPADESModalStack?.bringToFront('areaOverviewModal');
+        }
+
+        function closeAreaOverviewModal() {
+            const modal = document.getElementById('areaOverviewModal');
+            if (!modal) return;
+            modal.classList.add('hidden');
+            modal.setAttribute('aria-hidden','true');
+            window.SPADESModalStack?.refresh?.();
+        }
+
+        async function downloadAreaResponsibilityExcel() {
+            const records = Array.isArray(areas) ? areas.slice() : [];
+            if (!records.length) return customAlert('There are no Area of Responsibility records to export.', 'Excel Export');
+            const button = document.getElementById('areaOverviewDownloadBtn');
+            if (button) { button.disabled = true; button.setAttribute('aria-busy','true'); }
+            try {
+                const headers = ['No.','Area of Responsibility','Camp','Personnel Assigned','Personnel Count'];
+                const rows = records.map((area,index) => {
+                    const assigned = Array.isArray(area.personnel) ? area.personnel : [];
+                    return [index + 1, area.areaName || '', area.camp || 'PRO 1 Camp', assigned.map(person => personnelFullName(person)).filter(Boolean).join('\n'), assigned.length];
+                });
+                const result = await downloadSpadesExcelWorkbook({
+                    title:'RHSU Area of Responsibility Overview', sheetName:'Area Overview', fileName:'RHSU_Area_of_Responsibility_Overview.xlsx',
+                    headers, rows, widths:[8,32,24,58,18]
+                });
+                customAlert(`${result.rowCount} Area of Responsibility record(s) exported successfully in card order.`, 'Excel Download');
+            } catch (error) {
+                console.error('Area of Responsibility Excel export failed:', error);
+                customAlert(error.message || 'Unable to generate the Area of Responsibility Excel workbook.', 'Excel Export Error');
+            } finally {
+                if (button) { button.disabled = false; button.removeAttribute('aria-busy'); }
+            }
         }
         function areaCardDragStart(e, areaId) { areaDragId = String(areaId); e.currentTarget.classList.add('dragging'); try { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', areaId); } catch(err) {} }
         function areaCardDragOver(e) { e.preventDefault(); e.currentTarget.classList.add('drag-over'); try { e.dataTransfer.dropEffect = 'move'; } catch(err) {} }
@@ -8822,6 +9008,70 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                     .catch(error => { xlsxPreviewLibraryPromise = null; throw error; });
             }
             return xlsxPreviewLibraryPromise;
+        }
+
+        // ExcelJS is loaded only when a user explicitly requests an export.
+        // It produces genuine .xlsx files with formatted headers, filters, and frozen panes.
+        let spadesExcelJsExportPromise = null;
+        async function loadSpadesExcelJsExportLibrary() {
+            if (window.ExcelJS && typeof window.ExcelJS.Workbook === 'function') return;
+            if (!spadesExcelJsExportPromise) {
+                spadesExcelJsExportPromise = loadPreviewScript(
+                    'spades-exceljs-export-library',
+                    'https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js',
+                    () => !!(window.ExcelJS && typeof window.ExcelJS.Workbook === 'function')
+                ).catch(error => { spadesExcelJsExportPromise = null; throw error; });
+            }
+            return spadesExcelJsExportPromise;
+        }
+
+        async function downloadSpadesExcelWorkbook(options) {
+            const config = options || {};
+            const headers = Array.isArray(config.headers) ? config.headers : [];
+            const rows = Array.isArray(config.rows) ? config.rows : [];
+            if (!headers.length) throw new Error('The Excel export has no column headings.');
+            if (!rows.length) throw new Error('There are no records to export.');
+            await loadSpadesExcelJsExportLibrary();
+            const workbook = new window.ExcelJS.Workbook();
+            workbook.creator = 'RHSU SPADES';
+            workbook.lastModifiedBy = 'RHSU SPADES';
+            workbook.created = new Date();
+            workbook.modified = new Date();
+            workbook.subject = 'RHSU SPADES register export';
+            workbook.title = String(config.title || config.sheetName || 'SPADES Export');
+            const sheet = workbook.addWorksheet(String(config.sheetName || 'Records').slice(0,31), {
+                views:[{state:'frozen', ySplit:1}],
+                pageSetup:{fitToPage:true, fitToWidth:1, fitToHeight:0, orientation:'landscape'}
+            });
+            sheet.columns = headers.map((header, index) => ({
+                header:String(header || ''),
+                key:'c' + index,
+                width:Array.isArray(config.widths) && Number(config.widths[index]) > 0 ? Number(config.widths[index]) : 18
+            }));
+            rows.forEach(row => sheet.addRow(Array.isArray(row) ? row : headers.map((_, index) => row['c' + index] ?? '')));
+            const header = sheet.getRow(1);
+            header.height = 28;
+            header.eachCell(cell => {
+                cell.font = {name:'Aptos', size:10, bold:true, color:{argb:'FFFFFFFF'}};
+                cell.fill = {type:'pattern', pattern:'solid', fgColor:{argb:'FF173F70'}};
+                cell.alignment = {vertical:'middle', horizontal:'center', wrapText:true};
+                cell.border = {bottom:{style:'medium', color:{argb:'FF0F2747'}}};
+            });
+            for (let rowNumber = 2; rowNumber <= sheet.rowCount; rowNumber++) {
+                const row = sheet.getRow(rowNumber);
+                row.height = 22;
+                row.eachCell(cell => {
+                    cell.font = {name:'Aptos', size:10, color:{argb:'FF1F2937'}};
+                    cell.alignment = {vertical:'top', wrapText:true};
+                    cell.border = {bottom:{style:'hair', color:{argb:'FFDCE3EC'}}};
+                    if (rowNumber % 2 === 0) cell.fill = {type:'pattern', pattern:'solid', fgColor:{argb:'FFF3F6FA'}};
+                });
+            }
+            sheet.autoFilter = {from:{row:1, column:1}, to:{row:1, column:headers.length}};
+            const buffer = await workbook.xlsx.writeBuffer();
+            const blob = new Blob([buffer], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+            saveBlobToDevice(blob, String(config.fileName || 'SPADES_Export.xlsx'));
+            return {rowCount:rows.length, fileName:String(config.fileName || 'SPADES_Export.xlsx')};
         }
 
         async function loadPptxPreviewLibrary() {

@@ -690,6 +690,7 @@
 </select>
 <span aria-live="polite" class="personnel-filter-result-count" id="personnelFilterResultCount">Showing all personnel</span>
 <button class="action-btn" onclick="clearPersonnelFilters()">Clear Filters</button>
+<button class="action-btn" id="personnelDownloadExcelBtn" onclick="downloadPersonnelListExcel()" type="button" title="Download all personnel matching the current filters as an Excel workbook"><i class="fi fi-rr-file-excel" aria-hidden="true"></i> Download Excel</button>
 <button class="action-btn" onclick="loadPersonnel()">↻ Refresh</button>
 </div>
 <div id="personnelTablesContainer"></div>
@@ -830,6 +831,7 @@
 <div style="font-size:12px;color:var(--text-muted);margin-top:4px;">Deploy personnel to designated areas within PRO 1 Camp</div>
 </div>
 <div class="personnel-actions">
+<button aria-label="Personnel Management · Area of Responsibilities: Overview" class="action-btn" id="areaOverviewBtn" onclick="openAreaOverviewModal()" title="View Area of Responsibility overview" type="button"><i class="fi fi-rr-list" aria-hidden="true"></i> Overview</button>
 <button aria-label="Personnel Management · Area of Responsibilities: Add Area" class="action-btn approve-btn" data-spades-action-key="personnel-aor-add-area" id="areaAddBtn" onclick="openAreaModal()" style="color:white;font-weight:bold;display:none;" title="Personnel Management · Area of Responsibilities · Add Area" type="button">＋ Add Area</button>
 </div>
 </div>
@@ -1146,7 +1148,7 @@
         <div><span class="proofreader-settings-summary-label">Eligible Personnel / Admin Accounts</span><strong id="proofReaderSettingsCandidateCount">0</strong></div>
         <div><span class="proofreader-settings-summary-label">Designated Proof Readers</span><strong id="proofReaderSettingsSelectedCount">0</strong></div>
       </div>
-      <div class="proofreader-settings-search"><i class="fi fi-rr-search" aria-hidden="true"></i><input id="proofReaderSettingsSearch" type="search" aria-label="Search personnel accounts" placeholder="Search rank, name, section, or username" autocomplete="off" oninput="filterProofReaderDesignationOptions()"/><button type="button" onclick="clearProofReaderDesignationSearch()" aria-label="Clear search" title="Clear search"><i class="fi fi-rr-cross-small" aria-hidden="true"></i></button></div>
+      <div class="proofreader-settings-search"><i class="fi fi-rr-search" aria-hidden="true"></i><input id="proofReaderSettingsSearch" type="search" aria-label="Search personnel accounts" placeholder="Search rank, name, section, or username" autocomplete="off" oninput="filterProofReaderDesignationOptions()"/><button class="proofreader-settings-clear-search" type="button" onclick="clearProofReaderDesignationSearch()" aria-label="Clear Search" title="Clear Search"><i class="fi fi-rr-cross-small" aria-hidden="true"></i></button></div>
       <div class="proofreader-settings-list-heading"><div><strong>Available Proof Reader Accounts</strong><span>Admin accounts are included automatically in this selection list; check the accounts to designate</span></div><button class="proofreader-select-visible" id="proofReaderSelectVisibleBtn" onclick="toggleVisibleProofReaderDesignations()" type="button">Select visible</button></div>
       <div class="proofreader-designation-list" id="proofReaderDesignationList"><div class="proofreader-settings-empty">Loading eligible personnel accounts…</div></div>
       <div class="proofreader-settings-footer"><span id="proofReaderSettingsMessage" aria-live="polite">Only active SPADES accounts linked to one unique, active Personnel record are available. Read-only accounts are excluded.</span><div><button class="action-btn" onclick="closeProofReaderSettings()" type="button">Cancel</button><button class="action-btn approve-btn" id="proofReaderSaveDesignationsBtn" onclick="saveProofReaderDesignations()" type="button"><i class="fi fi-rr-check" aria-hidden="true"></i><span>Save Designations</span></button></div></div>
@@ -1155,21 +1157,65 @@
 </div>
 
 <!-- ADMIN PROOF READER: SUBMISSION MODAL -->
-<div aria-labelledby="proofReaderSubmitTitle" aria-modal="true" class="modal-overlay hidden" id="proofReaderSubmitModal" onclick="if(event.target===this)closeProofReaderSubmitModal()" role="dialog" style="z-index:2380;">
-  <div class="modal-content glass-panel modal-uniform-shell proofreader-submit-modal"><header class="modal-uniform-header"><div class="modal-uniform-header-copy"><span class="modal-uniform-kicker">DOCUMENT SUBMISSION</span><h2 id="proofReaderSubmitTitle">Submit for Proofreading</h2><p>Upload the source document and select the personnel assigned to proofread it.</p></div><button class="action-btn icon-action-btn modal-uniform-close" onclick="closeProofReaderSubmitModal()" type="button" aria-label="Close" title="Close"><i class="fi fi-rr-cross-small" aria-hidden="true"></i></button></header>
-    <div class="proofreader-form-body">
-      <div class="proofreader-form-grid">
-        <label class="proofreader-field proofreader-span-2">Document Title <span class="required-mark">*</span><input id="proofReaderDocTitle" maxlength="180" type="text" placeholder="Enter document title" required/></label>
-        <label class="proofreader-field proofreader-span-2">Description / Purpose<textarea id="proofReaderDocDescription" maxlength="2000" rows="2" placeholder="Briefly describe the document"></textarea></label>
-        <label class="proofreader-field">Document Type<select id="proofReaderDocType"><option value="Memorandum">Memorandum</option><option value="Letter">Letter</option><option value="Report">Report</option><option value="Request">Request</option><option value="Certification">Certification</option><option value="Other">Other</option></select></label>
-        <label class="proofreader-field">Target Completion Date<input id="proofReaderTargetDate" type="date"/></label>
-        <label class="proofreader-field proofreader-span-2">Designated Proof Reader <span class="required-mark">*</span><select id="proofReaderAssignee" required><option value="">Select an active Proof Reader…</option></select><small>Select the specific personnel who will review this document.</small></label>
-        <label class="proofreader-field proofreader-span-2">Instructions for the Proof Reader<textarea id="proofReaderInstructions" maxlength="3000" rows="3" placeholder="Specify what should be checked or emphasized"></textarea></label>
-        <div class="proofreader-upload-field proofreader-span-2"><label for="proofReaderUploadFile">Upload Document <span class="required-mark">*</span></label><div class="proofreader-upload-drop"><i class="fi fi-rr-cloud-upload" aria-hidden="true"></i><div><strong>Select a document to upload</strong><small>DOCX, TXT, HTML and PDF · Maximum 10 MB per upload</small></div><input id="proofReaderUploadFile" type="file" accept=".docx,.txt,.html,.htm,.pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/zip,text/plain,text/html,application/pdf" onchange="updateProofReaderSelectedFile()"/></div><div class="proofreader-selected-file" id="proofReaderSelectedFile">No file selected.</div><div class="proofreader-google-docs-link"><label for="proofReaderGoogleDocsUrl">Or paste a Google Docs link</label><input id="proofReaderGoogleDocsUrl" type="url" inputmode="url" placeholder="https://docs.google.com/document/d/.../edit" autocomplete="url"/><small>Use either a file upload or a Google Docs link. The application owner must be able to access the linked source document.</small></div><p class="proofreader-format-note">DOCX, TXT, HTML and Google Docs content are loaded into an editable text-based working copy. Complex original formatting may not be retained. PDF files are preview-only; upload a corrected PDF when returning revisions.</p></div>
+<div aria-labelledby="proofReaderSubmitTitle" aria-modal="true" class="modal-overlay hidden proofreader-submit-overlay" id="proofReaderSubmitModal" onclick="if(event.target===this)closeProofReaderSubmitModal()" role="dialog" style="z-index:2380;">
+  <div class="modal-content glass-panel modal-uniform-shell proofreader-submit-modal">
+    <header class="modal-uniform-header proofreader-submit-header">
+      <div class="modal-uniform-header-copy">
+        <span class="modal-uniform-kicker">ADMIN PROOF READER · NEW REQUEST</span>
+        <h2 id="proofReaderSubmitTitle">Submit for Proofreading</h2>
+        <p>Provide the document details, assign a Proof Reader, and attach the source file.</p>
       </div>
-      <div class="proofreader-form-actions"><button class="action-btn" onclick="closeProofReaderSubmitModal()" type="button">Cancel</button><button class="action-btn approve-btn" id="proofReaderSubmitBtn" onclick="submitProofReaderRequest()" type="button"><i class="fi fi-rr-paper-plane" aria-hidden="true"></i><span>Submit for Proofreading</span></button></div>
-      <div class="proofreader-form-message" id="proofReaderSubmitMessage" aria-live="polite"></div>
+      <div class="proofreader-submit-header-mark" aria-hidden="true"><i class="fi fi-rr-file-edit"></i></div>
+      <button class="action-btn icon-action-btn modal-uniform-close" onclick="closeProofReaderSubmitModal()" type="button" aria-label="Close" title="Close"><i class="fi fi-rr-cross-small" aria-hidden="true"></i></button>
+    </header>
+
+    <div class="proofreader-form-body">
+      <div class="proofreader-submit-intro">
+        <div class="proofreader-submit-intro-icon"><i class="fi fi-rr-shield-check" aria-hidden="true"></i></div>
+        <div><strong>Prepare your proofreading request</strong><p>Fields marked with <span class="required-mark">*</span> are required. Your original uploaded document is retained in the private Proof Reader workspace.</p></div>
+      </div>
+
+      <section class="proofreader-submit-section" aria-labelledby="proofReaderDetailsSectionTitle">
+        <div class="proofreader-submit-section-heading"><span class="proofreader-submit-section-icon"><i class="fi fi-rr-file-lines" aria-hidden="true"></i></span><div><h3 id="proofReaderDetailsSectionTitle">Document Information</h3><p>Identify the document and provide its purpose.</p></div><span class="proofreader-submit-step">01</span></div>
+        <div class="proofreader-form-grid">
+          <label class="proofreader-field proofreader-span-2">Document Title <span class="required-mark">*</span><input id="proofReaderDocTitle" maxlength="180" type="text" placeholder="Enter document title" required/></label>
+          <label class="proofreader-field proofreader-span-2">Description / Purpose<textarea id="proofReaderDocDescription" maxlength="2000" rows="2" placeholder="Briefly describe the document and its purpose"></textarea></label>
+          <label class="proofreader-field">Document Type<select id="proofReaderDocType"><option value="Memorandum">Memorandum</option><option value="Letter">Letter</option><option value="Report">Report</option><option value="Request">Request</option><option value="Certification">Certification</option><option value="Other">Other</option></select></label>
+          <label class="proofreader-field">Target Completion Date<input id="proofReaderTargetDate" type="date"/></label>
+        </div>
+      </section>
+
+      <section class="proofreader-submit-section" aria-labelledby="proofReaderAssignmentSectionTitle">
+        <div class="proofreader-submit-section-heading"><span class="proofreader-submit-section-icon"><i class="fi fi-rr-user-check" aria-hidden="true"></i></span><div><h3 id="proofReaderAssignmentSectionTitle">Proofreading Assignment</h3><p>Select the authorized personnel who will review the document.</p></div><span class="proofreader-submit-step">02</span></div>
+        <div class="proofreader-form-grid">
+          <label class="proofreader-field proofreader-span-2">Designated Proof Reader <span class="required-mark">*</span><select id="proofReaderAssignee" required><option value="">Select an active Proof Reader…</option></select><small>Only currently designated and eligible Proof Reader accounts are available.</small></label>
+          <label class="proofreader-field proofreader-span-2">Instructions for the Proof Reader<textarea id="proofReaderInstructions" maxlength="3000" rows="3" placeholder="Specify what should be checked, corrected, or emphasized"></textarea></label>
+        </div>
+      </section>
+
+      <section class="proofreader-submit-section proofreader-submit-source-section" aria-labelledby="proofReaderSourceSectionTitle">
+        <div class="proofreader-submit-section-heading"><span class="proofreader-submit-section-icon"><i class="fi fi-rr-cloud-upload" aria-hidden="true"></i></span><div><h3 id="proofReaderSourceSectionTitle">Source Document</h3><p>Upload a document or provide an accessible Google Docs link.</p></div><span class="proofreader-submit-step">03</span></div>
+        <div class="proofreader-upload-field">
+          <div class="proofreader-upload-drop proofreader-upload-drop-redesigned">
+            <div class="proofreader-upload-drop-icon"><i class="fi fi-rr-file-import" aria-hidden="true"></i></div>
+            <div class="proofreader-upload-drop-copy"><strong>Attach a document file</strong><small>DOCX, TXT, HTML/HTM, or PDF · Maximum 10 MB</small><span>Choose a file from your device. The selected filename and size will appear below.</span></div>
+            <div class="proofreader-upload-picker">
+              <input class="proofreader-hidden-file-input" id="proofReaderUploadFile" type="file" accept=".docx,.txt,.html,.htm,.pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/zip,text/plain,text/html,application/pdf" onchange="updateProofReaderSelectedFile()" aria-label="Upload document file" tabindex="-1"/>
+              <button class="action-btn proofreader-choose-file-icon spades-force-icon-only" data-spades-icon-name="fi-rr-folder-open" type="button" onclick="document.getElementById('proofReaderUploadFile').click()" aria-label="Choose File" title="Choose File"><i class="fi fi-rr-folder-open" aria-hidden="true"></i></button>
+            </div>
+          </div>
+          <div class="proofreader-selected-file proofreader-selected-file-redesigned" id="proofReaderSelectedFile" role="status" aria-live="polite"><i class="fi fi-rr-file" aria-hidden="true"></i><span>No file selected.</span></div>
+          <div class="proofreader-source-divider"><span>OR USE A GOOGLE DOCS LINK</span></div>
+          <div class="proofreader-google-docs-link proofreader-google-docs-link-redesigned"><label for="proofReaderGoogleDocsUrl">Google Docs URL</label><input id="proofReaderGoogleDocsUrl" type="url" inputmode="url" placeholder="https://docs.google.com/document/d/.../edit" autocomplete="url"/><small>Use either a file upload or a Google Docs link, not both. The application owner must be able to access the linked source document.</small></div>
+          <p class="proofreader-format-note"><i class="fi fi-rr-info" aria-hidden="true"></i><span>DOCX, TXT, HTML, and Google Docs content are loaded into an editable text-based working copy. Complex original formatting may not be retained. PDF files are preview-only; upload a corrected PDF when returning revisions.</span></p>
+        </div>
+      </section>
     </div>
+
+    <footer class="proofreader-form-footer">
+      <div class="proofreader-form-message" id="proofReaderSubmitMessage" aria-live="polite"></div>
+      <div class="proofreader-form-actions"><button class="action-btn" onclick="closeProofReaderSubmitModal()" type="button">Cancel</button><button class="action-btn approve-btn" id="proofReaderSubmitBtn" onclick="submitProofReaderRequest()" type="button"><i class="fi fi-rr-paper-plane" aria-hidden="true"></i><span>Submit for Proofreading</span></button></div>
+    </footer>
   </div>
 </div>
 
@@ -1208,8 +1254,8 @@
 </div>
 <div class="settings-header-actions">
 <span class="settings-save-status"><span class="settings-status-dot"></span> Changes save automatically</span>
-<button aria-label="Open User Management" class="settings-reset-btn settings-user-management-header-btn hidden" id="settingsUserMgmtBtn" onclick="switchTab('adminMgmt')" title="Open User Management" type="button"><i aria-hidden="true" class="fi fi-rr-users-gear"></i><span>User Management</span></button>
-<button class="settings-reset-btn" onclick="resetPreferences()" type="button"><span aria-hidden="true">↺</span> Reset preferences</button>
+<button aria-label="Open User Management" class="settings-reset-btn settings-user-management-header-btn hidden spades-force-icon-only settings-utility-icon-btn" data-spades-icon-name="fi-rr-users-gear" id="settingsUserMgmtBtn" onclick="switchTab('adminMgmt')" title="Open User Management" type="button"><i aria-hidden="true" class="fi fi-rr-users-gear"></i></button>
+<button aria-label="Reset preferences" class="settings-reset-btn spades-force-icon-only settings-utility-icon-btn" data-spades-icon-name="fi-rr-undo" onclick="resetPreferences()" title="Reset preferences" type="button"><i aria-hidden="true" class="fi fi-rr-undo"></i></button>
 </div>
 </header>
 <div class="settings-grid">
@@ -1872,6 +1918,30 @@
 <button class="action-btn delete-btn" id="areaDeleteBtn" onclick="deleteAreaFromDetails()" style="flex:1;margin:0;display:none;">Delete Area</button>
 </div>
 </div>
+</div>
+<!-- AREA OF RESPONSIBILITY OVERVIEW MODAL -->
+<div aria-labelledby="areaOverviewTitle" aria-modal="true" class="modal-overlay hidden" id="areaOverviewModal" onclick="if(event.target===this)closeAreaOverviewModal()" role="dialog" style="z-index:2200;">
+  <div class="modal-content glass-panel modal-uniform-shell area-overview-modal">
+    <header class="modal-uniform-header">
+      <div class="modal-uniform-header-copy">
+        <span class="modal-uniform-kicker">PERSONNEL MANAGEMENT</span>
+        <h2 id="areaOverviewTitle">Area of Responsibility Overview</h2>
+        <p>Consolidated list of designated areas, assigned personnel, and current deployment counts.</p>
+      </div>
+      <button aria-label="Close Area of Responsibility overview" class="action-btn icon-action-btn modal-uniform-close" onclick="closeAreaOverviewModal()" title="Close" type="button"><i aria-hidden="true" class="fi fi-rr-cross-small"></i></button>
+    </header>
+    <div class="area-overview-toolbar">
+      <span class="area-overview-count" id="areaOverviewCount">0 areas</span>
+      <button class="action-btn approve-btn" id="areaOverviewDownloadBtn" onclick="downloadAreaResponsibilityExcel()" type="button" title="Download the complete overview as an Excel workbook"><i class="fi fi-rr-file-excel" aria-hidden="true"></i> Download Excel</button>
+    </div>
+    <div class="area-overview-table-wrap">
+      <table class="area-overview-table">
+        <thead><tr><th>No.</th><th>Area of Responsibility</th><th>Camp</th><th>Personnel Assigned</th><th>Personnel Count</th></tr></thead>
+        <tbody id="areaOverviewTableBody"><tr><td colspan="5" class="area-overview-empty">Loading Area of Responsibility records…</td></tr></tbody>
+      </table>
+    </div>
+    <div class="area-overview-footnote"><i class="fi fi-rr-info" aria-hidden="true"></i> The table and downloaded workbook follow the same order as the Area of Responsibility cards.</div>
+  </div>
 </div>
 <!-- USER ACCESS MODAL -->
 <div aria-labelledby="userAccessModalTitle" aria-modal="true" class="modal-overlay hidden um-access-overlay" id="userAccessModal" onclick="if(event.target===this)closeUserAccessModal()" role="dialog">

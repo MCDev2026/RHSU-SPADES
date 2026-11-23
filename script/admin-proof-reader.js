@@ -195,7 +195,7 @@
         <td>${escapeHtml(displayDate(record.updatedAt))}</td>
         <td><span class="proofreader-status ${statusClass(record.status)}">${escapeHtml(record.status)}</span></td>
         <td>${escapeHtml(record.remark || '—')}</td>
-        <td><button class="proofreader-row-open spades-force-icon-only" type="button" title="Open document" aria-label="Open ${escapeHtml(record.title)}" onclick="openProofReaderDocument('${escapeHtml(record.id)}')"><i class="fi fi-rr-eye" aria-hidden="true"></i></button></td>
+        <td><div class="proofreader-row-actions"><button class="proofreader-row-open spades-force-icon-only" type="button" title="Open document" aria-label="Open ${escapeHtml(record.title)}" onclick="openProofReaderDocument('${escapeHtml(record.id)}')"><i class="fi fi-rr-eye" aria-hidden="true"></i></button></div></td>
       </tr>`).join('');
     }
     const count = byId('proofReaderTotalRecords');
