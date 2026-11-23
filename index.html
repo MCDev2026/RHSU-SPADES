@@ -45,14 +45,16 @@
 </div>
 <div class="top-bar hidden" id="mainTopBar">
 <div class="top-bar-left">
-<button onclick="toggleNav()" style="background: transparent; border: none; cursor: pointer; padding: 5px;">
+<button class="topbar-menu-toggle spades-force-icon-only" data-spades-icon-name="fi-rr-menu-burger" onclick="toggleNav()" style="background: transparent; border: none; cursor: pointer; padding: 5px;" aria-label="Toggle navigation" title="Toggle navigation" type="button">
 <i aria-hidden="true" class="fi fi-rr-menu-burger spades-ui-icon"></i>
 </button>
+<div class="header-brand-stack">
 <span id="appBrand">REGIONAL HEADQUARTERS SUPPORT UNIT</span>
+<span id="datetime-display" aria-live="off"></span>
+</div>
 </div>
 <div class="top-bar-right">
 <button aria-label="Refresh entire page" class="profile-btn header-icon-btn spades-force-icon-only" data-spades-icon-name="fi-rr-refresh" id="pageRefreshBtn" onclick="window.location.reload()" title="Refresh entire page" type="button"><i aria-hidden="true" class="fi fi-rr-refresh"></i></button>
-<div id="datetime-display"></div>
 <button aria-label="My Profile" class="profile-btn header-icon-btn spades-force-icon-only" data-spades-icon-name="fi-rr-user" id="profileHeaderBtn" onclick="switchTab('profile')" title="My Profile" type="button">
 <i aria-hidden="true" class="fi fi-rr-user spades-ui-icon"></i>
 </button>
@@ -155,21 +157,9 @@
 <i aria-hidden="true" class="fi fi-rr-list-check nav-icon"></i>
 <span class="nav-text">Matrix of Compliances</span>
 </button>
-<button class="sidebar-btn phase2-nav-btn" id="btnAdminWorkflow" onclick="switchTab('adminWorkflow');">
-<i aria-hidden="true" class="fi fi-rr-flowchart nav-icon"></i>
-<span class="nav-text">Administrative Workflow</span>
-</button>
-<button class="sidebar-btn phase2-nav-btn" id="btnManagementReports" onclick="switchTab('managementReports');">
-<i aria-hidden="true" class="fi fi-rr-chart-histogram nav-icon"></i>
-<span class="nav-text">Management Reports</span>
-</button>
-<button class="sidebar-btn phase2-nav-btn" id="btnAuditTrail" onclick="switchTab('auditTrail');">
-<i aria-hidden="true" class="fi fi-rr-shield-check nav-icon"></i>
-<span class="nav-text">Audit Trail</span>
-</button>
-<button class="sidebar-btn phase2-nav-btn" id="btnDocumentManagement" onclick="switchTab('documentManagement');">
-<i aria-hidden="true" class="fi fi-rr-folder-open nav-icon"></i>
-<span class="nav-text">Document &amp; Personnel</span>
+<button class="sidebar-btn" id="btnAdminProofReader" onclick="switchTab('adminProofReader')" type="button" title="Admin Proof Reader">
+<i aria-hidden="true" class="fi fi-rr-file-edit nav-icon"></i>
+<span class="nav-text">Admin Proof Reader</span>
 </button>
 <button aria-label="Users Chat" class="sidebar-btn" id="btnUsersChat" onclick="switchTab('usersChat');" title="Users Chat">
 <i aria-hidden="true" class="fi fi-rr-comment-alt nav-icon"></i>
@@ -256,10 +246,6 @@
 <div class="exec-kpi"><div class="exec-kpi-top"><span class="exec-kpi-symbol"><i aria-hidden="true" class="fi fi-rr-calendar-check"></i></span><span class="exec-kpi-tag">SCHEDULED</span></div><div class="label">Active Activities</div><div class="value" id="execTotalActivities">0</div><div class="sub">Scheduled activities</div></div>
 <div class="exec-kpi exec-kpi-compliance"><div class="exec-kpi-top"><span class="exec-kpi-symbol"><i aria-hidden="true" class="fi fi-rr-list-check"></i></span><span class="exec-kpi-tag">COMPLIANCE</span></div><div class="label">Matrix of Compliance</div><div class="value" id="execTotalCompliances">0</div><div class="sub">Compliance records in the register</div></div>
 <div class="exec-kpi"><div class="exec-kpi-top"><span class="exec-kpi-symbol"><i aria-hidden="true" class="fi fi-rr-user-check"></i></span><span class="exec-kpi-tag">USERS</span></div><div class="label">Encoders</div><div class="value" id="execEncoderCount">0</div><div class="sub">Users with memo records</div></div>
-</section>
-<section aria-label="Phase II management overview" class="phase2-dashboard-snapshot">
-<div class="phase2-dashboard-heading"><div><span class="phase2-eyebrow">PHASE II · MANAGEMENT OVERVIEW</span><h3>Administrative Monitoring</h3><p>Live summaries are displayed only for modules available to your account.</p></div><span class="phase2-generated-pill" id="phase2DashboardUpdated">Loading authorized summaries…</span></div>
-<div class="phase2-dashboard-grid" id="phase2DashboardCards"><article class="phase2-dashboard-card phase2-dashboard-placeholder">Loading management information…</article></div>
 </section>
 <section class="exec-details" id="execDetailsStrip"></section>
 <section aria-label="Operational intelligence section" class="exec-section-heading exec-section-heading-secondary">
@@ -1043,79 +1029,169 @@
 </div>
 <p class="matrix-compliance-footnote"><i aria-hidden="true" class="fi fi-rr-lock"></i> All active SPADES accounts can view the shared register. Users and Admins can manage entries they encoded; Alpha Admin can manage all entries. Accounts restricted to read-only access cannot add, edit, or delete records.</p>
 </div>
-<!-- PHASE II: ADMINISTRATIVE WORKFLOW -->
-<div class="hidden phase2-page" id="tabAdminWorkflow">
-  <header class="phase2-page-head">
-    <div><span class="phase2-eyebrow">PHASE II · ADMINISTRATIVE PROCESSING</span><h2>Administrative Workflow</h2><p>Submit, assign, review, and monitor administrative transactions with a traceable history.</p></div>
-    <div class="phase2-head-actions"><button class="action-btn" onclick="loadPhase2Workflows()" type="button"><i class="fi fi-rr-refresh"></i> Refresh</button><button class="action-btn approve-btn" onclick="openPhase2WorkflowEditor()" type="button"><i class="fi fi-rr-plus"></i> New Request</button></div>
+<!-- ADMIN PROOF READER -->
+<section aria-labelledby="adminProofReaderTitle" class="hidden admin-proofreader-page" id="tabAdminProofReader">
+  <header class="proofreader-page-header">
+    <div class="proofreader-page-title">
+      <span class="proofreader-eyebrow">DOCUMENT REVIEW WORKSPACE</span>
+      <h2 id="adminProofReaderTitle">Admin Proof Reader</h2>
+      <p>Manage document submissions, assigned proofreading tasks, revisions, and review outcomes in one workspace.</p>
+    </div>
+    <div class="proofreader-header-actions">
+      <span class="proofreader-workspace-tag"><i class="fi fi-rr-shield-check" aria-hidden="true"></i> PRIVATE REVIEW WORKSPACE</span>
+      <button class="action-btn proofreader-settings-btn hidden" id="proofReaderSettingsBtn" onclick="openProofReaderSettings()" type="button" title="Manage designated Proof Readers"><i class="fi fi-rr-settings" aria-hidden="true"></i><span>Settings</span></button>
+      <button class="action-btn approve-btn" id="proofReaderNewRequestBtn" onclick="openProofReaderSubmitModal()" type="button"><i class="fi fi-rr-plus" aria-hidden="true"></i><span>Submit Document</span></button>
+    </div>
   </header>
-  <div class="phase2-stat-grid" id="phase2WorkflowStats"><article><span>Total Transactions</span><strong>—</strong></article><article><span>Pending Review</span><strong>—</strong></article><article><span>Assigned to Me</span><strong>—</strong></article><article><span>Submitted by Me</span><strong>—</strong></article></div>
-  <section class="phase2-panel">
-    <div class="phase2-panel-head"><div><h3>Transaction Register</h3><p>Only signed-in users with Administrative Workflow access can view this register.</p></div><label class="phase2-search"><i class="fi fi-rr-search"></i><input id="phase2WorkflowSearch" oninput="renderPhase2Workflows()" placeholder="Search reference, title, office, or person" type="search"/></label></div>
-    <div class="phase2-filter-row"><label>Status <select id="phase2WorkflowStatusFilter" onchange="renderPhase2Workflows()"><option value="">All statuses</option><option>Draft</option><option>Submitted</option><option>Under Review</option><option>Returned for Revision</option><option>Approved</option><option>Rejected</option><option>Completed</option><option>Cancelled</option></select></label></div>
-    <div class="phase2-table-wrap"><table class="phase2-table"><thead><tr><th>Reference</th><th>Transaction</th><th>Requester</th><th>Assigned Reviewer</th><th>Status</th><th>Deadline</th><th>Last Updated</th><th>Action</th></tr></thead><tbody id="phase2WorkflowTable"><tr><td colspan="8" class="phase2-empty">Open Administrative Workflow to load transactions.</td></tr></tbody></table></div>
-    <div class="phase2-footnote">Approval and review actions are limited to the assigned reviewer or Alpha Admin. Assignment is limited to Alpha Admin and authorized Admin accounts.</div>
+
+  <section aria-labelledby="proofReaderDashboardHeading" class="proofreader-dashboard-section">
+    <div class="proofreader-dashboard-heading">
+      <div>
+        <span class="proofreader-eyebrow">WORKLOAD SNAPSHOT</span>
+        <h3 id="proofReaderDashboardHeading">Dashboard Overview</h3>
+        <p>Choose a summary card to open the corresponding document list.</p>
+      </div>
+      <span class="proofreader-dashboard-live"><i aria-hidden="true"></i> Current workload</span>
+    </div>
+    <div class="proofreader-summary-grid" aria-label="Proofreading dashboard summary">
+      <button aria-pressed="true" class="proofreader-summary-card" data-proofreader-view="submissions" id="proofReaderSummarySubmissions" onclick="setProofReaderView('submissions')" type="button">
+        <span class="proofreader-summary-icon"><i class="fi fi-rr-folder-upload" aria-hidden="true"></i></span>
+        <span class="proofreader-summary-copy"><span class="proofreader-summary-label">My Submissions</span><small>Documents you submitted</small></span>
+        <strong id="proofReaderStatSubmissions">0</strong><span class="proofreader-summary-arrow"><i class="fi fi-rr-arrow-up-right" aria-hidden="true"></i></span>
+      </button>
+      <button aria-pressed="false" class="proofreader-summary-card" data-proofreader-view="assigned" id="proofReaderSummaryAssigned" onclick="setProofReaderView('assigned')" type="button">
+        <span class="proofreader-summary-icon"><i class="fi fi-rr-user-pen" aria-hidden="true"></i></span>
+        <span class="proofreader-summary-copy"><span class="proofreader-summary-label">Assigned to Me</span><small>Active review assignments</small></span>
+        <strong id="proofReaderStatAssigned">0</strong><span class="proofreader-summary-arrow"><i class="fi fi-rr-arrow-up-right" aria-hidden="true"></i></span>
+      </button>
+      <button aria-pressed="false" class="proofreader-summary-card" data-proofreader-view="pending" id="proofReaderSummaryPending" onclick="setProofReaderView('pending')" type="button">
+        <span class="proofreader-summary-icon"><i class="fi fi-rr-hourglass-start" aria-hidden="true"></i></span>
+        <span class="proofreader-summary-copy"><span class="proofreader-summary-label">Pending Review</span><small>Awaiting your action</small></span>
+        <strong id="proofReaderStatPending">0</strong><span class="proofreader-summary-arrow"><i class="fi fi-rr-arrow-up-right" aria-hidden="true"></i></span>
+      </button>
+      <button aria-pressed="false" class="proofreader-summary-card" data-proofreader-view="returned" id="proofReaderSummaryReturned" onclick="setProofReaderView('returned')" type="button">
+        <span class="proofreader-summary-icon"><i class="fi fi-rr-rotate-left" aria-hidden="true"></i></span>
+        <span class="proofreader-summary-copy"><span class="proofreader-summary-label">For Final Revision</span><small>Returned to your office</small></span>
+        <strong id="proofReaderStatReturned">0</strong><span class="proofreader-summary-arrow"><i class="fi fi-rr-arrow-up-right" aria-hidden="true"></i></span>
+      </button>
+      <button aria-pressed="false" class="proofreader-summary-card" data-proofreader-view="approved" id="proofReaderSummaryApproved" onclick="setProofReaderView('approved')" type="button">
+        <span class="proofreader-summary-icon"><i class="fi fi-rr-check-circle" aria-hidden="true"></i></span>
+        <span class="proofreader-summary-copy"><span class="proofreader-summary-label">Approved</span><small>Approved by Proof Reader</small></span>
+        <strong id="proofReaderStatApproved">0</strong><span class="proofreader-summary-arrow"><i class="fi fi-rr-arrow-up-right" aria-hidden="true"></i></span>
+      </button>
+      <button aria-pressed="false" class="proofreader-summary-card" data-proofreader-view="closed" id="proofReaderSummaryClosed" onclick="setProofReaderView('closed')" type="button">
+        <span class="proofreader-summary-icon"><i class="fi fi-rr-folder-check" aria-hidden="true"></i></span>
+        <span class="proofreader-summary-copy"><span class="proofreader-summary-label">Closed</span><small>Disapproved, disregarded or completed</small></span>
+        <strong id="proofReaderStatClosed">0</strong><span class="proofreader-summary-arrow"><i class="fi fi-rr-arrow-up-right" aria-hidden="true"></i></span>
+      </button>
+    </div>
   </section>
-</div>
 
-<!-- PHASE II: MANAGEMENT REPORTS -->
-<div class="hidden phase2-page" id="tabManagementReports">
-  <header class="phase2-page-head"><div><span class="phase2-eyebrow">PHASE II · MANAGEMENT INFORMATION</span><h2>Management Reports</h2><p>Generate consolidated reports from records available to your account permissions.</p></div><div class="phase2-head-actions"><button class="action-btn" onclick="loadPhase2Reports()" type="button"><i class="fi fi-rr-refresh"></i> Generate</button><button class="action-btn" onclick="exportPhase2ReportCsv()" type="button"><i class="fi fi-rr-file-spreadsheet"></i> Export CSV</button><button class="action-btn approve-btn" onclick="window.print()" type="button"><i class="fi fi-rr-print"></i> Print / PDF</button></div></header>
-  <section class="phase2-panel phase2-report-controls"><div class="phase2-report-filter-grid">
-    <label>Report Type<select id="phase2ReportType" onchange="renderPhase2ReportView()"><option value="activities">Activity Accomplishment</option><option value="personnel">Personnel Summary</option><option value="archivedPersonnel">Archived Personnel</option><option value="compliance">Compliance Monitoring</option><option value="workflow">Administrative Transactions</option><option value="documents">Document Register</option><option value="training">Training and Schooling</option><option value="memos">Memo Records</option></select></label>
-    <label>Reporting Period<select id="phase2ReportPeriod" onchange="updatePhase2ReportPeriodControls()"><option value="custom">Custom Date Range</option><option value="month">Month</option><option value="quarter">Quarter</option><option value="year">Year</option></select></label>
-    <label id="phase2ReportMonthWrap" class="hidden">Month<input id="phase2ReportMonth" type="month"/></label>
-    <label id="phase2ReportQuarterWrap" class="hidden">Quarter<select id="phase2ReportQuarter"><option value="1">1st Quarter</option><option value="2">2nd Quarter</option><option value="3">3rd Quarter</option><option value="4">4th Quarter</option></select></label>
-    <label id="phase2ReportYearWrap" class="hidden">Year<input id="phase2ReportYear" type="number" min="2000" max="2100" step="1"/></label>
-    <label id="phase2ReportFromWrap">From Date<input id="phase2ReportDateFrom" type="date"/></label>
-    <label id="phase2ReportToWrap">To Date<input id="phase2ReportDateTo" type="date"/></label>
-    <label>Section / Office<input id="phase2ReportSectionFilter" type="search" placeholder="Filter section or office" oninput="renderPhase2ReportView()"/></label>
-    <label>Status<input id="phase2ReportStatusFilter" type="search" placeholder="Filter status" oninput="renderPhase2ReportView()"/></label>
-    <button class="action-btn approve-btn" onclick="loadPhase2Reports()" type="button">Apply Filters</button>
-  </div><p class="phase2-footnote">Reports use the signed-in user's permitted source modules. Personnel-linked document identifiers are withheld unless Personnel Management access is also granted. Section / Office and Status filters apply to the currently selected report when those fields exist.</p></section>
-  <div class="phase2-stat-grid" id="phase2ReportSummary"><article><span>Report Status</span><strong>Not generated</strong></article></div>
-  <section class="phase2-panel phase2-report-print-area"><div class="phase2-panel-head"><div><h3 id="phase2ReportTitle">Activity Accomplishment Report</h3><p id="phase2ReportMeta">Generate a report to display the current data.</p></div><span class="phase2-generated-pill" id="phase2ReportGeneratedAt">Not generated</span></div><div id="phase2ReportContent"><div class="phase2-empty">Select a report and click Generate.</div></div></section>
-</div>
+  <section aria-labelledby="proofReaderRegisterHeading" class="proofreader-register-panel">
+    <div class="proofreader-register-header">
+      <div>
+        <span class="proofreader-eyebrow">DOCUMENT TRACKER</span>
+        <h3 id="proofReaderRegisterHeading">Document Register</h3>
+        <p id="proofReaderActiveViewDescription">Documents submitted by your account.</p>
+      </div>
+      <span class="proofreader-total-count"><strong id="proofReaderTotalRecords">0</strong><span>RECORDS</span></span>
+    </div>
 
-<!-- PHASE II: AUDIT TRAIL -->
-<div class="hidden phase2-page" id="tabAuditTrail">
-  <header class="phase2-page-head"><div><span class="phase2-eyebrow">PHASE II · ACCOUNTABILITY</span><h2>Audit Trail</h2><p>Review verified user activity and significant administrative actions recorded by SPADES.</p></div><div class="phase2-head-actions"><button class="action-btn" onclick="loadPhase2Audit()" type="button"><i class="fi fi-rr-refresh"></i> Refresh</button><button class="action-btn" id="phase2SystemHealthBtn" onclick="loadPhase2SystemHealth()" type="button"><i class="fi fi-rr-heart-rate"></i> System Health</button></div></header>
-  <section class="phase2-panel"><div class="phase2-audit-filter-grid"><label>From Date<input id="phase2AuditFrom" type="date"/></label><label>To Date<input id="phase2AuditTo" type="date"/></label><label>User<input id="phase2AuditUser" placeholder="Username" type="search"/></label><label>Module<select id="phase2AuditModule"><option value="">All Modules</option><option>Existing SPADES Module</option><option>Administrative Workflow</option><option>Document Management</option><option>Personnel Monitoring</option><option>System</option></select></label><label>Action<input id="phase2AuditAction" placeholder="Action contains…" type="search"/></label><label>Search<input id="phase2AuditQuery" placeholder="Record, description, or ID" type="search"/></label><button class="action-btn approve-btn" onclick="loadPhase2Audit()" type="button">Apply Filters</button></div><div class="phase2-table-wrap"><table class="phase2-table"><thead><tr><th>Date / Time</th><th>User</th><th>Role</th><th>Module</th><th>Action</th><th>Record</th><th>Summary</th><th>Details</th></tr></thead><tbody id="phase2AuditTable"><tr><td class="phase2-empty" colspan="8">Open Audit Trail to load entries.</td></tr></tbody></table></div><div class="phase2-pagination" id="phase2AuditPagination"></div><div class="phase2-footnote">Audit records are append-only at the application level and are protected by server-side module permissions. Google Sheets itself does not provide cryptographic immutability. Up to 1,500 matching entries are retrieved per query and displayed in pages.</div></section>
-  <section class="phase2-panel hidden" id="phase2SystemHealthPanel"><div class="phase2-panel-head"><div><h3>System Health</h3><p>Alpha Admin view of the active spreadsheet structure and available backup metadata.</p></div><div class="phase2-head-actions"><button class="action-btn" onclick="verifyPhase2LatestBackup()" type="button"><i class="fi fi-rr-shield-check"></i> Verify Latest Backup</button><span class="phase2-generated-pill" id="phase2HealthGenerated">Not checked</span></div></div><div id="phase2SystemHealthContent" class="phase2-health-grid"><div class="phase2-empty">Use System Health to inspect the system.</div></div><div id="phase2BackupVerificationResult" class="phase2-backup-verification" aria-live="polite"></div></section>
-</div>
+    <div class="proofreader-register-top">
+      <div class="proofreader-view-tabs" role="tablist" aria-label="Document register views">
+        <button aria-selected="true" class="proofreader-view-tab active" id="proofReaderTabSubmissions" onclick="setProofReaderView('submissions')" role="tab" type="button"><i class="fi fi-rr-folder-upload" aria-hidden="true"></i> My Submissions</button>
+        <button aria-selected="false" class="proofreader-view-tab" id="proofReaderTabAssigned" onclick="setProofReaderView('assigned')" role="tab" type="button"><i class="fi fi-rr-user-pen" aria-hidden="true"></i> Assigned to Me</button>
+        <button aria-selected="false" class="proofreader-view-tab" id="proofReaderTabReturned" onclick="setProofReaderView('returned')" role="tab" type="button"><i class="fi fi-rr-rotate-left" aria-hidden="true"></i> For Final Revision</button>
+        <button aria-selected="false" class="proofreader-view-tab" id="proofReaderTabApproved" onclick="setProofReaderView('approved')" role="tab" type="button"><i class="fi fi-rr-check-circle" aria-hidden="true"></i> Approved</button>
+        <button aria-selected="false" class="proofreader-view-tab" id="proofReaderTabClosed" onclick="setProofReaderView('closed')" role="tab" type="button"><i class="fi fi-rr-folder-check" aria-hidden="true"></i> Completed / Closed</button>
+      </div>
 
-<!-- PHASE II: DOCUMENT AND PERSONNEL MONITORING -->
-<div class="hidden phase2-page" id="tabDocumentManagement">
-  <header class="phase2-page-head"><div><span class="phase2-eyebrow">PHASE II · RECORDS AND PERSONNEL DEVELOPMENT</span><h2>Document &amp; Personnel Monitoring</h2><p>Organize document metadata, track expiration dates, preserve version lineage, and monitor training records.</p></div><div class="phase2-head-actions"><button class="action-btn" onclick="loadPhase2Documents()" type="button"><i class="fi fi-rr-refresh"></i> Refresh</button></div></header>
-  <section class="phase2-panel hidden" id="phase2CategoryAdminPanel"><div class="phase2-panel-head"><div><h3>Document Category Settings</h3><p>Alpha Admin and Admin accounts can add categories or deactivate/reactivate them. Existing document records are retained.</p></div><span class="phase2-generated-pill">Administrator configuration</span></div><div class="phase2-form-actions"><label class="phase2-inline-field">New Category<input id="phase2NewDocumentCategory" maxlength="80" placeholder="Enter category name" type="text"/></label><button class="action-btn approve-btn" id="phase2AddDocumentCategoryBtn" onclick="savePhase2DocumentCategory()" type="button">Add Category</button></div><div class="phase2-table-wrap"><table class="phase2-table"><thead><tr><th>Category</th><th>Status</th><th>Last Updated</th><th>Updated By</th><th>Action</th></tr></thead><tbody id="phase2DocumentCategoryTable"><tr><td colspan="5" class="phase2-empty">Loading categories…</td></tr></tbody></table></div></section>
-  <section class="phase2-panel"><div class="phase2-panel-head"><div><h3 id="phase2DocumentFormHeading">Document Register</h3><p>Store files in the existing authorized Google Drive workspace, then register their Google Drive link here. Drive access controls remain in force.</p></div><span class="phase2-generated-pill">Version-aware metadata</span></div>
-    <input id="phase2DocumentEditId" type="hidden"/><input id="phase2DocumentPreviousVersionId" type="hidden"/>
-    <div class="phase2-form-grid"><label class="phase2-span-2">Document Title<input id="phase2DocumentTitle" maxlength="180" placeholder="Enter document title" type="text"/></label><label>Category<select id="phase2DocumentCategory"><option value="">Loading categories…</option></select></label><label>Document Type<input id="phase2DocumentType" maxlength="80" placeholder="e.g. PDF, Memorandum" type="text"/></label><label>Personnel Number (optional)<input id="phase2DocumentPersonnelNo" placeholder="Existing Personnel No." type="text"/></label><label>Office / Section<input id="phase2DocumentOffice" maxlength="120" placeholder="Office or section" type="text"/></label><label class="phase2-span-2">Google Drive URL (optional)<input id="phase2DocumentUrl" placeholder="https://drive.google.com/..." type="url"/></label><label>Expiration Date (optional)<input id="phase2DocumentExpiry" type="date"/></label><label class="phase2-span-2">Notes<textarea id="phase2DocumentNotes" maxlength="2000" placeholder="Additional document information" rows="2"></textarea></label></div>
-    <div class="phase2-form-actions"><button class="action-btn approve-btn" id="phase2DocumentSaveBtn" onclick="savePhase2Document()" type="button">Save Document</button><button class="action-btn" onclick="resetPhase2DocumentForm()" type="button">Clear</button></div>
+      <div class="proofreader-filter-panel" aria-label="Filter document records">
+        <div class="proofreader-filter-heading">
+          <div><i class="fi fi-rr-filter" aria-hidden="true"></i><strong>Filter Records</strong><span>Refine the list below</span></div>
+          <button class="proofreader-clear-filters" id="proofReaderClearFilters" onclick="clearProofReaderFilters()" type="button"><i class="fi fi-rr-refresh" aria-hidden="true"></i><span>Clear filters</span></button>
+        </div>
+        <div class="proofreader-filter-grid">
+          <label class="proofreader-search" for="proofReaderSearch"><i class="fi fi-rr-search" aria-hidden="true"></i><input aria-label="Search document records" id="proofReaderSearch" oninput="renderProofReaderTable()" placeholder="Search reference, title, sender or reviewer" type="search"/></label>
+          <label class="proofreader-filter-field"><span>Status</span><select aria-label="Filter by status" id="proofReaderStatusFilter" onchange="renderProofReaderTable()"><option value="">All statuses</option><option>Submitted for Proofreading</option><option>Assigned</option><option>Under Proofreading</option><option>Returned for Final Revision</option><option>Resubmitted for Proofreading</option><option>Approved by Proof Reader</option><option>Disapproved</option><option>Disregarded</option><option>Completed</option></select></label>
+          <label class="proofreader-filter-field"><span>Document Type</span><select aria-label="Filter by document type" id="proofReaderTypeFilter" onchange="renderProofReaderTable()"><option value="">All document types</option><option>Memorandum</option><option>Letter</option><option>Report</option><option>Request</option><option>Certification</option><option>Other</option></select></label>
+          <label class="proofreader-filter-field"><span>Date Submitted · From</span><input aria-label="Filter from submission date" id="proofReaderDateFrom" onchange="renderProofReaderTable()" type="date"/></label>
+          <label class="proofreader-filter-field"><span>Date Submitted · To</span><input aria-label="Filter through submission date" id="proofReaderDateTo" onchange="renderProofReaderTable()" type="date"/></label>
+          <button class="action-btn proofreader-refresh-btn" onclick="loadProofReaderDashboard(true)" title="Refresh proofreading records" type="button"><i class="fi fi-rr-refresh" aria-hidden="true"></i><span>Refresh</span></button>
+        </div>
+      </div>
+    </div>
+
+    <div class="proofreader-table-wrap"><table class="proofreader-table"><thead><tr><th>Reference</th><th>Document</th><th>Sender</th><th>Proof Reader</th><th>Date Submitted</th><th>Last Updated</th><th>Status</th><th>Latest Remark</th><th>Action</th></tr></thead><tbody id="proofReaderTableBody"><tr><td class="proofreader-empty" colspan="9">Open Admin Proof Reader to load your document requests.</td></tr></tbody></table></div>
+    <div class="proofreader-list-footer"><span id="proofReaderListInfo" aria-live="polite">No records loaded.</span><span class="proofreader-date-filter-note">Date range is based on the submission date.</span></div>
   </section>
-  <section class="phase2-panel"><div class="phase2-panel-head"><div><h3>Registered Documents</h3><p>Expired and approaching-expiration indicators are calculated from the recorded expiration date.</p></div><label class="phase2-search"><i class="fi fi-rr-search"></i><input id="phase2DocumentSearch" oninput="renderPhase2Documents()" placeholder="Search title, category, personnel, or office" type="search"/></label></div><div class="phase2-table-wrap"><table class="phase2-table"><thead><tr><th>Document</th><th>Category / Type</th><th>Personnel</th><th>Office / Section</th><th>Expiration</th><th>Status</th><th>Version</th><th>Uploaded By</th><th>Actions</th></tr></thead><tbody id="phase2DocumentTable"><tr><td class="phase2-empty" colspan="9">Open Document &amp; Personnel Monitoring to load records.</td></tr></tbody></table></div></section>
-  <section class="phase2-panel hidden" id="phase2TrainingPanel"><div class="phase2-panel-head"><div><h3>Training &amp; Schooling Records</h3><p>Training records are linked to existing personnel numbers and require Personnel Management access.</p></div></div><input id="phase2TrainingEditId" type="hidden"/><div class="phase2-form-grid"><label>Personnel Number<input id="phase2TrainingPersonnelNo" placeholder="Existing Personnel No." type="text"/></label><label>Training / Schooling Title<input id="phase2TrainingTitle" maxlength="180" placeholder="Training title" type="text"/></label><label>Category<input id="phase2TrainingCategory" maxlength="80" placeholder="Training category" type="text"/></label><label>Venue / Institution<input id="phase2TrainingVenue" maxlength="160" placeholder="Venue or institution" type="text"/></label><label>Date Started<input id="phase2TrainingStart" type="date"/></label><label>Date Completed (optional)<input id="phase2TrainingCompleted" type="date"/></label><label>Status<select id="phase2TrainingStatus"><option>Planned</option><option>Ongoing</option><option>Completed</option><option>Cancelled</option></select></label><label class="phase2-span-2">Document URL (optional)<input id="phase2TrainingUrl" placeholder="https://drive.google.com/..." type="url"/></label><label class="phase2-span-2">Notes<textarea id="phase2TrainingNotes" maxlength="2000" rows="2" placeholder="Additional information"></textarea></label></div><div class="phase2-form-actions"><button class="action-btn approve-btn" id="phase2TrainingSaveBtn" onclick="savePhase2Training()" type="button">Save Training Record</button><button class="action-btn" onclick="resetPhase2TrainingForm()" type="button">Clear</button></div><div class="phase2-table-wrap"><table class="phase2-table"><thead><tr><th>Personnel</th><th>Training</th><th>Category</th><th>Dates</th><th>Venue / Institution</th><th>Status</th><th>Encoded By</th><th>Action</th></tr></thead><tbody id="phase2TrainingTable"><tr><td class="phase2-empty" colspan="8">No training records loaded.</td></tr></tbody></table></div></section>
-  <div class="phase2-footnote">This register stores metadata and references existing Drive files; it does not move, duplicate, or replace files in My Files. Adding a new version creates a separate metadata record so earlier versions remain listed. A linked file remains accessible only to accounts authorized by Google Drive.</div>
+
+  <p class="proofreader-footnote"><i class="fi fi-rr-info" aria-hidden="true"></i> Only the sender and the designated Proof Reader can open the document content. Proofreading approval confirms document review only; it is not an official PNP approval or signing authority.</p>
+</section>
+
+<!-- ADMIN PROOF READER: ALPHA ADMIN DESIGNATION SETTINGS -->
+<div aria-labelledby="proofReaderSettingsTitle" aria-modal="true" class="modal-overlay hidden" id="proofReaderSettingsModal" onclick="if(event.target===this)closeProofReaderSettings()" role="dialog" style="z-index:2370;">
+  <div class="modal-content glass-panel modal-uniform-shell proofreader-settings-modal">
+    <header class="modal-uniform-header">
+      <div class="modal-uniform-header-copy">
+        <span class="modal-uniform-kicker">ALPHA ADMIN CONTROL</span>
+        <h2 id="proofReaderSettingsTitle">Proof Reader Settings</h2>
+        <p>Designate the personnel authorized to receive new proofreading assignments.</p>
+      </div>
+      <button class="action-btn icon-action-btn modal-uniform-close" onclick="closeProofReaderSettings()" type="button" aria-label="Close" title="Close"><i class="fi fi-rr-cross-small" aria-hidden="true"></i></button>
+    </header>
+    <div class="proofreader-settings-body">
+      <div class="proofreader-settings-notice"><i class="fi fi-rr-shield-check" aria-hidden="true"></i><span><strong>Restricted setting:</strong> Only the ALPHA ADMIN can save designations. The list includes all active, non-read-only Admin accounts linked to an active Personnel record, plus other eligible personnel accounts.</span></div>
+      <div class="proofreader-settings-summary">
+        <div><span class="proofreader-settings-summary-label">Eligible Personnel / Admin Accounts</span><strong id="proofReaderSettingsCandidateCount">0</strong></div>
+        <div><span class="proofreader-settings-summary-label">Designated Proof Readers</span><strong id="proofReaderSettingsSelectedCount">0</strong></div>
+      </div>
+      <div class="proofreader-settings-search"><i class="fi fi-rr-search" aria-hidden="true"></i><input id="proofReaderSettingsSearch" type="search" aria-label="Search personnel accounts" placeholder="Search rank, name, section, or username" autocomplete="off" oninput="filterProofReaderDesignationOptions()"/><button type="button" onclick="clearProofReaderDesignationSearch()" aria-label="Clear search" title="Clear search"><i class="fi fi-rr-cross-small" aria-hidden="true"></i></button></div>
+      <div class="proofreader-settings-list-heading"><div><strong>Available Proof Reader Accounts</strong><span>Admin accounts are included automatically in this selection list; check the accounts to designate</span></div><button class="proofreader-select-visible" id="proofReaderSelectVisibleBtn" onclick="toggleVisibleProofReaderDesignations()" type="button">Select visible</button></div>
+      <div class="proofreader-designation-list" id="proofReaderDesignationList"><div class="proofreader-settings-empty">Loading eligible personnel accounts…</div></div>
+      <div class="proofreader-settings-footer"><span id="proofReaderSettingsMessage" aria-live="polite">Only active SPADES accounts linked to one unique, active Personnel record are available. Read-only accounts are excluded.</span><div><button class="action-btn" onclick="closeProofReaderSettings()" type="button">Cancel</button><button class="action-btn approve-btn" id="proofReaderSaveDesignationsBtn" onclick="saveProofReaderDesignations()" type="button"><i class="fi fi-rr-check" aria-hidden="true"></i><span>Save Designations</span></button></div></div>
+    </div>
+  </div>
 </div>
 
-<!-- PHASE II WORKFLOW CREATE / EDIT MODAL -->
-<div aria-labelledby="phase2WorkflowEditorTitle" aria-modal="true" class="modal-overlay hidden" id="phase2WorkflowEditor" onclick="if(event.target===this)closePhase2WorkflowEditor()" role="dialog">
- <div class="modal-content glass-panel modal-uniform-shell phase2-dialog"><header class="modal-uniform-header"><div class="modal-uniform-header-copy"><span class="modal-uniform-kicker">ADMINISTRATIVE WORKFLOW</span><h2 id="phase2WorkflowEditorTitle">New Administrative Request</h2><p>Save a draft or submit it for review.</p></div><button class="action-btn icon-action-btn modal-uniform-close" onclick="closePhase2WorkflowEditor()" type="button" aria-label="Close"><i class="fi fi-rr-cross-small"></i></button></header>
-  <input id="phase2WorkflowEditId" type="hidden"/><div class="phase2-form-grid"><label>Transaction Category<select id="phase2WorkflowCategory"><option value="">Select category</option><option>Administrative Request</option><option>Personnel Transaction</option><option>Facilities / Logistics</option><option>Activity / Operational Support</option><option>Compliance</option><option>Document / Records</option><option>Other</option></select></label><label>Requesting Office / Section<input id="phase2WorkflowOffice" maxlength="120" placeholder="Enter office or section" type="text"/></label><label class="phase2-span-2">Transaction Title<input id="phase2WorkflowTitle" maxlength="180" placeholder="Brief transaction title" type="text"/></label><label>Target Deadline (optional)<input id="phase2WorkflowDeadline" type="date"/></label><label class="phase2-span-2">Description / Details<textarea id="phase2WorkflowDescription" maxlength="4000" rows="4" placeholder="Describe the request and relevant details"></textarea></label></div>
-  <div class="phase2-form-actions"><button class="action-btn" onclick="savePhase2WorkflowDraft(false)" type="button">Save Draft</button><button class="action-btn approve-btn" onclick="savePhase2WorkflowDraft(true)" type="button">Save &amp; Submit</button></div>
- </div>
+<!-- ADMIN PROOF READER: SUBMISSION MODAL -->
+<div aria-labelledby="proofReaderSubmitTitle" aria-modal="true" class="modal-overlay hidden" id="proofReaderSubmitModal" onclick="if(event.target===this)closeProofReaderSubmitModal()" role="dialog" style="z-index:2380;">
+  <div class="modal-content glass-panel modal-uniform-shell proofreader-submit-modal"><header class="modal-uniform-header"><div class="modal-uniform-header-copy"><span class="modal-uniform-kicker">DOCUMENT SUBMISSION</span><h2 id="proofReaderSubmitTitle">Submit for Proofreading</h2><p>Upload the source document and select the personnel assigned to proofread it.</p></div><button class="action-btn icon-action-btn modal-uniform-close" onclick="closeProofReaderSubmitModal()" type="button" aria-label="Close" title="Close"><i class="fi fi-rr-cross-small" aria-hidden="true"></i></button></header>
+    <div class="proofreader-form-body">
+      <div class="proofreader-form-grid">
+        <label class="proofreader-field proofreader-span-2">Document Title <span class="required-mark">*</span><input id="proofReaderDocTitle" maxlength="180" type="text" placeholder="Enter document title" required/></label>
+        <label class="proofreader-field proofreader-span-2">Description / Purpose<textarea id="proofReaderDocDescription" maxlength="2000" rows="2" placeholder="Briefly describe the document"></textarea></label>
+        <label class="proofreader-field">Document Type<select id="proofReaderDocType"><option value="Memorandum">Memorandum</option><option value="Letter">Letter</option><option value="Report">Report</option><option value="Request">Request</option><option value="Certification">Certification</option><option value="Other">Other</option></select></label>
+        <label class="proofreader-field">Target Completion Date<input id="proofReaderTargetDate" type="date"/></label>
+        <label class="proofreader-field proofreader-span-2">Designated Proof Reader <span class="required-mark">*</span><select id="proofReaderAssignee" required><option value="">Select an active Proof Reader…</option></select><small>Select the specific personnel who will review this document.</small></label>
+        <label class="proofreader-field proofreader-span-2">Instructions for the Proof Reader<textarea id="proofReaderInstructions" maxlength="3000" rows="3" placeholder="Specify what should be checked or emphasized"></textarea></label>
+        <div class="proofreader-upload-field proofreader-span-2"><label for="proofReaderUploadFile">Upload Document <span class="required-mark">*</span></label><div class="proofreader-upload-drop"><i class="fi fi-rr-cloud-upload" aria-hidden="true"></i><div><strong>Select a document to upload</strong><small>DOCX, TXT, HTML and PDF · Maximum 10 MB per upload</small></div><input id="proofReaderUploadFile" type="file" accept=".docx,.txt,.html,.htm,.pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/zip,text/plain,text/html,application/pdf" onchange="updateProofReaderSelectedFile()"/></div><div class="proofreader-selected-file" id="proofReaderSelectedFile">No file selected.</div><div class="proofreader-google-docs-link"><label for="proofReaderGoogleDocsUrl">Or paste a Google Docs link</label><input id="proofReaderGoogleDocsUrl" type="url" inputmode="url" placeholder="https://docs.google.com/document/d/.../edit" autocomplete="url"/><small>Use either a file upload or a Google Docs link. The application owner must be able to access the linked source document.</small></div><p class="proofreader-format-note">DOCX, TXT, HTML and Google Docs content are loaded into an editable text-based working copy. Complex original formatting may not be retained. PDF files are preview-only; upload a corrected PDF when returning revisions.</p></div>
+      </div>
+      <div class="proofreader-form-actions"><button class="action-btn" onclick="closeProofReaderSubmitModal()" type="button">Cancel</button><button class="action-btn approve-btn" id="proofReaderSubmitBtn" onclick="submitProofReaderRequest()" type="button"><i class="fi fi-rr-paper-plane" aria-hidden="true"></i><span>Submit for Proofreading</span></button></div>
+      <div class="proofreader-form-message" id="proofReaderSubmitMessage" aria-live="polite"></div>
+    </div>
+  </div>
 </div>
 
-<!-- PHASE II WORKFLOW DETAILS MODAL -->
-<div aria-labelledby="phase2WorkflowDetailsTitle" aria-modal="true" class="modal-overlay hidden" id="phase2WorkflowDetails" onclick="if(event.target===this)closePhase2WorkflowDetails()" role="dialog">
- <div class="modal-content glass-panel modal-uniform-shell phase2-dialog phase2-workflow-details-dialog"><header class="modal-uniform-header"><div class="modal-uniform-header-copy"><span class="modal-uniform-kicker">TRANSACTION DETAILS</span><h2 id="phase2WorkflowDetailsTitle">Administrative Transaction</h2><p id="phase2WorkflowDetailsSubtitle">Reference and processing information</p></div><button class="action-btn icon-action-btn modal-uniform-close" onclick="closePhase2WorkflowDetails()" type="button" aria-label="Close"><i class="fi fi-rr-cross-small"></i></button></header>
-  <div id="phase2WorkflowDetailsContent" class="phase2-workflow-detail-content"></div><div class="phase2-workflow-review-box"><label for="phase2WorkflowComment">Review Comment / Action Note</label><textarea id="phase2WorkflowComment" maxlength="2000" rows="3" placeholder="Enter a comment for the transaction history"></textarea><div class="phase2-form-actions" id="phase2WorkflowTransitionActions"></div></div><div class="phase2-workflow-assign-box hidden" id="phase2WorkflowAssignPanel"><h3>Assign Reviewer</h3><div class="phase2-form-grid"><label>Assigned Reviewer<select id="phase2WorkflowAssignedReviewer"><option value="">Unassigned</option></select></label><label>Assigned Office<input id="phase2WorkflowAssignedOffice" maxlength="120" placeholder="Office / section" type="text"/></label></div><div class="phase2-form-actions"><button class="action-btn approve-btn" id="phase2AssignReviewerBtn" onclick="assignPhase2WorkflowReviewer()" type="button">Save Assignment</button></div></div><div class="phase2-history-section"><h3>Transaction History</h3><div id="phase2WorkflowHistory" class="phase2-history-list"><div class="phase2-empty">Loading history…</div></div></div>
- </div>
-</div>
-
-<!-- PHASE II AUDIT DETAIL MODAL -->
-<div aria-labelledby="phase2AuditDetailTitle" aria-modal="true" class="modal-overlay hidden" id="phase2AuditDetailModal" onclick="if(event.target===this)closePhase2AuditDetail()" role="dialog">
- <div class="modal-content glass-panel modal-uniform-shell phase2-dialog"><header class="modal-uniform-header"><div class="modal-uniform-header-copy"><span class="modal-uniform-kicker">AUDIT RECORD</span><h2 id="phase2AuditDetailTitle">Audit Details</h2><p id="phase2AuditDetailSubtitle">Verified activity information</p></div><button class="action-btn icon-action-btn modal-uniform-close" onclick="closePhase2AuditDetail()" type="button" aria-label="Close"><i class="fi fi-rr-cross-small"></i></button></header><div class="phase2-audit-detail-content" id="phase2AuditDetailContent"></div></div>
+<!-- ADMIN PROOF READER: DOCUMENT WORKSPACE -->
+<div aria-labelledby="proofReaderWorkspaceTitle" aria-modal="true" class="modal-overlay hidden" id="proofReaderWorkspaceModal" onclick="if(event.target===this)closeProofReaderWorkspace()" role="dialog" style="z-index:2390;">
+  <div class="modal-content glass-panel modal-uniform-shell proofreader-workspace-modal"><header class="modal-uniform-header"><div class="modal-uniform-header-copy"><span class="modal-uniform-kicker" id="proofReaderWorkspaceKicker">DOCUMENT REVIEW</span><h2 id="proofReaderWorkspaceTitle">Document Information</h2><p id="proofReaderWorkspaceSubtitle">Review document content and request information.</p></div><button class="action-btn icon-action-btn modal-uniform-close" onclick="closeProofReaderWorkspace()" type="button" aria-label="Close" title="Close"><i class="fi fi-rr-cross-small" aria-hidden="true"></i></button></header>
+    <div class="proofreader-workspace-meta" id="proofReaderWorkspaceMeta"></div>
+    <div class="proofreader-workspace-layout">
+      <section class="proofreader-editor-panel"><div class="proofreader-editor-toolbar"><div><strong id="proofReaderEditorHeading">Document Content</strong><small id="proofReaderEditorMode">Editable working copy</small></div><div class="proofreader-editor-tools"><span id="proofReaderVersionPill" class="proofreader-version-pill">Original</span></div></div>
+        <section class="proofreader-document-files" aria-label="Proofreading document files">
+          <div class="proofreader-document-files-heading"><div><strong>Document Files</strong><small>Actual files accessible to the sender and assigned Proof Reader</small></div><i class="fi fi-rr-folder-open" aria-hidden="true"></i></div>
+          <article id="proofReaderOriginalFileCard" class="proofreader-document-file-card hidden"><div class="proofreader-document-file-icon"><i class="fi fi-rr-file-word" aria-hidden="true"></i></div><div class="proofreader-document-file-copy"><strong id="proofReaderOriginalFileTitle">Original uploaded Word document</strong><small id="proofReaderOriginalFileName">Original document.docx</small></div><span id="proofReaderOriginalFileType" class="proofreader-filetype-pill">DOCX</span><button id="proofReaderDownloadOriginalBtn" class="action-btn" type="button" onclick="downloadProofReaderOriginalDocument()" title="Download the exact original uploaded file" aria-label="Download original uploaded file"><i class="fi fi-rr-download" aria-hidden="true"></i><span>Download Original</span></button></article>
+          <article id="proofReaderCurrentFileCard" class="proofreader-document-file-card hidden"><div class="proofreader-document-file-icon current"><i class="fi fi-rr-file-word" aria-hidden="true"></i></div><div class="proofreader-document-file-copy"><strong id="proofReaderCurrentFileTitle">Current editable Word copy</strong><small id="proofReaderCurrentFileName">Current Working Copy.docx</small></div><span id="proofReaderCurrentFileType" class="proofreader-filetype-pill">DOCX</span><button id="proofReaderDownloadBtn" class="action-btn approve-btn" type="button" onclick="downloadProofReaderCurrentDocument()" title="Download the latest proofreading version as a file" aria-label="Download current document file"><i class="fi fi-rr-download" aria-hidden="true"></i><span id="proofReaderDownloadBtnLabel">Download Current .DOCX</span></button></article>
+        </section>
+        <div id="proofReaderTextEditorWrap" class="proofreader-text-editor-wrap"><textarea id="proofReaderEditor" spellcheck="true" aria-label="Document content editor" placeholder="Document content will appear here."></textarea></div>
+        <div id="proofReaderPdfPreviewWrap" class="proofreader-pdf-preview-wrap hidden"><iframe id="proofReaderPdfPreview" title="Proofreading PDF preview"></iframe></div>
+        <div id="proofReaderRevisionUploadWrap" class="proofreader-revision-upload hidden"><label for="proofReaderRevisionUpload">Upload corrected document</label><input id="proofReaderRevisionUpload" type="file" accept=".docx,.txt,.html,.htm,.pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/zip,text/plain,text/html,application/pdf"/><small>DOCX, TXT, HTML/HTM, or PDF · Maximum 10 MB. Required when uploading a corrected file or revising a PDF.</small></div>
+      </section>
+      <aside class="proofreader-review-panel"><div class="proofreader-detail-section"><h3>Request Details</h3><div id="proofReaderDetailGrid" class="proofreader-detail-grid"></div></div><div class="proofreader-review-actions hidden" id="proofReaderReviewActions"><h3>Proofreading Decision</h3><label class="proofreader-field">Remark<select id="proofReaderRemark"><option value="">Select proofreading remark…</option><option>For Revision</option><option>For Correction</option><option>Approved</option><option>Disapproved</option><option>Disregard</option></select></label><label class="proofreader-field">Review Comments<textarea id="proofReaderComments" rows="4" maxlength="4000" placeholder="Explain the review result or corrections"></textarea></label><button class="action-btn approve-btn" id="proofReaderSubmitReviewBtn" onclick="submitProofReaderReview()" type="button">Submit Review Result</button></div><div class="proofreader-sender-actions hidden" id="proofReaderSenderActions"><h3>Final Revision</h3><p>The reviewed copy and comments are provided above. Revise the content or upload a corrected file, then resubmit it for proofreading.</p><button class="action-btn approve-btn" id="proofReaderResubmitBtn" onclick="resubmitProofReaderFinalVersion()" type="button">Submit Final Revision</button></div><div class="proofreader-readonly-actions hidden" id="proofReaderReadonlyActions"><p>This request is currently closed or not editable by your role.</p></div><div class="proofreader-history-section"><h3>Revision History</h3><div id="proofReaderHistory" class="proofreader-history-timeline"><div class="proofreader-empty">No history loaded.</div></div></div></aside>
+    </div>
+    <div class="proofreader-workspace-footer"><span id="proofReaderWorkspaceNotice" aria-live="polite">Only the sender and designated Proof Reader can access this document.</span></div>
+  </div>
 </div>
 
 <!-- SETTINGS TAB -->
@@ -1828,7 +1904,7 @@
 <div class="profile-card-avatar" id="profileCardAvatar">U</div>
 <div class="profile-card-name-row">
 <h3 class="profile-card-name" id="profileCardName">Name</h3>
-<button aria-label="Copy personnel name" class="action-btn profile-card-copy-name-btn" id="profileCardCopyNameBtn" onclick="copyPersonnelProfileName()" title="Copy personnel name" type="button"></button>
+<button aria-label="Copy personnel name" class="action-btn profile-card-copy-name-btn spades-force-icon-only" data-spades-icon-name="fi-rr-copy" id="profileCardCopyNameBtn" onclick="copyPersonnelProfileName()" title="Copy personnel name" type="button"><i aria-hidden="true" class="fi fi-rr-copy"></i></button>
 </div>
 <div aria-live="polite" class="profile-card-copy-name-feedback" id="profileCardCopyNameFeedback" role="status"></div>
 <div class="profile-card-designation" id="profileCardDesignation"></div>
@@ -1967,5 +2043,6 @@
 <div class="file-preview-meta-row"><span id="previewMeta"></span><span class="file-preview-local-note">Office files use a page-layout preview when available. Download always returns the original file.</span></div>
 </div>
 </div>
+<script src="script/admin-proof-reader.js" defer></script>
 </body>
 </html>
