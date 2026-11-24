@@ -697,6 +697,27 @@
     });
   }
 
+  let pdfJsLibraryPromise = null;
+
+  async function loadProofReaderPdfJs() {
+    if (window.pdfjsLib && typeof window.pdfjsLib.getDocument === 'function' && typeof window.pdfjsLib.TextLayer === 'function') {
+      return window.pdfjsLib;
+    }
+    if (!pdfJsLibraryPromise) {
+      pdfJsLibraryPromise = import('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/6.5.438/pdf.min.mjs')
+        .then(function(library) {
+          if (!library || typeof library.getDocument !== 'function' || typeof library.TextLayer !== 'function') {
+            throw new Error('The PDF.js module did not expose the required document and text-layer APIs.');
+          }
+          library.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/6.5.438/pdf.worker.min.mjs';
+          window.pdfjsLib = library;
+          return library;
+        })
+        .catch(function(error) { pdfJsLibraryPromise = null; throw error; });
+    }
+    return pdfJsLibraryPromise;
+  }
+
   async function renderProofReaderPdf(base64) {
     const host = byId('proofReaderPdfPages');
     const fallback = byId('proofReaderPdfFallback');
@@ -704,16 +725,11 @@
     host.innerHTML = '';
     const bytes = Uint8Array.from(atob(base64), character => character.charCodeAt(0));
     const blob = new Blob([bytes],{type:'application/pdf'});
-    if (!window.pdfjsLib || typeof window.pdfjsLib.getDocument !== 'function' || typeof window.pdfjsLib.renderTextLayer !== 'function') {
-      state.pdfObjectUrl = URL.createObjectURL(blob);
-      const frame = byId('proofReaderPdfPreview');
-      if (frame) frame.src = state.pdfObjectUrl;
-      setVisible('proofReaderPdfFallback',true);
-      return;
-    }
     try {
-      window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-      const pdf = await window.pdfjsLib.getDocument({data:bytes}).promise;
+      const pdfjsLib = await loadProofReaderPdfJs();
+      // PDF.js is pinned to the current stable release. Keep eval-based font compilation
+      // disabled as defense-in-depth when rendering untrusted uploaded documents.
+      const pdf = await pdfjsLib.getDocument({data:bytes,isEvalSupported:false}).promise;
       state.pdfDocument = pdf;
       const availableWidth = Math.max(360,(host.clientWidth || 700)-32);
       for (let pageNumber=1; pageNumber<=pdf.numPages; pageNumber++) {
@@ -742,10 +758,14 @@
         const context = canvas.getContext('2d',{alpha:false});
         context.setTransform(outputScale,0,0,outputScale,0,0);
         await page.render({canvasContext:context,viewport:viewport}).promise;
-        const textContent = await page.getTextContent();
-        const textTask = window.pdfjsLib.renderTextLayer({textContent:textContent,container:textLayer,viewport:viewport,textDivs:[]});
-        if (textTask && textTask.promise) await textTask.promise;
-        else await textTask;
+        // Use the supported TextLayer class and streaming text API for selectable text.
+        textLayer.style.setProperty('--scale-factor', String(viewport.scale));
+        const textLayerTask = new pdfjsLib.TextLayer({
+          textContentSource: page.streamTextContent(),
+          container: textLayer,
+          viewport: viewport
+        });
+        await textLayerTask.render();
       }
       setVisible('proofReaderPdfFallback',false);
       renderProofReaderPdfHighlights();

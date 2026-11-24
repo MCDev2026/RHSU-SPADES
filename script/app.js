@@ -957,9 +957,11 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
 
             try {
                 await spadesAuthenticatedRead('log_activity', {actionText});
-                // Refresh after the backend has had time to append the log; the normal polling
-                // timer continues to keep every user's dashboard current.
-                setTimeout(fetchActivityLogs, 1200);
+                // Refresh the log only when the Dashboard is actually visible.
+                // Other modules must not trigger an extra full activity-sheet read.
+                if (!document.getElementById('tabDashboard')?.classList.contains('hidden')) {
+                    setTimeout(loadExecutiveDashboard, 1200);
+                }
             } catch (err) {}
         }
 
@@ -1422,12 +1424,58 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         }
 
         function renderChatAttachmentMarkup(message) {
-            const url = String(message?.attachmentUrl || '').trim();
+            const attachmentId = String(message?.attachmentId || '').trim();
             const name = String(message?.attachmentName || '').trim();
-            if (!url || !name) return '';
-            return `<a class="chat-attachment-link" href="${escapeAttr(url)}" target="_blank" rel="noopener noreferrer" title="Open attachment">
+            if (!attachmentId || !name) return '';
+            return `<button type="button" class="chat-attachment-link" data-chat-attachment-id="${escapeAttr(attachmentId)}" data-chat-attachment-name="${escapeAttr(name)}" onclick="openChatAttachment(this.dataset.chatAttachmentId,this.dataset.chatAttachmentName)" title="Open attachment">
                 <span aria-hidden="true">📎</span><span>${escapeHtml(name)}</span>
-            </a>`;
+            </button>`;
+        }
+
+        async function openChatAttachment(attachmentId, fileName) {
+            const id = String(attachmentId || '').trim();
+            if (!id) return customAlert('Attachment reference is missing.', 'Attachment Error');
+            // Open synchronously during the click gesture so browser popup blockers
+            // do not prevent the authenticated file from opening after the fetch.
+            const popup = window.open('about:blank', '_blank');
+            if (popup) {
+                try {
+                    popup.document.title = 'Opening SPADES attachment';
+                    popup.document.body.textContent = 'Retrieving secure attachment…';
+                } catch (_) {}
+            }
+            try {
+                const auth = chatCredentialPayload();
+                const response = await fetch(API_URL, {
+                    method:'POST', mode:'cors', cache:'no-store',
+                    headers:{'Content-Type':'text/plain;charset=utf-8'},
+                    body:JSON.stringify({action:'get_chat_attachment',...auth,attachmentId:id})
+                });
+                const data = await response.json();
+                if (!response.ok || !data || !data.success) throw new Error(data?.error || 'Unable to retrieve this attachment.');
+                if (data.externalUrl) {
+                    if (popup && !popup.closed) popup.location.replace(data.externalUrl);
+                    else window.open(data.externalUrl, '_blank', 'noopener');
+                    return;
+                }
+                if (!data.base64) throw new Error('The attachment data was empty.');
+                const binary = atob(data.base64);
+                const bytes = new Uint8Array(binary.length);
+                for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+                const blob = new Blob([bytes], {type:data.mimeType || 'application/octet-stream'});
+                const objectUrl = URL.createObjectURL(blob);
+                const safeName = String(data.name || fileName || 'chat-attachment').replace(/[\\/:*?"<>|\u0000-\u001f]/g, '_');
+                if (popup && !popup.closed) popup.location.replace(objectUrl);
+                else {
+                    const link = document.createElement('a');
+                    link.href = objectUrl; link.download = safeName; link.rel = 'noopener';
+                    document.body.appendChild(link); link.click(); link.remove();
+                }
+                window.setTimeout(() => URL.revokeObjectURL(objectUrl), 120000);
+            } catch (error) {
+                if (popup && !popup.closed) popup.close();
+                customAlert(error.message || 'Unable to open this attachment.', 'Attachment Error');
+            }
         }
 
         function sanitizeChatMessageHtml(html) {
@@ -2715,21 +2763,40 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         }
 
         let visibleRefreshInProgress = false;
+        function isSpadesUserActivelyEditing() {
+            const active = document.activeElement;
+            if (active && active !== document.body && active.matches && active.matches('input:not([type="button"]):not([type="submit"]), textarea, select, [contenteditable="true"]')) return true;
+            return !!document.querySelector('.modal-overlay:not(.hidden), .profile-settings-overlay:not(.hidden), .proofreader-workspace-modal:not(.hidden)');
+        }
+
+        async function refreshActivePersonnelSubPage() {
+            // Refresh only the currently visible Personnel module. This avoids
+            // seven sheet reads and several DOM rebuilds when the user is viewing
+            // just one sub-page, while preserving its independent list viewport.
+            switch (String(currentPersonnelSubPage || 'list')) {
+                case 'list': return loadPersonnel();
+                case 'duty': return loadDutySequence();
+                case 'bmi': return loadBmiRecords();
+                case 'squad': return loadSquads();
+                case 'leave': return loadLeaveEntries();
+                case 'aor': return loadAreas();
+                default: return loadPersonnel();
+            }
+        }
+
         async function refreshVisibleTabData() {
-            if (!localStorage.getItem('loggedInUser') || document.hidden || visibleRefreshInProgress) return;
+            if (!localStorage.getItem('loggedInUser') || document.hidden || visibleRefreshInProgress || isSpadesUserActivelyEditing()) return;
             visibleRefreshInProgress = true;
             const tabName = sessionStorage.getItem('activeTab') || 'dashboard';
             try {
-                if (tabName === 'dashboard') {
-                    await loadExecutiveDashboard(); // refreshes memo, personnel, activity, and live-log summaries together
-                    return;
-                }
-                if (tabName === 'home') await loadData();
-                else if (tabName === 'personnel') await loadAllPersonnelManagementData(true);
+                if (tabName === 'dashboard') await loadExecutiveDashboard();
+                else if (tabName === 'home') await loadData();
+                else if (tabName === 'personnel') await refreshActivePersonnelSubPage();
                 else if (tabName === 'activityManagement') await loadActivities();
                 else if (tabName === 'profile') await populateProfileData();
                 else if (tabName === 'adminMgmt' && isAlphaAdmin() && hasFreshAlphaStepUp()) await loadAdminUsers();
-                await fetchActivityLogs();
+                // Activity logs are part of the Dashboard summary. Do not fetch
+                // the full log sheet on every unrelated tab's refresh interval.
             } catch (error) {
                 console.warn('Automatic data refresh failed; the current view remains available.', error);
             } finally {
@@ -2834,14 +2901,17 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 // Fetch the combined security context once. Access permissions and read-only
                 // restrictions are delivered by the same authenticated endpoint.
                 loadUserAccessContext().then(() => {
-                    const me = String(localStorage.getItem('loggedInUser') || '').trim().toLowerCase();
+                    const currentUsername = String(localStorage.getItem('loggedInUser') || '').trim();
+                    const me = currentUsername.toLowerCase();
                     const restrictedKey = Object.keys(userRestrictedMap || {}).find(key => String(key).trim().toLowerCase() === me);
                     if (restrictedKey && userRestrictedMap[restrictedKey]) {
                         localStorage.setItem('canEdit', 'No');
                         localStorage.setItem('userRole', 'Regular User');
                     }
                     applyAccessRestrictions();
-                }).catch(() => {});
+                    if (userAccessContextLoadedFor === currentUsername && userHasAccess('usersChat')) startChatNotificationMonitor();
+                    else stopChatNotificationMonitor();
+                }).catch(() => { stopChatNotificationMonitor(); });
 
                 // Keep the first authenticated screen responsive. Background polling,
                 // announcements and reminders start after the initial render.
@@ -2850,7 +2920,6 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                     restartActivityLogRefresh();
                     fetchSystemAnnouncement();
                     startActivityReminderMonitor();
-                    startChatNotificationMonitor();
                     if (typeof startProofReaderNotificationMonitor === 'function') startProofReaderNotificationMonitor();
                 };
                 if (typeof window.requestIdleCallback === 'function') window.requestIdleCallback(startPostLoginTasks, {timeout: 1200});
@@ -3030,6 +3099,16 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             sessionStorage.removeItem('systemAnnouncementSeen');
             stopChatNotificationMonitor();
             if (typeof stopProofReaderNotificationMonitor === 'function') stopProofReaderNotificationMonitor();
+            // Access and restriction maps are session-scoped. Clear them so a
+            // same-account relogin always fetches the latest server permissions.
+            userAccessMap = {};
+            userPersonnelPermissionsMap = {};
+            userRestrictedMap = {};
+            userAccessMapLoadedFor = '';
+            userAccessContextLoadedFor = '';
+            userAccessContextLoadedAt = 0;
+            userAccessContextPromise = null;
+            userAccessContextPromiseFor = '';
             const incomingChatContainer = document.getElementById('incomingChatContainer');
             if (incomingChatContainer) incomingChatContainer.innerHTML = '';
             userSettings = { ...DEFAULT_USER_SETTINGS };
@@ -3245,7 +3324,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         function getSelectedOfficeDestination(selectId, otherInputId) { const select = document.getElementById(selectId); const otherInput = document.getElementById(otherInputId); if (!select) return ""; if (select.value === "Others") return otherInput ? otherInput.value.trim() : ""; return select.value.trim(); }
         function setOfficeDestination(selectId, otherInputId, destination) { const select = document.getElementById(selectId); const otherInput = document.getElementById(otherInputId); if (!select) return; const value = String(destination || "").trim(); if (OFFICE_DESTINATIONS.includes(value)) { select.value = value; if (otherInput) { otherInput.value = ""; otherInput.classList.add('hidden'); otherInput.required = false; } } else if (value) { select.value = "Others"; if (otherInput) { otherInput.value = value; otherInput.classList.remove('hidden'); otherInput.required = true; } } else { select.value = ""; if (otherInput) { otherInput.value = ""; otherInput.classList.add('hidden'); otherInput.required = false; } } }
 
-        function openMemoModalUser() { document.getElementById('memoSubmissionModal').classList.remove('hidden'); document.getElementById('memoSubmitBtn').disabled = false; document.getElementById('memoSubmitBtn').innerText = "Submit Data"; }
+        function openMemoModalUser() { const typeSelect = document.getElementById('memoType'); if (typeSelect) typeSelect.value = 'Regular Memo'; document.getElementById('memoSubmissionModal').classList.remove('hidden'); document.getElementById('memoSubmitBtn').disabled = false; document.getElementById('memoSubmitBtn').innerText = "Submit Data"; }
         function dashboardAddMemo() {
             switchTab('home');
             setTimeout(() => {
@@ -3539,6 +3618,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             // User Management is intentionally nested in Settings, never shown in the sidebar.
             document.getElementById('btnAdminMgmt')?.classList.add('hidden');
             document.getElementById('settingsUserMgmtBtn')?.classList.toggle('hidden', !alphaAdmin);
+            document.getElementById('memoBarcodeSettingsBtn')?.classList.toggle('hidden', !alphaAdmin);
             document.getElementById('settingsBackupAdminCard')?.classList.toggle('hidden', !alphaAdmin);
         }
 
@@ -3985,9 +4065,16 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 populatePersonnelFilters();
                 populatePersonnelSections();
 
-                // Defer the potentially heavier table DOM rendering until the browser has
-                // painted the Personnel page. This keeps the page responsive with larger sheets.
-                requestAnimationFrame(() => { filterPersonnel(); if (!document.getElementById('tabDashboard').classList.contains('hidden')) renderExecutiveDashboard(); });
+                // Wait for the table DOM to finish rendering before this loader resolves.
+                // The global list-viewport wrapper restores the previous visible record
+                // in the promise's finally() callback, so resolving before this frame
+                // would allow the delayed table rebuild to jump the list back to the top.
+                await new Promise(resolve => requestAnimationFrame(() => {
+                    filterPersonnel();
+                    const dashboard = document.getElementById('tabDashboard');
+                    if (dashboard && !dashboard.classList.contains('hidden')) renderExecutiveDashboard();
+                    resolve();
+                }));
                 return true;
             } catch (err) {
                 console.error('Personnel data load failed:', err);
@@ -4617,7 +4704,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 logActivity(`${payload.action==='add_personnel'?'added':'updated'} personnel record: ${payload.rank} ${payload.lastName}, ${payload.firstName}`);
                 closePersonnelModal();
                 customAlert(data.archived ? 'Personnel marked non-Active and moved to Archived.' : (payload.action==='add_personnel'?'Personnel added successfully.':'Personnel updated successfully.'),'Success');
-                await loadPersonnel();
+                await refreshPersonnelManagementAfterMutation();
             } catch(e) {
                 customAlert(e.message||'Unable to save personnel record.','Error');
             } finally { btn.disabled=false; btn.removeAttribute('aria-busy'); btn.innerText=(payload.action==='add_personnel' ? 'Save Personnel' : 'Update Personnel'); }
@@ -4633,7 +4720,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                         body:JSON.stringify({action:'archive_personnel',no:Number(no),userName:localStorage.getItem('loggedInUser'),credential:localStorage.getItem('loggedCred')||''})});
                     const data=await res.json(); if(!data.success) throw new Error(data.error||'Archive failed');
                     logActivity(`archived personnel record: ${p.rank} ${p.lastName}, ${p.firstName}`);
-                    customAlert('Personnel record archived successfully.','Success'); await loadPersonnel();
+                    customAlert('Personnel record archived successfully.','Success'); await refreshPersonnelManagementAfterMutation();
                 } catch(e){ customAlert(e.message||'Unable to archive personnel record.','Error'); }
             });
         }
@@ -4659,7 +4746,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                     if(!data.success) throw new Error(data.error || 'Restore failed');
                     logActivity(`restored personnel record${p ? `: ${p.rank} ${p.lastName}, ${p.firstName}` : ''}`);
                     customAlert('Personnel record restored to the active list.','Success');
-                    await loadPersonnel();
+                    await refreshPersonnelManagementAfterMutation();
                 } catch(e) {
                     customAlert(e.message || 'Unable to restore personnel record.','Error');
                 }
@@ -5359,7 +5446,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 logActivity(`changed archived personnel status for ${name} to ${status}`);
                 closeArchivedPersonnelDetails();
                 customAlert(`Archived personnel status updated to ${status}.`, 'Success');
-                await loadPersonnel();
+                await refreshPersonnelManagementAfterMutation();
             } catch (e) {
                 customAlert(e.message || 'Unable to update archived personnel status.', 'Error');
             } finally {
@@ -5733,15 +5820,34 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         }
 
         async function loadData() {
+            const tableBody = document.getElementById('dataTable');
+            const scrollElement = document.querySelector('#tabHome .memo-table-wrapper');
+            const scrollTop = scrollElement ? scrollElement.scrollTop : 0;
+            const scrollLeft = scrollElement ? scrollElement.scrollLeft : 0;
+            updateMemoBarcodeSettingsButton();
             try {
-                const response = await spadesAuthenticatedRead('get_memos'); let data = await response.json();
-                const tableBody = document.getElementById('dataTable'); tableBody.innerHTML = "";
-                
-                if(!data || data.length === 0) { tableBody.innerHTML = "<tr><td colspan='8' style='text-align:center;'>No memos found.</td></tr>"; document.getElementById('memoPagination').classList.add('hidden'); updateDashboard(); return; }
-                
-                allMemos = data.reverse(); 
+                const response = await spadesAuthenticatedRead('get_memos');
+                if (!response.ok) throw new Error('Memo records could not be loaded.');
+                const data = await response.json();
+                if (!tableBody) return;
+                if (!Array.isArray(data) || data.length === 0) {
+                    allMemos = [];
+                    filteredMemos = [];
+                    tableBody.innerHTML = "<tr><td colspan='8' style='text-align:center;'>No memos found.</td></tr>";
+                    document.getElementById('memoPagination')?.classList.add('hidden');
+                    updateDashboard();
+                    return;
+                }
 
-                // Populate dynamic filters
+                // The existing control number in column C remains the stable memo key.
+                // H:K are additive: type, barcode, barcode timestamp, and generator.
+                allMemos = data.reverse().map(row => {
+                    const normalized = Array.isArray(row) ? row.slice(0, 11) : [];
+                    while (normalized.length < 11) normalized.push('');
+                    if (!String(normalized[7] || '').trim()) normalized[7] = 'Regular Memo';
+                    return normalized;
+                });
+
                 const encoders = new Set();
                 const years = new Set();
                 allMemos.forEach(row => {
@@ -5753,27 +5859,37 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 });
 
                 const encoderSelect = document.getElementById('filterEncoder');
-                const selectedEncoder = encoderSelect.value;
-                encoderSelect.innerHTML = '<option value="">All Encoders</option>';
-                Array.from(encoders).sort().forEach(enc => encoderSelect.innerHTML += `<option value="${escapeAttr(enc)}">${escapeHtml(enc)}</option>`);
-                encoderSelect.value = encoders.has(selectedEncoder) ? selectedEncoder : '';
+                if (encoderSelect) {
+                    const selectedEncoder = encoderSelect.value;
+                    encoderSelect.innerHTML = '<option value="">All Encoders</option>';
+                    Array.from(encoders).sort().forEach(enc => encoderSelect.innerHTML += `<option value="${escapeAttr(enc)}">${escapeHtml(enc)}</option>`);
+                    encoderSelect.value = encoders.has(selectedEncoder) ? selectedEncoder : '';
+                }
 
                 const yearSelect = document.getElementById('filterYear');
-                const selectedYear = yearSelect.value;
-                yearSelect.innerHTML = '<option value="">All Years</option>';
-                Array.from(years).sort((a,b) => b-a).forEach(yr => yearSelect.innerHTML += `<option value="${escapeAttr(yr)}">${escapeHtml(yr)}</option>`);
-                yearSelect.value = years.has(selectedYear) ? selectedYear : '';
+                if (yearSelect) {
+                    const selectedYear = yearSelect.value;
+                    yearSelect.innerHTML = '<option value="">All Years</option>';
+                    Array.from(years).sort((a,b) => b-a).forEach(yr => yearSelect.innerHTML += `<option value="${escapeAttr(yr)}">${escapeHtml(yr)}</option>`);
+                    yearSelect.value = years.has(selectedYear) ? selectedYear : '';
+                }
 
                 updateDashboard();
-
                 if (userSettings.rememberSearch) {
                     const savedSearch = localStorage.getItem('rhsuSearch_' + localStorage.getItem('loggedInUser'));
-                    if (savedSearch) document.getElementById('searchInput').value = savedSearch;
+                    const searchInput = document.getElementById('searchInput');
+                    if (savedSearch && searchInput && !searchInput.value) searchInput.value = savedSearch;
                 }
-                
-                searchTable(true); 
-                if (!document.getElementById('tabDashboard').classList.contains('hidden')) renderExecutiveDashboard();
-            } catch (err) { }
+                searchTable(true);
+                if (scrollElement) {
+                    scrollElement.scrollTop = scrollTop;
+                    scrollElement.scrollLeft = scrollLeft;
+                }
+                if (!document.getElementById('tabDashboard')?.classList.contains('hidden')) renderExecutiveDashboard();
+            } catch (err) {
+                console.error('Memo records could not be loaded:', err);
+                if (tableBody && !allMemos.length) tableBody.innerHTML = "<tr><td colspan='8' style='text-align:center;'>Unable to load memo records. Please retry.</td></tr>";
+            }
         }
 
         function updateDashboard() {
@@ -5837,38 +5953,288 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         }
 
         function renderMemoTable() {
-            const tableBody = document.getElementById('dataTable'); tableBody.innerHTML = "";
+            const tableBody = document.getElementById('dataTable');
+            if (!tableBody) return;
             const totalPages = Math.ceil(filteredMemos.length / MEMOS_PER_PAGE) || 1;
-            if (currentMemoPage > totalPages) currentMemoPage = totalPages; if (currentMemoPage < 1) currentMemoPage = 1;
-            const currentMemos = filteredMemos.slice((currentMemoPage - 1) * MEMOS_PER_PAGE, ((currentMemoPage - 1) * MEMOS_PER_PAGE) + MEMOS_PER_PAGE);
-            
-            if (currentMemos.length === 0) { tableBody.innerHTML = "<tr><td colspan='8' style='text-align:center;'>No match.</td></tr>"; document.getElementById('memoPagination').classList.add('hidden'); return; }
-            currentMemos.forEach(row => {
-                const safeSubject = String(row[1] || "").replace(/'/g, "\'").replace(/"/g, '&quot;'); 
-                const safeDestination = String(row[5] || "N/A").replace(/'/g, "\'").replace(/"/g, '&quot;');
-                const memoStatus = row[4] || "For Dispatched";
-                
-                const currentIsEncoder = isCurrentUserRecordOwner(row[3]);
-                const isAlphaAdmin = localStorage.getItem('loggedInUser') === ALPHA_ADMIN_NAME;
-                const encoderArgument = JSON.stringify(String(row[3] || '')).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-                const memoActionButtons = [
-                    currentIsEncoder ? `<button class="action-btn icon-action-btn" title="Edit Memo" aria-label="Edit Memo" onclick="initiateEdit('${row[2]}', '${safeSubject}', '${safeDestination}', '${memoStatus}', ${encoderArgument})"><i class="fi fi-rr-edit" aria-hidden="true"></i></button>` : '',
-                    isAlphaAdmin ? `<button class="action-btn delete-btn icon-action-btn" title="Delete Memo" aria-label="Delete Memo" onclick="triggerDelete('${row[2]}')"><i class="fi fi-rr-trash" aria-hidden="true"></i></button>` : ''
+            if (currentMemoPage > totalPages) currentMemoPage = totalPages;
+            if (currentMemoPage < 1) currentMemoPage = 1;
+            const currentMemos = filteredMemos.slice((currentMemoPage - 1) * MEMOS_PER_PAGE, currentMemoPage * MEMOS_PER_PAGE);
+
+            if (currentMemos.length === 0) {
+                tableBody.innerHTML = "<tr><td colspan='8' style='text-align:center;'>No match.</td></tr>";
+                document.getElementById('memoPagination')?.classList.add('hidden');
+                return;
+            }
+
+            const rowsHtml = currentMemos.map(row => {
+                const control = String(row[2] || '');
+                const controlAttr = escapeAttr(control);
+                const subject = String(row[1] || '');
+                const destination = String(row[5] || 'N/A');
+                const status = String(row[4] || 'For Dispatched');
+                const encoder = String(row[3] || '');
+                const currentIsEncoder = isCurrentUserRecordOwner(encoder);
+                const alphaAdmin = isAlphaAdmin();
+                const actions = [
+                    currentIsEncoder ? `<button class="action-btn icon-action-btn" title="Edit Memo" aria-label="Edit Memo" data-memo-action="edit" data-control-number="${controlAttr}"><i class="fi fi-rr-edit" aria-hidden="true"></i></button>` : '',
+                    alphaAdmin ? `<button class="action-btn delete-btn icon-action-btn" title="Delete Memo" aria-label="Delete Memo" data-memo-action="delete" data-control-number="${controlAttr}"><i class="fi fi-rr-trash" aria-hidden="true"></i></button>` : ''
                 ].filter(Boolean).join(' ');
-                tableBody.innerHTML += `<tr>
-                    <td><input type="checkbox" class="row-checkbox" value="${row[2]}"></td>
-                    <td>${row[0]}</td>
-                    <td>${row[1]}</td>
-                    <td>${safeDestination}</td>
-                    <td>${row[2]}</td>
-                    <td>${row[3] || "N/A"}</td>
-                    <td><span style="font-weight: 500; color: var(--primary);">${memoStatus}</span></td>
-                    <td style="white-space: nowrap;">${memoActionButtons || '<span style="color:var(--text-muted);">—</span>'}</td>
+                return `<tr data-memo-control="${controlAttr}" tabindex="0" aria-label="Open memo information for ${escapeAttr(subject || control)}">
+                    <td><input type="checkbox" class="row-checkbox" value="${controlAttr}" aria-label="Select memo ${controlAttr}"></td>
+                    <td>${escapeHtml(row[0] || '')}</td>
+                    <td class="memo-clickable-subject">${escapeHtml(subject)}</td>
+                    <td>${escapeHtml(destination)}</td>
+                    <td>${escapeHtml(control)}</td>
+                    <td>${escapeHtml(encoder || 'N/A')}</td>
+                    <td><span class="memo-status-text">${escapeHtml(status)}</span></td>
+                    <td class="memo-row-actions" style="white-space:nowrap;">${actions || '<span style="color:var(--text-muted);">—</span>'}</td>
                 </tr>`;
-            });
+            }).join('');
+            tableBody.innerHTML = rowsHtml;
+
             const pagination = document.getElementById('memoPagination');
-            if (filteredMemos.length > MEMOS_PER_PAGE) { pagination.classList.remove('hidden'); document.getElementById('memoPageInfo').innerText = `Page ${currentMemoPage} of ${totalPages}`; document.getElementById('prevMemoBtn').disabled = (currentMemoPage === 1); document.getElementById('nextMemoBtn').disabled = (currentMemoPage === totalPages); } else { pagination.classList.add('hidden'); }
+            if (filteredMemos.length > MEMOS_PER_PAGE) {
+                pagination?.classList.remove('hidden');
+                const info = document.getElementById('memoPageInfo');
+                const prev = document.getElementById('prevMemoBtn');
+                const next = document.getElementById('nextMemoBtn');
+                if (info) info.innerText = `Page ${currentMemoPage} of ${totalPages}`;
+                if (prev) prev.disabled = currentMemoPage === 1;
+                if (next) next.disabled = currentMemoPage === totalPages;
+            } else pagination?.classList.add('hidden');
         }
+
+        let activeMemoControlNumber = '';
+        let activeMemoBarcode = '';
+
+        function memoApi(action, extra = {}) {
+            const username = localStorage.getItem('loggedInUser') || '';
+            const credential = localStorage.getItem('loggedCred') || '';
+            if (!username || !credential) return Promise.reject(new Error('Your session has expired. Please sign in again.'));
+            return fetch(API_URL, {
+                method: 'POST', mode: 'cors', cache: 'no-store',
+                headers: {'Content-Type':'text/plain;charset=utf-8'},
+                body: JSON.stringify({action, username, userName:username, credential, ...extra})
+            }).then(async response => {
+                if (!response.ok) throw new Error('The server could not complete the request.');
+                const result = await response.json();
+                if (!result || result.success !== true) throw new Error(result?.error || 'The requested memo operation failed.');
+                return result;
+            });
+        }
+
+        function updateMemoBarcodeSettingsButton() {
+            const button = document.getElementById('memoBarcodeSettingsBtn');
+            if (button) button.classList.toggle('hidden', !isAlphaAdmin());
+        }
+
+        function setMemoInformationValue(id, value) {
+            const element = document.getElementById(id);
+            if (element) element.textContent = String(value == null || value === '' ? '—' : value);
+        }
+
+        async function openMemoInformation(controlNumber) {
+            const stableControl = String(controlNumber || '').trim();
+            if (!stableControl) return;
+            const memo = (allMemos || []).find(row => String(row[2] || '').trim() === stableControl);
+            if (!memo) {
+                customAlert('The selected memo is no longer in the current list. Reload the Memo Database and try again.', 'Memo Not Found');
+                return;
+            }
+            activeMemoControlNumber = stableControl;
+            activeMemoBarcode = String(memo[8] || '').trim();
+            const memoType = String(memo[7] || 'Regular Memo').trim() || 'Regular Memo';
+            const isCsw = memoType === 'CSW (Complete Staff Work)';
+            setMemoInformationValue('memoInformationTitle', 'Memo Information');
+            setMemoInformationValue('memoInformationSubtitle', memo[1] || stableControl);
+            setMemoInformationValue('memoInformationType', memoType);
+            setMemoInformationValue('memoInformationSubject', memo[1]);
+            setMemoInformationValue('memoInformationDate', memo[0]);
+            setMemoInformationValue('memoInformationControl', memo[2]);
+            setMemoInformationValue('memoInformationDestination', memo[5] || 'N/A');
+            setMemoInformationValue('memoInformationEncoder', memo[3] || 'N/A');
+            setMemoInformationValue('memoInformationStatus', memo[4] || 'For Dispatched');
+            const classificationNames = {A:'Admin', S:'Supply', GSS:'General Services Section', BP:'Base Police', SSB:'Special Services Band', RCIA:'Regional Committee on Inspection & Acceptance'};
+            setMemoInformationValue('memoInformationClassification', classificationNames[String(memo[6] || '').trim()] || memo[6] || 'N/A');
+
+            const barcodePanel = document.getElementById('memoBarcodePanel');
+            const generateButton = document.getElementById('memoBarcodeGenerateBtn');
+            const copyButton = document.getElementById('memoBarcodeCopyBtn');
+            const feedback = document.getElementById('memoBarcodeFeedback');
+            if (barcodePanel) barcodePanel.classList.toggle('hidden', !isCsw);
+            if (generateButton) { generateButton.classList.add('hidden'); generateButton.disabled = false; generateButton.innerHTML = '<i aria-hidden="true" class="fi fi-rr-barcode"></i><span>Generate Barcode</span>'; }
+            if (copyButton) copyButton.classList.toggle('hidden', !activeMemoBarcode);
+            if (feedback) feedback.textContent = '';
+            setMemoInformationValue('memoBarcodeValue', activeMemoBarcode || 'Not generated');
+            setMemoInformationValue('memoBarcodeMeta', activeMemoBarcode ? [memo[9] ? `Generated: ${memo[9]}` : '', memo[10] ? `Generated by: ${memo[10]}` : ''].filter(Boolean).join(' · ') : '');
+
+            const modal = document.getElementById('memoInformationModal');
+            if (modal) {
+                modal.classList.remove('hidden');
+                window.SPADESModalStack?.bringToFront(modal);
+            }
+            if (isCsw && !activeMemoBarcode) {
+                try {
+                    const context = await memoApi('get_memo_barcode_context');
+                    if (generateButton && context.canGenerate && activeMemoControlNumber === stableControl && !activeMemoBarcode) generateButton.classList.remove('hidden');
+                } catch (error) {
+                    if (feedback && activeMemoControlNumber === stableControl) feedback.textContent = error.message || 'Barcode permission could not be verified.';
+                }
+            }
+        }
+
+        function closeMemoInformation() {
+            document.getElementById('memoInformationModal')?.classList.add('hidden');
+            activeMemoControlNumber = '';
+            activeMemoBarcode = '';
+        }
+
+        async function generateMemoBarcode() {
+            const controlNumber = activeMemoControlNumber;
+            const button = document.getElementById('memoBarcodeGenerateBtn');
+            const feedback = document.getElementById('memoBarcodeFeedback');
+            if (!controlNumber || !button || button.disabled) return;
+            button.disabled = true;
+            button.innerHTML = '<i aria-hidden="true" class="fi fi-rr-spinner"></i><span>Generating…</span>';
+            if (feedback) feedback.textContent = '';
+            try {
+                const result = await memoApi('generate_memo_barcode', {controlNumber});
+                const generatedBarcode = String(result.barcode || '').trim();
+                const memo = (allMemos || []).find(row => String(row[2] || '').trim() === controlNumber);
+                if (memo) {
+                    memo[8] = generatedBarcode;
+                    memo[9] = result.generatedAt || '';
+                    memo[10] = result.generatedBy || '';
+                }
+                if (activeMemoControlNumber === controlNumber) {
+                    activeMemoBarcode = generatedBarcode;
+                    setMemoInformationValue('memoBarcodeValue', activeMemoBarcode);
+                    setMemoInformationValue('memoBarcodeMeta', [result.generatedAt ? `Generated: ${result.generatedAt}` : '', result.generatedBy ? `Generated by: ${result.generatedBy}` : ''].filter(Boolean).join(' · '));
+                    document.getElementById('memoBarcodeCopyBtn')?.classList.remove('hidden');
+                    button.classList.add('hidden');
+                    if (feedback) feedback.textContent = result.alreadyAssigned ? 'This memo already has a barcode. The existing number was retrieved.' : 'Barcode generated and saved successfully.';
+                }
+                searchTable(true);
+            } catch (error) {
+                if (activeMemoControlNumber === controlNumber) {
+                    button.disabled = false;
+                    button.innerHTML = '<i aria-hidden="true" class="fi fi-rr-barcode"></i><span>Generate Barcode</span>';
+                    if (feedback) feedback.textContent = error.message || 'Barcode generation failed.';
+                }
+            }
+        }
+
+        async function copyMemoBarcode() {
+            const value = String(activeMemoBarcode || document.getElementById('memoBarcodeValue')?.textContent || '').trim();
+            const feedback = document.getElementById('memoBarcodeFeedback');
+            if (!value || value === 'Not generated' || !/^\d{9}$/.test(value)) return;
+            try {
+                if (navigator.clipboard && window.isSecureContext) await navigator.clipboard.writeText(value);
+                else {
+                    const temporary = document.createElement('textarea');
+                    temporary.value = value;
+                    temporary.setAttribute('readonly', '');
+                    temporary.style.position = 'fixed'; temporary.style.opacity = '0';
+                    document.body.appendChild(temporary); temporary.select();
+                    const copied = document.execCommand('copy'); temporary.remove();
+                    if (!copied) throw new Error('Clipboard copy failed.');
+                }
+                if (feedback) feedback.textContent = 'Barcode copied to clipboard.';
+            } catch (error) {
+                if (feedback) feedback.textContent = 'Copy was blocked. Select the barcode number and copy it manually.';
+            }
+        }
+
+        async function openMemoBarcodeSettings() {
+            updateMemoBarcodeSettingsButton();
+            if (!isAlphaAdmin()) return customAlert('Only ALPHA ADMIN can manage barcode-generation permissions.', 'Permission Denied');
+            const modal = document.getElementById('memoBarcodeSettingsModal');
+            const list = document.getElementById('memoBarcodeAdminList');
+            const feedback = document.getElementById('memoBarcodeSettingsFeedback');
+            if (list) list.innerHTML = '<p class="memo-barcode-empty">Loading eligible ADMIN accounts…</p>';
+            if (feedback) feedback.textContent = '';
+            modal?.classList.remove('hidden');
+            window.SPADESModalStack?.bringToFront(modal);
+            try {
+                const result = await memoApi('get_memo_barcode_settings');
+                const admins = Array.isArray(result.admins) ? result.admins : [];
+                if (list) {
+                    list.innerHTML = admins.length ? admins.map(admin => `<label class="memo-barcode-admin-option"><input type="checkbox" data-memo-barcode-admin value="${escapeAttr(admin.username)}" ${admin.authorized ? 'checked' : ''}><span><strong>${escapeHtml(admin.name || admin.username)}</strong><small>@${escapeHtml(admin.username)}</small></span><em>${admin.authorized ? 'Authorized' : 'Not authorized'}</em></label>`).join('') : '<p class="memo-barcode-empty">No active ADMIN accounts are currently eligible.</p>';
+                }
+                document.getElementById('memoBarcodeAdminCount').textContent = `${admins.length} eligible Admin account${admins.length === 1 ? '' : 's'}`;
+                updateMemoBarcodeSelectedCount();
+            } catch (error) {
+                if (list) list.innerHTML = `<p class="memo-barcode-empty">${escapeHtml(error.message || 'Unable to load ADMIN accounts.')}</p>`;
+                if (feedback) feedback.textContent = error.message || 'Unable to load barcode settings.';
+            }
+        }
+
+        function updateMemoBarcodeSelectedCount() {
+            const count = document.querySelectorAll('#memoBarcodeAdminList [data-memo-barcode-admin]:checked').length;
+            const target = document.getElementById('memoBarcodeSelectedCount');
+            if (target) target.textContent = `${count} authorized`;
+        }
+
+        function closeMemoBarcodeSettings() {
+            document.getElementById('memoBarcodeSettingsModal')?.classList.add('hidden');
+        }
+
+        async function saveMemoBarcodeSettings() {
+            if (!isAlphaAdmin()) return customAlert('Only ALPHA ADMIN can manage barcode-generation permissions.', 'Permission Denied');
+            const button = document.getElementById('memoBarcodeSettingsSaveBtn');
+            const feedback = document.getElementById('memoBarcodeSettingsFeedback');
+            const selectedUsernames = Array.from(document.querySelectorAll('#memoBarcodeAdminList [data-memo-barcode-admin]:checked')).map(input => input.value);
+            if (!button) return;
+            button.disabled = true;
+            button.innerHTML = '<i aria-hidden="true" class="fi fi-rr-spinner"></i><span>Saving…</span>';
+            try {
+                let adminToken = '';
+                if (hasFreshAlphaStepUp()) adminToken = sessionAdminPass;
+                else {
+                    const password = window.prompt('Enter the ALPHA ADMIN credential to authorize this permission change:');
+                    if (!password) throw new Error('Permission changes were cancelled.');
+                    adminToken = await ensureAlphaStepUpToken(password);
+                }
+                const result = await memoApi('save_memo_barcode_settings', {selectedUsernames, adminToken});
+                if (feedback) feedback.textContent = result.message || 'Barcode permissions saved successfully.';
+                customAlert('CSW barcode-generation permissions have been saved.', 'Success');
+                setTimeout(() => closeMemoBarcodeSettings(), 450);
+            } catch (error) {
+                if (feedback) feedback.textContent = error.message || 'Unable to save barcode permissions.';
+            } finally {
+                button.disabled = false;
+                button.innerHTML = '<i aria-hidden="true" class="fi fi-rr-disk"></i><span>Save Changes</span>';
+            }
+        }
+
+        function bindMemoTableInteractions() {
+            const body = document.getElementById('dataTable');
+            if (!body || body.dataset.memoEventsBound === 'true') return;
+            body.dataset.memoEventsBound = 'true';
+            body.addEventListener('click', event => {
+                const actionButton = event.target.closest('[data-memo-action]');
+                if (actionButton) {
+                    event.preventDefault(); event.stopPropagation();
+                    const control = actionButton.getAttribute('data-control-number') || '';
+                    const memo = (allMemos || []).find(row => String(row[2] || '') === control);
+                    if (!memo) return;
+                    if (actionButton.dataset.memoAction === 'edit') initiateEdit(control, memo[1] || '', memo[5] || '', memo[4] || 'For Dispatched', memo[3] || '');
+                    else if (actionButton.dataset.memoAction === 'delete') triggerDelete(control);
+                    return;
+                }
+                if (event.target.closest('input,button,a,select,textarea,label')) return;
+                const rowElement = event.target.closest('tr[data-memo-control]');
+                if (rowElement) openMemoInformation(rowElement.getAttribute('data-memo-control'));
+            });
+            body.addEventListener('keydown', event => {
+                if (!['Enter', ' '].includes(event.key) || event.target.closest('input,button,a,select,textarea,label')) return;
+                const rowElement = event.target.closest('tr[data-memo-control]');
+                if (rowElement) { event.preventDefault(); openMemoInformation(rowElement.getAttribute('data-memo-control')); }
+            });
+        }
+
+        document.getElementById('memoBarcodeAdminList')?.addEventListener('change', updateMemoBarcodeSelectedCount);
+        bindMemoTableInteractions();
 
         function changeMemoPage(direction) { currentMemoPage += direction; renderMemoTable(); }
 
@@ -5913,6 +6279,8 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             const subject = document.getElementById('memoSubject').value.trim();
             const officeDestination = getSelectedOfficeDestination('memoOfficeDestination', 'memoOfficeDestinationOther');
             const classification = document.getElementById('memoClassification').value;
+            const memoType = document.getElementById('memoType')?.value || 'Regular Memo';
+            if (!['Regular Memo', 'CSW (Complete Staff Work)'].includes(memoType)) return customAlert('Please select a valid Memorandum Type.', 'Error');
             if (!subject) return customAlert("Please enter a Memo Subject.", "Error");
             if (!officeDestination) return customAlert("Please select or enter the Office Destination.", "Error");
             submitBtn.disabled = true; submitBtn.innerText = "Submitting...";
@@ -5921,7 +6289,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 const response = await fetch(API_URL, {
                     method: 'POST', mode: 'cors',
                     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                    body: JSON.stringify({ action: 'create', memoSubject: subject, officeDestination: officeDestination, classification: classification, userName: localStorage.getItem('loggedInUser'), credential: localStorage.getItem('loggedCred') || '' })
+                    body: JSON.stringify({ action: 'create', memoSubject: subject, officeDestination: officeDestination, classification: classification, memoType: memoType, userName: localStorage.getItem('loggedInUser'), credential: localStorage.getItem('loggedCred') || '' })
                 });
                 if (!response.ok) throw new Error('The server could not confirm the submission.');
                 const result = await response.json();
@@ -5930,9 +6298,10 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 }
                 logActivity(`encoded a new memo: "${subject}" for ${officeDestination}`);
                 document.getElementById('memoSubject').value = "";
+                if (document.getElementById('memoType')) document.getElementById('memoType').value = 'Regular Memo';
                 setOfficeDestination('memoOfficeDestination', 'memoOfficeDestinationOther', "");
                 closeMemoModal();
-                setTimeout(loadData, 1500);
+                await loadData();
                 showMemoControlNumberModal(result.controlNumber);
             } catch (err) {
                 customAlert("Memo submission could not be confirmed. Please check the Memo Database before retrying to avoid creating a duplicate. " + (err.message || ""), "Submission Status");
@@ -6025,13 +6394,17 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                     const result = await response.json();
                     if (!result || result.success !== true) throw new Error((result && result.error) || 'The memo update was rejected.');
                     logActivity(`updated memo: ${actionTargetControl}`);
-                } else if (pendingAction === 'delete') { 
-                    await fetch(API_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify({ action: 'delete', controlNumber: actionTargetControl, password: pass, userName: currentUser }) }); 
+                } else if (pendingAction === 'delete') {
+                    const response = await fetch(API_URL, { method:'POST', mode:'cors', headers:{'Content-Type':'text/plain;charset=utf-8'}, body:JSON.stringify({ action:'delete', controlNumber:actionTargetControl, password:pass, userName:currentUser }) });
+                    const result = await response.json();
+                    if (!result || result.success !== true) throw new Error(result?.error || 'The memo could not be deleted.');
                     logActivity(`deleted memo: ${actionTargetControl}`);
-                } else if (pendingAction === 'batch_delete') { 
-                    for (const c of actionTargetControl) { 
-                        await fetch(API_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify({ action: 'delete', controlNumber: c, password: pass, userName: currentUser }) }); 
-                    } 
+                } else if (pendingAction === 'batch_delete') {
+                    for (const c of actionTargetControl) {
+                        const response = await fetch(API_URL, { method:'POST', mode:'cors', headers:{'Content-Type':'text/plain;charset=utf-8'}, body:JSON.stringify({ action:'delete', controlNumber:c, password:pass, userName:currentUser }) });
+                        const result = await response.json();
+                        if (!result || result.success !== true) throw new Error(result?.error || `Memo ${c} could not be deleted.`);
+                    }
                     logActivity(`batch deleted ${actionTargetControl.length} memos`);
                 } else if (pendingAction === 'batch_status') {
                     const newStatus = document.getElementById('actionNewStatus').value;
@@ -6046,9 +6419,8 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                     logActivity(`bulk updated status to ${newStatus} for ${actionTargetControl.length} memos`);
                 }
 
-                // Refresh the memo database after an admin update so the latest
-                // backend data is immediately displayed in the table/dashboard.
-                setTimeout(loadData, 1500);
+                // Refresh only memo data; retain the active search, filters, page, and table scroll position.
+                await loadData();
 
                 // Automatically close the action/confirmation modal after the first
                 // confirmed action has been submitted successfully.
@@ -6256,6 +6628,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         let currentPersonnelSubPage = 'list';
         let personnelManagementDataLoaded = false;
         let personnelManagementDataPromise = null;
+        let personnelManagementForceRefreshQueued = false;
         let dutySequence = [];
         let dutyCalendarDate = new Date();
         let bmiRecords = [];
@@ -6379,7 +6752,15 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
 
         async function loadAllPersonnelManagementData(forceRefresh = false) {
             if (personnelManagementDataLoaded && !forceRefresh) return true;
-            if (personnelManagementDataPromise) return personnelManagementDataPromise;
+            if (personnelManagementDataPromise) {
+                if (forceRefresh) personnelManagementForceRefreshQueued = true;
+                const inFlight = personnelManagementDataPromise;
+                return inFlight.then(() => {
+                    if (!personnelManagementForceRefreshQueued) return true;
+                    personnelManagementForceRefreshQueued = false;
+                    return loadAllPersonnelManagementData(true);
+                });
+            }
 
             personnelManagementDataPromise = (async () => {
                 try {
@@ -6407,7 +6788,9 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                     renderLeaveCalendar();
                     renderLeaveTable();
                     renderAreaCards();
-                    requestAnimationFrame(() => filterPersonnel());
+                    // Complete Personnel List rendering before the loader resolves so
+                    // scroll restoration runs after the new rows are in the DOM.
+                    await new Promise(resolve => requestAnimationFrame(() => { filterPersonnel(); resolve(); }));
 
                     personnelManagementDataLoaded = true;
                     return true;
@@ -6428,6 +6811,21 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
 
             try { return await personnelManagementDataPromise; }
             finally { personnelManagementDataPromise = null; }
+        }
+
+        async function refreshPersonnelManagementAfterMutation() {
+            // Personnel CRUD changes only the Personnel List/Archive datasets.
+            // Avoid reloading and repainting all seven Personnel submodules after
+            // each add/edit/archive/restore operation. If the initial bundle is
+            // still in flight, let it settle first, then fetch the authoritative
+            // Personnel data so an older response cannot overwrite the mutation.
+            const inFlight = personnelManagementDataPromise;
+            if (inFlight) {
+                try { await inFlight; }
+                catch (error) { console.warn('Earlier Personnel bundle did not complete before the targeted refresh:', error); }
+            }
+            personnelManagementDataLoaded = false;
+            return loadPersonnel();
         }
 
         /* ---------- Duty Office ---------- */
@@ -8151,41 +8549,65 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         let userAccessContextLoadedFor = '';
         let userAccessContextLoadedAt = 0;
         let userAccessContextPromise = null;
+        let userAccessContextPromiseFor = '';
         async function loadUserAccessContext(forceRefresh = false) {
             const requestedUser = localStorage.getItem('loggedInUser') || '';
             if (!requestedUser) return;
             if (!forceRefresh && userAccessContextLoadedFor === requestedUser && Date.now() - userAccessContextLoadedAt < 30000) return;
-            if (userAccessContextPromise) return userAccessContextPromise;
-            userAccessContextPromise = (async () => {
+
+            // Never let a pending request for a previous account populate the new
+            // account's client-side permission maps. Same-user callers share one request.
+            if (userAccessContextPromise) {
+                if (userAccessContextPromiseFor === requestedUser) return userAccessContextPromise;
+                const previousRequest = userAccessContextPromise;
+                try { await previousRequest; } catch (_) {}
+                if (localStorage.getItem('loggedInUser') !== requestedUser) return;
+                return loadUserAccessContext(true);
+            }
+
+            const requestForUser = requestedUser;
+            const requestPromise = (async () => {
                 try {
                     const res = await fetch(API_URL, {
                         method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, cache:'no-store',
-                        body:JSON.stringify({action:'get_user_security_context',userName:requestedUser,password:sessionAdminPass,credential:localStorage.getItem('loggedCred') || ''})
+                        body:JSON.stringify({action:'get_user_security_context',userName:requestForUser,password:sessionAdminPass,credential:localStorage.getItem('loggedCred') || ''})
                     });
                     if (!res.ok) throw new Error(`Account security context request failed (${res.status})`);
                     const data = await res.json();
                     if (!data || !data.success) throw new Error(data?.error || 'Unable to load account security preferences.');
+                    if (localStorage.getItem('loggedInUser') !== requestForUser) return;
                     userAccessMap = data.accessMap && typeof data.accessMap === 'object' ? data.accessMap : {};
                     userPersonnelPermissionsMap = data.personnelPermissionsMap && typeof data.personnelPermissionsMap === 'object' ? data.personnelPermissionsMap : {};
                     userRestrictedMap = data.restricted && typeof data.restricted === 'object' ? data.restricted : {};
-                    userAccessMapLoadedFor = requestedUser;
-                    userAccessContextLoadedFor = requestedUser;
+                    userAccessMapLoadedFor = requestForUser;
+                    userAccessContextLoadedFor = requestForUser;
                     userAccessContextLoadedAt = Date.now();
                 } catch (error) {
-                    userAccessMap = {};
-                    userPersonnelPermissionsMap = {};
-                    userRestrictedMap = {};
-                    userAccessMapLoadedFor = '';
-                    userAccessContextLoadedFor = '';
-                    userAccessContextLoadedAt = 0;
+                    if (localStorage.getItem('loggedInUser') === requestForUser) {
+                        userAccessMap = {};
+                        userPersonnelPermissionsMap = {};
+                        userRestrictedMap = {};
+                        userAccessMapLoadedFor = '';
+                        userAccessContextLoadedFor = '';
+                        userAccessContextLoadedAt = 0;
+                    }
                     console.warn('Could not load account security preferences.', error);
                 } finally {
-                    updatePersonnelPermissions();
-                    if (typeof applyAccessRestrictions === 'function') applyAccessRestrictions();
+                    if (localStorage.getItem('loggedInUser') === requestForUser) {
+                        updatePersonnelPermissions();
+                        if (typeof applyAccessRestrictions === 'function') applyAccessRestrictions();
+                    }
                 }
             })();
-            try { return await userAccessContextPromise; }
-            finally { userAccessContextPromise = null; }
+            userAccessContextPromise = requestPromise;
+            userAccessContextPromiseFor = requestForUser;
+            try { return await requestPromise; }
+            finally {
+                if (userAccessContextPromise === requestPromise) {
+                    userAccessContextPromise = null;
+                    userAccessContextPromiseFor = '';
+                }
+            }
         }
         async function loadUserAccessMap(forceRefresh = false) {
             await loadUserAccessContext(forceRefresh);
@@ -9262,7 +9684,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         async function loadDocxPreviewLibrary() {
             if (!docxPreviewLibraryPromise) {
                 docxPreviewLibraryPromise = (async () => {
-                    await loadPreviewScript('spades-jszip-library', 'https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js', () => !!window.JSZip);
+                    await loadPreviewScript('spades-jszip-library', 'https://cdn.jsdelivr.net/npm/jszip@3.10.2/dist/jszip.min.js', () => !!window.JSZip);
                     await loadPreviewScript('spades-docx-preview-library', 'https://cdn.jsdelivr.net/npm/docx-preview@0.4.1/dist/docx-preview.min.js', () => !!(window.docx && window.docx.renderAsync));
                 })().catch(error => { docxPreviewLibraryPromise = null; throw error; });
             }

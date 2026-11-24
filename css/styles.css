@@ -397,8 +397,9 @@
         .users-chat-attachment-name { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
         .users-chat-attachment-remove { width:24px !important; min-width:24px; height:24px; padding:0 !important; margin:0 !important; border-radius:50%; font-size:14px; line-height:1; background:transparent; color:var(--text-muted); }
         .users-chat-attachment-remove:hover { background:rgba(239,68,68,.1); color:var(--danger); transform:none; }
-        .chat-attachment-link { display:inline-flex; align-items:center; gap:6px; margin-top:7px; padding:6px 8px; border-radius:8px; border:1px solid rgba(79,70,229,.18); background:rgba(79,70,229,.06); color:inherit; text-decoration:none; font-size:11px; max-width:100%; }
+        .chat-attachment-link { display:inline-flex; align-items:center; gap:6px; margin-top:7px; padding:6px 8px; border-radius:8px; border:1px solid rgba(79,70,229,.18); background:rgba(79,70,229,.06); color:inherit; text-decoration:none; font:inherit; font-size:11px; max-width:100%; cursor:pointer; text-align:left; }
         .chat-attachment-link:hover { text-decoration:underline; }
+        .chat-attachment-link:focus-visible { outline:2px solid var(--primary); outline-offset:2px; }
         .chat-attachment-link span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
         body.dark-mode .users-chat-attachment { background:rgba(255,255,255,.04); }
         body.dark-mode .chat-attachment-link { background:rgba(129,140,248,.12); border-color:rgba(129,140,248,.22); }
@@ -14571,9 +14572,11 @@ body.dark-mode .proofreader-form-footer { background:rgba(15,23,42,.72); }
 .proofreader-pdf-pages { display:flex; flex:1 1 auto; flex-direction:column; align-items:center; gap:14px; min-width:0; padding:14px; overflow:auto; }
 .proofreader-pdf-page { position:relative; flex:0 0 auto; max-width:100%; background:#fff; box-shadow:0 5px 18px rgba(0,0,0,.25); }
 .proofreader-pdf-page canvas { display:block; max-width:100%; height:auto; }
-.proofreader-pdf-text-layer { position:absolute; inset:0; overflow:hidden; line-height:1; opacity:1; user-select:text; -webkit-user-select:text; }
-.proofreader-pdf-text-layer span { position:absolute; color:transparent; white-space:pre; transform-origin:0 0; cursor:text; }
-.proofreader-pdf-text-layer ::selection { color:transparent; background:rgba(59,130,246,.35); }
+.proofreader-pdf-text-layer.textLayer { --scale-factor:1; --total-scale-factor:var(--scale-factor); position:absolute; inset:0; z-index:1; overflow:hidden; line-height:1; opacity:1; text-align:initial; user-select:text; -webkit-user-select:text; transform-origin:0 0; }
+.proofreader-pdf-text-layer.textLayer span,.proofreader-pdf-text-layer.textLayer br { position:absolute; color:transparent; white-space:pre; transform-origin:0 0; cursor:text; }
+.proofreader-pdf-text-layer.textLayer > :not(.markedContent),.proofreader-pdf-text-layer.textLayer .markedContent span:not(.markedContent) { z-index:1; }
+.proofreader-pdf-text-layer.textLayer .markedContent { top:0; height:0; }
+.proofreader-pdf-text-layer.textLayer ::selection { color:transparent; background:rgba(59,130,246,.35); }
 .proofreader-pdf-annotation-overlay { position:absolute; inset:0; pointer-events:none; }
 .proofreader-pdf-highlight { position:absolute; border-radius:2px; background:rgba(250,204,21,.28); border-bottom:2px solid rgba(217,119,6,.8); }
 .proofreader-pdf-fallback { display:flex; flex:1 1 auto; flex-direction:column; min-height:320px; }
@@ -14622,3 +14625,290 @@ button:focus-visible,.action-btn:focus-visible,[role="button"]:focus-visible { o
 .proofreader-pdf-highlight[data-category="Revision"] { background:rgba(251,191,36,.32); border-bottom-color:rgba(180,83,9,.8); }
 .proofreader-pdf-highlight[data-category="Suggestion"] { background:rgba(96,165,250,.27); border-bottom-color:rgba(29,78,216,.8); }
 .proofreader-pdf-highlight[data-category="Observation"] { background:rgba(167,139,250,.28); border-bottom-color:rgba(109,40,217,.8); }
+
+/* =====================================================================
+   ADMIN PROOF READER — CONSOLIDATED MODAL / CONTAINER / ACTION LAYOUT
+   Presentation-only layer. Existing IDs, handlers, payloads, permissions,
+   and document workflow are intentionally unchanged.
+   ===================================================================== */
+.admin-proofreader-page { gap:18px; }
+.proofreader-page-header { padding:2px 0 12px; border-bottom:1px solid var(--border-color); }
+.proofreader-header-actions { display:flex; align-items:center; justify-content:flex-end; gap:9px; flex-wrap:wrap; }
+.proofreader-dashboard-section { display:flex; flex-direction:column; gap:11px; }
+.proofreader-dashboard-heading { display:flex; align-items:flex-end; justify-content:space-between; gap:12px; }
+.proofreader-register-header { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:15px 17px 10px; }
+.proofreader-register-header h3 { margin:0; color:var(--text-main); font-size:15px; font-weight:850; }
+.proofreader-register-header p { margin:4px 0 0; color:var(--text-muted); font-size:10px; }
+.proofreader-filter-panel { padding:12px 15px; border-top:1px solid var(--border-color); background:color-mix(in srgb,var(--primary) 2%,var(--glass-bg)); }
+.proofreader-filter-heading { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:9px; }
+
+/* Shared modal shell and header hierarchy */
+#proofReaderSettingsModal,#proofReaderSubmitModal,#proofReaderWorkspaceModal { padding:14px !important; }
+#proofReaderSettingsModal .modal-content,
+#proofReaderSubmitModal .modal-content,
+#proofReaderWorkspaceModal .modal-content { border:1px solid color-mix(in srgb,var(--primary) 18%,var(--border-color)); border-radius:17px; box-shadow:0 24px 72px rgba(15,23,42,.24); }
+#proofReaderSettingsModal .modal-uniform-header,
+#proofReaderWorkspaceModal .modal-uniform-header { display:flex; align-items:center; gap:14px; padding:17px 20px; background:linear-gradient(115deg,color-mix(in srgb,var(--primary) 9%,var(--glass-bg)),var(--glass-bg)); border-bottom:1px solid var(--border-color); }
+#proofReaderSettingsModal .modal-uniform-header-copy,
+#proofReaderWorkspaceModal .modal-uniform-header-copy { flex:1 1 auto; min-width:0; }
+#proofReaderSettingsModal .modal-uniform-header h2,
+#proofReaderWorkspaceModal .modal-uniform-header h2 { margin:3px 0 4px; color:var(--text-main); font-size:clamp(17px,2vw,22px); font-weight:850; letter-spacing:-.025em; }
+#proofReaderSettingsModal .modal-uniform-header p,
+#proofReaderWorkspaceModal .modal-uniform-header p { margin:0; color:var(--text-muted); font-size:10px; line-height:1.5; }
+#proofReaderSettingsModal .modal-uniform-close,
+#proofReaderSubmitModal .modal-uniform-close,
+#proofReaderWorkspaceModal .modal-uniform-close { display:grid; place-items:center; flex:0 0 36px; width:36px; min-width:36px; height:36px; min-height:36px; margin:0; padding:0; border:1px solid var(--border-color); border-radius:10px; background:var(--glass-bg); }
+#proofReaderSettingsModal .modal-uniform-close i,
+#proofReaderSubmitModal .modal-uniform-close i,
+#proofReaderWorkspaceModal .modal-uniform-close i { margin:0; font-size:17px; }
+
+/* Designation settings: grouped summary, search, list, and fixed action area */
+.proofreader-settings-modal { width:min(820px,calc(100vw - 28px)) !important; max-width:820px !important; max-height:min(92dvh,900px) !important; }
+.proofreader-settings-body { gap:12px; padding:16px 18px 18px; }
+.proofreader-settings-notice { display:flex; align-items:flex-start; gap:9px; padding:11px 12px; border:1px solid color-mix(in srgb,var(--primary) 20%,var(--border-color)); border-radius:10px; background:color-mix(in srgb,var(--primary) 5%,var(--glass-bg)); }
+.proofreader-settings-summary { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:9px; }
+.proofreader-settings-summary > div { padding:11px 12px; border:1px solid var(--border-color); border-radius:10px; background:var(--glass-bg); }
+.proofreader-settings-search { min-height:40px; }
+.proofreader-designation-list { max-height:min(42vh,420px); min-height:150px; border:1px solid var(--border-color); border-radius:11px; background:var(--glass-bg); }
+.proofreader-settings-footer { position:sticky; bottom:-18px; z-index:2; margin:0 -18px -18px; padding:12px 18px 15px; background:var(--glass-bg); border-top:1px solid var(--border-color); }
+
+/* Submit request: consistent three-step form and stable footer */
+.proofreader-submit-modal { width:min(900px,calc(100vw - 24px)) !important; max-width:900px !important; }
+.proofreader-form-body { padding:17px 22px 20px !important; }
+.proofreader-submit-section { margin-bottom:12px; }
+.proofreader-submit-section:last-of-type { margin-bottom:0; }
+.proofreader-upload-drop-redesigned { align-items:center; }
+.proofreader-upload-picker { flex:0 0 auto; margin-left:auto; }
+.proofreader-selected-file-redesigned { display:flex; align-items:center; gap:9px; margin-top:8px; padding:9px 11px; border:1px solid var(--border-color); border-radius:9px; background:var(--glass-bg); }
+.proofreader-form-actions { position:sticky; bottom:-20px; z-index:3; margin:16px -22px -20px; padding:12px 22px 16px; border-top:1px solid var(--border-color); background:var(--glass-bg); }
+.proofreader-form-actions .action-btn { min-height:38px; justify-content:center; }
+
+/* Review workspace: clear left document / right decision hierarchy */
+.proofreader-workspace-modal { width:min(1520px,calc(100vw - 24px)) !important; max-width:1520px !important; height:min(94dvh,1000px); max-height:94dvh !important; }
+.proofreader-workspace-meta { display:flex; align-items:center; min-height:34px; padding:7px 18px; }
+.proofreader-workspace-layout { grid-template-columns:minmax(0,1.72fr) minmax(340px,.88fr) !important; }
+.proofreader-editor-panel { gap:10px; padding:14px; background:color-mix(in srgb,var(--primary) 1.5%,var(--glass-bg)); }
+.proofreader-editor-toolbar { flex:0 0 auto; min-height:48px; padding:9px 12px; border-radius:11px; }
+.proofreader-editor-tools { display:flex; align-items:center; justify-content:flex-end; gap:8px; flex-wrap:wrap; }
+.proofreader-document-files { display:flex; flex-direction:column; gap:7px; padding:10px; border:1px solid var(--border-color); border-radius:11px; background:var(--glass-bg); }
+.proofreader-document-files-heading { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.proofreader-document-files-heading strong { display:block; color:var(--text-main); font-size:10px; font-weight:850; }
+.proofreader-document-files-heading small { display:block; margin-top:2px; color:var(--text-muted); font-size:8px; }
+.proofreader-document-file-card { display:flex; align-items:center; gap:9px; min-width:0; padding:8px; border:1px solid var(--border-color); border-radius:9px; background:color-mix(in srgb,var(--primary) 3%,var(--glass-bg)); }
+.proofreader-document-file-copy { flex:1 1 auto; min-width:0; }
+.proofreader-document-file-copy strong,.proofreader-document-file-copy small { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.proofreader-document-file-copy strong { color:var(--text-main); font-size:9px; }
+.proofreader-document-file-copy small { margin-top:2px; color:var(--text-muted); font-size:8px; }
+.proofreader-document-preview-wrap,.proofreader-pdf-preview-wrap { min-height:0; flex:1 1 auto; }
+.proofreader-preview-toolbar { position:sticky; top:0; z-index:3; }
+.proofreader-review-panel { gap:11px; padding:13px; background:var(--glass-bg); }
+.proofreader-detail-section,.proofreader-notepad,.proofreader-review-actions,.proofreader-sender-actions,.proofreader-readonly-actions,.proofreader-history-section { padding:12px; border:1px solid var(--border-color); border-radius:12px; background:color-mix(in srgb,var(--primary) 2%,var(--glass-bg)); }
+.proofreader-detail-section h3,.proofreader-review-actions h3,.proofreader-sender-actions h3,.proofreader-history-section h3 { display:flex; align-items:center; gap:7px; margin:0 0 9px; font-size:11px; }
+.proofreader-detail-grid { gap:6px; }
+.proofreader-detail-item { padding:8px 9px; border-radius:8px; }
+.proofreader-notepad { gap:9px; background:color-mix(in srgb,var(--primary) 4%,var(--glass-bg)); }
+.proofreader-annotation-controls { padding:10px; border:1px solid var(--border-color); border-radius:9px; background:var(--glass-bg); }
+.proofreader-annotation-list { max-height:clamp(130px,22vh,250px); padding:2px; }
+.proofreader-annotation-card { padding:9px; border-radius:9px; }
+.proofreader-review-actions,.proofreader-sender-actions { position:relative; }
+.proofreader-review-actions .action-btn,.proofreader-sender-actions .action-btn { min-height:39px; }
+.proofreader-workspace-footer { flex:0 0 auto; min-height:38px; padding:8px 16px; background:color-mix(in srgb,var(--primary) 3%,var(--glass-bg)); }
+
+body.dark-mode #proofReaderSettingsModal .modal-uniform-header,
+body.dark-mode #proofReaderWorkspaceModal .modal-uniform-header,
+body.dark-mode .proofreader-settings-footer,
+body.dark-mode .proofreader-form-actions { background:#111c30; }
+body.dark-mode .proofreader-document-files,
+body.dark-mode .proofreader-detail-section,
+body.dark-mode .proofreader-notepad,
+body.dark-mode .proofreader-review-actions,
+body.dark-mode .proofreader-history-section { background:rgba(15,23,42,.88); }
+
+@media(max-width:1000px) {
+  .proofreader-workspace-modal { height:auto; max-height:96dvh !important; }
+  .proofreader-workspace-layout { grid-template-columns:minmax(0,1fr) !important; overflow:auto; }
+  .proofreader-editor-panel { min-height:480px; border-right:0; border-bottom:1px solid var(--border-color); }
+  .proofreader-review-panel { overflow:visible; }
+  .proofreader-document-preview-wrap { min-height:360px; }
+  .proofreader-pdf-preview-wrap { min-height:420px; }
+}
+@media(max-width:640px) {
+  #proofReaderSettingsModal,#proofReaderSubmitModal,#proofReaderWorkspaceModal { padding:5px !important; }
+  .proofreader-workspace-modal,.proofreader-submit-modal,.proofreader-settings-modal { width:calc(100vw - 10px) !important; max-height:97dvh !important; }
+  #proofReaderSettingsModal .modal-uniform-header,#proofReaderWorkspaceModal .modal-uniform-header { padding:13px 12px; }
+  .proofreader-settings-body { padding:12px; }
+  .proofreader-settings-footer { bottom:-12px; margin:0 -12px -12px; padding:10px 12px 12px; flex-direction:column; align-items:stretch; }
+  .proofreader-settings-footer > div { width:100%; }
+  .proofreader-settings-footer > div .action-btn { flex:1 1 0; }
+  .proofreader-form-body { padding:12px !important; }
+  .proofreader-submit-section { padding:11px; }
+  .proofreader-form-grid { grid-template-columns:minmax(0,1fr); }
+  .proofreader-span-2 { grid-column:auto; }
+  .proofreader-form-actions { bottom:-12px; margin:12px -12px -12px; padding:10px 12px 12px; }
+  .proofreader-upload-drop-redesigned { align-items:flex-start; flex-wrap:wrap; }
+  .proofreader-upload-picker { margin-left:auto; }
+  .proofreader-editor-panel { min-height:410px; padding:9px; }
+  .proofreader-editor-toolbar { align-items:flex-start; flex-direction:column; }
+  .proofreader-editor-tools { width:100%; justify-content:space-between; }
+  .proofreader-document-file-card { flex-wrap:wrap; }
+  .proofreader-document-file-card .action-btn { margin-left:auto; }
+  .proofreader-review-panel { padding:9px; }
+  .proofreader-workspace-footer { align-items:flex-start; }
+}
+
+/* Memo Database enhancement: memorandum type, information dialog, and CSW barcode access */
+.memo-page-hero-actions { display:flex; align-items:center; justify-content:flex-end; gap:9px; flex:0 0 auto; flex-wrap:wrap; }
+.memo-page-hero-actions .action-btn { display:inline-flex; align-items:center; justify-content:center; gap:8px; min-height:40px; margin:0; white-space:nowrap; }
+#tabHome #memoTable tbody tr[data-memo-control] { cursor:pointer; }
+#tabHome #memoTable tbody tr[data-memo-control]:focus-visible { outline:2px solid var(--primary); outline-offset:-2px; }
+#tabHome #memoTable tbody td.memo-clickable-subject { font-weight:750; }
+#tabHome #memoTable tbody tr[data-memo-control]:hover td { background:color-mix(in srgb,var(--primary) 5%,var(--ui-surface)); }
+#tabHome #memoTable .memo-row-actions { cursor:default; }
+#tabHome #memoTable .memo-status-text { font-weight:600; color:var(--primary); }
+.memo-information-modal,.memo-barcode-settings-modal { width:min(760px,calc(100vw - 26px)); max-width:760px; max-height:min(92dvh,900px); overflow:hidden; display:flex; flex-direction:column; text-align:left; }
+.memo-information-modal .modal-uniform-header,.memo-barcode-settings-modal .modal-uniform-header { flex:0 0 auto; }
+.memo-information-body { display:flex; flex-direction:column; gap:15px; min-height:0; overflow:auto; padding:17px 20px; }
+.memo-information-type-row { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:11px 13px; border:1px solid var(--border-color); border-radius:11px; background:color-mix(in srgb,var(--primary) 4%,var(--glass-bg)); }
+.memo-information-field-label { color:var(--text-muted); font-size:11px; font-weight:800; letter-spacing:.04em; text-transform:uppercase; }
+.memo-information-type-badge { display:inline-flex; align-items:center; max-width:70%; padding:6px 10px; border:1px solid color-mix(in srgb,var(--primary) 25%,var(--border-color)); border-radius:999px; background:color-mix(in srgb,var(--primary) 9%,var(--glass-bg)); color:var(--primary); font-size:11px; font-weight:850; text-align:right; }
+.memo-information-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
+.memo-information-field { display:flex; flex-direction:column; gap:5px; min-width:0; padding:11px 12px; border:1px solid var(--border-color); border-radius:10px; background:var(--glass-bg); }
+.memo-information-field span { color:var(--text-muted); font-size:10px; font-weight:800; letter-spacing:.045em; text-transform:uppercase; }
+.memo-information-field strong { color:var(--text-main); font-size:13px; line-height:1.45; overflow-wrap:anywhere; }
+.memo-information-field-wide { grid-column:1 / -1; }
+.memo-barcode-panel { display:flex; flex-direction:column; gap:10px; padding:14px; border:1px solid color-mix(in srgb,var(--primary) 24%,var(--border-color)); border-radius:13px; background:color-mix(in srgb,var(--primary) 4%,var(--glass-bg)); }
+.memo-barcode-panel-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.memo-barcode-panel-heading h3 { margin:3px 0 2px; color:var(--text-main); font-size:16px; }
+.memo-barcode-panel-heading p { margin:0; color:var(--text-muted); font-size:11px; }
+.memo-barcode-symbol { display:grid; place-items:center; flex:0 0 38px; width:38px; height:38px; border:1px solid var(--border-color); border-radius:10px; color:var(--primary); font-size:18px; }
+.memo-barcode-value-row { display:flex; align-items:center; justify-content:space-between; gap:10px; min-height:52px; padding:9px 11px; border:1px dashed color-mix(in srgb,var(--primary) 40%,var(--border-color)); border-radius:9px; background:var(--glass-bg); }
+.memo-barcode-value-row strong { color:var(--text-main); font-family:ui-monospace,SFMono-Regular,Consolas,monospace; font-size:clamp(18px,3vw,24px); font-weight:900; letter-spacing:.09em; overflow-wrap:anywhere; }
+.memo-barcode-copy-btn,.memo-barcode-generate-btn { display:inline-flex; align-items:center; justify-content:center; gap:7px; min-height:36px; margin:0; white-space:nowrap; }
+.memo-barcode-meta { min-height:15px; color:var(--text-muted); font-size:10px; overflow-wrap:anywhere; }
+.memo-barcode-feedback,.memo-barcode-settings-feedback { min-height:17px; color:var(--text-muted); font-size:11px; line-height:1.45; }
+.memo-information-footer { display:flex; justify-content:flex-end; flex:0 0 auto; padding:12px 20px 16px; border-top:1px solid var(--border-color); background:var(--glass-bg); }
+.memo-information-footer .action-btn { min-width:104px; min-height:38px; margin:0; }
+.memo-barcode-settings-modal { max-width:620px; }
+.memo-barcode-settings-body { display:flex; flex-direction:column; gap:12px; min-height:0; overflow:auto; padding:16px 20px; }
+.memo-barcode-settings-notice { display:flex; align-items:flex-start; gap:9px; padding:11px 12px; border:1px solid color-mix(in srgb,var(--primary) 20%,var(--border-color)); border-radius:10px; background:color-mix(in srgb,var(--primary) 5%,var(--glass-bg)); color:var(--text-muted); font-size:11px; line-height:1.5; }
+.memo-barcode-settings-notice i { color:var(--primary); font-size:16px; }
+.memo-barcode-settings-summary { display:flex; align-items:center; justify-content:space-between; gap:10px; color:var(--text-main); font-size:12px; }
+.memo-barcode-settings-summary span { color:var(--primary); font-weight:800; }
+.memo-barcode-admin-list { display:flex; flex-direction:column; gap:7px; max-height:min(43vh,420px); min-height:115px; overflow:auto; padding:2px; }
+.memo-barcode-admin-option { display:grid; grid-template-columns:18px minmax(0,1fr) auto; align-items:center; gap:10px; padding:10px 11px; border:1px solid var(--border-color); border-radius:10px; background:var(--glass-bg); cursor:pointer; }
+.memo-barcode-admin-option input { width:16px; height:16px; margin:0; accent-color:var(--primary); }
+.memo-barcode-admin-option span { display:flex; flex-direction:column; min-width:0; gap:3px; }
+.memo-barcode-admin-option strong { color:var(--text-main); font-size:12px; overflow-wrap:anywhere; }
+.memo-barcode-admin-option small { color:var(--text-muted); font-size:10px; overflow-wrap:anywhere; }
+.memo-barcode-admin-option em { color:var(--text-muted); font-size:9px; font-style:normal; font-weight:750; }
+.memo-barcode-empty { margin:0; padding:18px; border:1px dashed var(--border-color); border-radius:10px; color:var(--text-muted); font-size:12px; text-align:center; }
+.memo-barcode-settings-footer { display:flex; justify-content:flex-end; gap:9px; flex:0 0 auto; padding:12px 20px 16px; border-top:1px solid var(--border-color); background:var(--glass-bg); }
+.memo-barcode-settings-footer .action-btn { min-height:38px; margin:0; }
+
+body.dark-mode .memo-information-type-row,
+body.dark-mode .memo-barcode-panel,
+body.dark-mode .memo-barcode-settings-notice { background:rgba(30,58,138,.15); }
+body.dark-mode .memo-information-field,
+body.dark-mode .memo-barcode-value-row,
+body.dark-mode .memo-barcode-admin-option { background:rgba(15,23,42,.72); }
+
+@media(max-width:680px) {
+  .memo-page-hero-actions { width:100%; justify-content:stretch; }
+  .memo-page-hero-actions .action-btn { flex:1 1 auto; }
+  .memo-information-modal,.memo-barcode-settings-modal { width:calc(100vw - 12px); max-height:97dvh; }
+  .memo-information-body,.memo-barcode-settings-body { padding:12px; }
+  .memo-information-grid { grid-template-columns:minmax(0,1fr); gap:8px; }
+  .memo-information-field-wide { grid-column:auto; }
+  .memo-information-type-row { align-items:flex-start; flex-direction:column; }
+  .memo-information-type-badge { max-width:100%; text-align:left; }
+  .memo-information-footer,.memo-barcode-settings-footer { padding:10px 12px 12px; }
+  .memo-barcode-settings-footer > .action-btn { flex:1 1 0; }
+  .memo-barcode-admin-option { grid-template-columns:18px minmax(0,1fr); }
+  .memo-barcode-admin-option em { grid-column:2; }
+}
+.memo-form-type-field { display:flex; flex:0 1 230px; min-width:220px; flex-direction:column; gap:5px; margin:0; }
+.memo-form-type-field label { color:var(--text-muted); font-size:11px; font-weight:800; letter-spacing:.035em; }
+
+
+/* Add Memo modal: aligned controls with in-field prompts instead of top labels */
+#memoSubmissionModal .memo-add-form {
+  display:grid !important;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  align-items:stretch;
+  gap:12px;
+  margin:18px 0;
+  width:100%;
+}
+#memoSubmissionModal .memo-add-form > input,
+#memoSubmissionModal .memo-add-form > select,
+#memoSubmissionModal .memo-form-office-field,
+#memoSubmissionModal .memo-form-office-field > select,
+#memoSubmissionModal .memo-form-office-field > input {
+  box-sizing:border-box;
+  width:100%;
+  min-width:0;
+  height:46px;
+  min-height:46px;
+  max-height:46px;
+  margin:0;
+  border:1px solid var(--border-color) !important;
+  border-radius:10px !important;
+  background:var(--surface,var(--glass-bg)) !important;
+  color:var(--text-main) !important;
+  padding:0 13px !important;
+  font:inherit;
+  line-height:normal;
+}
+#memoSubmissionModal .memo-add-form > input::placeholder,
+#memoSubmissionModal .memo-form-office-field > input::placeholder {
+  color:var(--text-muted);
+  opacity:1;
+}
+#memoSubmissionModal .memo-add-form > input:focus,
+#memoSubmissionModal .memo-add-form > select:focus,
+#memoSubmissionModal .memo-form-office-field > select:focus,
+#memoSubmissionModal .memo-form-office-field > input:focus {
+  outline:none;
+  border-color:var(--primary) !important;
+  box-shadow:0 0 0 3px color-mix(in srgb,var(--primary) 15%,transparent);
+}
+#memoSubmissionModal .memo-add-form #memoSubject,
+#memoSubmissionModal .memo-form-office-field,
+#memoSubmissionModal .memo-add-form #memoSubmitBtn {
+  grid-column:1 / -1;
+}
+#memoSubmissionModal .memo-form-office-field {
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+  height:auto;
+  max-height:none;
+  min-height:46px;
+  padding:0;
+  border:0 !important;
+  border-radius:0 !important;
+  background:transparent !important;
+}
+#memoSubmissionModal .memo-form-office-field > select,
+#memoSubmissionModal .memo-form-office-field > input {
+  flex:0 0 46px;
+}
+#memoSubmissionModal .memo-form-office-field > .hidden {
+  display:none !important;
+}
+#memoSubmissionModal .memo-add-form #memoSubmitBtn {
+  width:100%;
+  min-height:46px;
+  height:46px;
+  margin:0;
+  border-radius:11px;
+  white-space:nowrap;
+  font-weight:750;
+}
+@media(max-width:600px) {
+  #memoSubmissionModal .memo-add-form { grid-template-columns:minmax(0,1fr); gap:10px; }
+  #memoSubmissionModal .memo-add-form > input,
+  #memoSubmissionModal .memo-add-form > select,
+  #memoSubmissionModal .memo-form-office-field,
+  #memoSubmissionModal .memo-add-form #memoSubmitBtn { grid-column:1; }
+}

@@ -298,9 +298,14 @@
 <h2>Memo Database</h2>
 <p>Centralized registry for memorandums, control numbers, status tracking, and office correspondence.</p>
 </div>
+<div class="memo-page-hero-actions">
+<button aria-label="Memo Database: Barcode Generation Access Settings" class="action-btn memo-barcode-settings-trigger hidden" data-spades-action-key="memo-barcode-settings" id="memoBarcodeSettingsBtn" onclick="openMemoBarcodeSettings()" title="Manage Admin barcode-generation access" type="button">
+<i aria-hidden="true" class="fi fi-rr-settings"></i><span>Barcode Access</span>
+</button>
 <button aria-label="Memo Database: + Add Memo" class="action-btn approve-btn memo-add-btn" data-spades-action-key="memo-database-add-memo" data-tooltip="Memo Database · + Add Memo" id="memoDatabaseAddBtn" onclick="openMemoModalUser()" title="Memo Database · + Add Memo" type="button">
 <i aria-hidden="true" class="fi fi-rr-plus"></i><span>Add Memo</span>
 </button>
+</div>
 </header>
 <section aria-label="Memo database summary" class="memo-summary-grid memo-summary-dashboard rhsu-summary-dashboard">
 <article class="memo-summary-card memo-summary-card-primary">
@@ -1483,21 +1488,60 @@
 <div aria-live="polite" id="memoControlCopyFeedback" style="min-height:18px; margin-top:10px; font-size:13px; color:var(--text-muted);"></div>
 </div>
 </div>
+<div aria-labelledby="memoInformationTitle" aria-modal="true" class="modal-overlay hidden" id="memoInformationModal" onclick="if(event.target===this)closeMemoInformation()" role="dialog" style="z-index:1800;">
+<div class="modal-content glass-panel modal-uniform-shell memo-information-modal">
+<header class="modal-uniform-header"><div class="modal-uniform-header-copy"><span class="modal-uniform-kicker">MEMO DATABASE · RECORD DETAILS</span><h2 id="memoInformationTitle">Memo Information</h2><p id="memoInformationSubtitle">Review the selected memorandum record.</p></div><button aria-label="Close memo information" class="action-btn icon-action-btn modal-uniform-close" onclick="closeMemoInformation()" title="Close memo information" type="button"><i aria-hidden="true" class="fi fi-rr-cross-small"></i></button></header>
+<div class="memo-information-body">
+<div class="memo-information-type-row"><span class="memo-information-field-label">Memorandum Type</span><span class="memo-information-type-badge" id="memoInformationType">Regular Memo</span></div>
+<div class="memo-information-grid">
+<div class="memo-information-field memo-information-field-wide"><span>Memo Subject</span><strong id="memoInformationSubject">—</strong></div>
+<div class="memo-information-field"><span>Timestamp</span><strong id="memoInformationDate">—</strong></div>
+<div class="memo-information-field"><span>Control Number</span><strong id="memoInformationControl">—</strong></div>
+<div class="memo-information-field"><span>Office Destination</span><strong id="memoInformationDestination">—</strong></div>
+<div class="memo-information-field"><span>Encoded By</span><strong id="memoInformationEncoder">—</strong></div>
+<div class="memo-information-field"><span>Status</span><strong id="memoInformationStatus">—</strong></div>
+<div class="memo-information-field"><span>Classification</span><strong id="memoInformationClassification">—</strong></div>
+</div>
+<section class="memo-barcode-panel hidden" id="memoBarcodePanel" aria-label="CSW barcode details">
+<div class="memo-barcode-panel-heading"><div><span class="memo-section-kicker">CSW IDENTIFIER</span><h3>Barcode</h3><p id="memoBarcodeDescription">A barcode may be assigned once to this CSW memorandum.</p></div><span class="memo-barcode-symbol" aria-hidden="true"><i class="fi fi-rr-barcode"></i></span></div>
+<div class="memo-barcode-value-row"><strong id="memoBarcodeValue">Not generated</strong><button class="action-btn memo-barcode-copy-btn hidden" id="memoBarcodeCopyBtn" onclick="copyMemoBarcode()" type="button"><i aria-hidden="true" class="fi fi-rr-copy"></i><span>Copy</span></button></div>
+<div class="memo-barcode-meta" id="memoBarcodeMeta"></div>
+<button class="action-btn approve-btn memo-barcode-generate-btn hidden" id="memoBarcodeGenerateBtn" onclick="generateMemoBarcode()" type="button"><i aria-hidden="true" class="fi fi-rr-barcode"></i><span>Generate Barcode</span></button>
+<div aria-live="polite" class="memo-barcode-feedback" id="memoBarcodeFeedback"></div>
+</section>
+</div>
+<footer class="memo-information-footer"><button class="action-btn" onclick="closeMemoInformation()" type="button">Close</button></footer>
+</div>
+</div>
+<div aria-labelledby="memoBarcodeSettingsTitle" aria-modal="true" class="modal-overlay hidden" id="memoBarcodeSettingsModal" onclick="if(event.target===this)closeMemoBarcodeSettings()" role="dialog" style="z-index:1900;">
+<div class="modal-content glass-panel modal-uniform-shell memo-barcode-settings-modal">
+<header class="modal-uniform-header"><div class="modal-uniform-header-copy"><span class="modal-uniform-kicker">ALPHA ADMIN SETTINGS</span><h2 id="memoBarcodeSettingsTitle">CSW Barcode Access</h2><p>Select the active ADMIN accounts allowed to generate CSW memo barcodes. Alpha Admin authority is always retained.</p></div><button aria-label="Close barcode access settings" class="action-btn icon-action-btn modal-uniform-close" onclick="closeMemoBarcodeSettings()" title="Close settings" type="button"><i aria-hidden="true" class="fi fi-rr-cross-small"></i></button></header>
+<div class="memo-barcode-settings-body"><div class="memo-barcode-settings-notice"><i aria-hidden="true" class="fi fi-rr-shield-check"></i><span>Only active accounts with the existing ADMIN role can be selected. Changes are checked and saved by the server.</span></div>
+<div class="memo-barcode-settings-summary"><strong id="memoBarcodeAdminCount">0 eligible Admin accounts</strong><span id="memoBarcodeSelectedCount">0 authorized</span></div>
+<div class="memo-barcode-admin-list" id="memoBarcodeAdminList"><p class="memo-barcode-empty">Loading eligible ADMIN accounts…</p></div>
+<div aria-live="polite" class="memo-barcode-settings-feedback" id="memoBarcodeSettingsFeedback"></div></div>
+<footer class="memo-barcode-settings-footer"><button class="action-btn" onclick="closeMemoBarcodeSettings()" type="button">Cancel</button><button class="action-btn approve-btn" id="memoBarcodeSettingsSaveBtn" onclick="saveMemoBarcodeSettings()" type="button"><i aria-hidden="true" class="fi fi-rr-disk"></i><span>Save Changes</span></button></footer>
+</div>
+</div>
 <div class="modal-overlay hidden spades-form-modal" id="memoSubmissionModal">
 <div class="modal-content glass-panel modal-large spades-polished-modal modal-uniform-shell"><header class="modal-uniform-header"><div class="modal-uniform-header-copy"><span class="modal-uniform-kicker">MEMO DATABASE</span><h2>Submit New Memo</h2><p>Enter the memorandum details below to create a new record.</p></div><button aria-label="Close memo form" class="action-btn icon-action-btn modal-uniform-close" onclick="closeMemoModal()" title="Close memo form" type="button"><i aria-hidden="true" class="fi fi-rr-cross-small"></i></button></header>
-<form class="spades-modal-form" id="memoForm" style="display:flex;gap:12px;margin-top:18px;margin-bottom:18px;flex-wrap:wrap;">
-<select id="memoClassification" style="padding: 12px; border-radius: 6px; border: 1px solid var(--border-color); background: white; margin: 0; min-width: 200px;">
-<option value="A">Admin</option>
+<form class="spades-modal-form memo-add-form" id="memoForm">
+<select aria-label="Memorandum Type" id="memoType" name="memoType" title="Memorandum Type">
+<option value="Regular Memo" selected>Memorandum Type — Regular Memo</option>
+<option value="CSW (Complete Staff Work)">CSW (Complete Staff Work)</option>
+</select>
+<select aria-label="Classification" id="memoClassification" title="Classification">
+<option value="A">Classification — Admin</option>
 <option value="S">Supply</option>
 <option value="GSS">General Services Section</option>
 <option value="BP">Base Police</option>
 <option value="SSB">Special Services Band</option>
 <option value="RCIA">Regional Committee on Inspection &amp; Acceptance</option>
 </select>
-<input id="memoSubject" placeholder="Enter Memo Subject" style="margin:0; flex-grow: 1; min-width: 250px;" type="text"/>
-<div style="flex-grow: 1; min-width: 250px; display: flex; flex-direction: column; gap: 8px; margin: 0;">
-<select id="memoOfficeDestination" onchange="toggleOfficeDestinationOther('memoOfficeDestination', 'memoOfficeDestinationOther')" style="margin:0; width:100%;">
-<option value="">Select Office Destination</option>
+<input aria-label="Memo Subject" id="memoSubject" placeholder="Memo Subject" type="text"/>
+<div class="memo-form-office-field">
+<select aria-label="Office Destination" id="memoOfficeDestination" onchange="toggleOfficeDestinationOther('memoOfficeDestination', 'memoOfficeDestinationOther')" title="Office Destination">
+<option value="">Office Destination</option>
 <option value="RD, PRO1">RD, PRO1</option>
 <option value="DRDA">DRDA</option>
 <option value="DRDO">DRDO</option>
@@ -1517,9 +1561,9 @@
 <option value="RMFB1">RMFB1</option>
 <option value="Others">Others</option>
 </select>
-<input class="hidden" id="memoOfficeDestinationOther" placeholder="Enter Office Destination" style="margin:0; width:100%; background:white;" type="text"/>
+<input aria-label="Other Office Destination" class="hidden" id="memoOfficeDestinationOther" placeholder="Other Office Destination" type="text"/>
 </div>
-<button id="memoSubmitBtn" style="white-space: nowrap; width: auto; margin-top: 0;" type="submit">Submit Data</button>
+<button id="memoSubmitBtn" type="submit">Submit Data</button>
 </form>
 <button class="spades-modal-secondary" onclick="closeMemoModal()" style="margin-top:8px;width:100%;">Cancel and Close</button>
 </div>
@@ -2160,7 +2204,6 @@
 <div class="file-preview-meta-row"><span id="previewMeta"></span><span class="file-preview-local-note">Office files use a page-layout preview when available. Download always returns the original file.</span></div>
 </div>
 </div>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js" defer></script>
 <script src="script/admin-proof-reader.js" defer></script>
 </body>
 </html>
