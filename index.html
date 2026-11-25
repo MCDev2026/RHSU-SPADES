@@ -54,7 +54,7 @@
 </div>
 </div>
 <div class="top-bar-right">
-<button aria-label="Refresh entire page" class="profile-btn header-icon-btn spades-force-icon-only" data-spades-icon-name="fi-rr-refresh" id="pageRefreshBtn" onclick="window.location.reload()" title="Refresh entire page" type="button"><i aria-hidden="true" class="fi fi-rr-refresh"></i></button>
+<button aria-label="Refresh current page data" class="profile-btn header-icon-btn spades-force-icon-only" data-spades-icon-name="fi-rr-refresh" id="pageRefreshBtn" onclick="refreshCurrentViewData()" title="Refresh current page data" type="button"><i aria-hidden="true" class="fi fi-rr-refresh"></i></button>
 <button aria-label="My Profile" class="profile-btn header-icon-btn spades-force-icon-only" data-spades-icon-name="fi-rr-user" id="profileHeaderBtn" onclick="switchTab('profile')" title="My Profile" type="button">
 <i aria-hidden="true" class="fi fi-rr-user spades-ui-icon"></i>
 </button>
@@ -124,7 +124,7 @@
 <input id="regCredential" inputmode="numeric" maxlength="6" placeholder="Create 6-Digit PIN" type="password"/>
 </div>
 </div>
-<button onclick="registerUser()">Register</button>
+<button onclick="registerUser()" type="button">Register</button>
 <span class="link" onclick="toggleAuthViews('loginPage')">Back to Login</span>
 </div>
 <div class="app-layout hidden" id="appLayout">
@@ -133,27 +133,27 @@
 <img alt="RHSU Spades Logo" onerror="this.style.display='none'" src="images/RHSU Spades.webp"/>
 <h1>RHSU SPADES</h1>
 </div>
-<button class="sidebar-btn active" id="btnDashboard" onclick="switchTab('dashboard');">
+<button class="sidebar-btn active" id="btnDashboard" onclick="switchTab('dashboard');" type="button">
 <i aria-hidden="true" class="fi fi-rr-home nav-icon"></i>
 <span class="nav-text">Dashboard</span>
 </button>
-<button class="sidebar-btn" id="btnHome" onclick="switchTab('home');">
+<button class="sidebar-btn" id="btnHome" onclick="switchTab('home');" type="button">
 <i aria-hidden="true" class="fi fi-rr-memo nav-icon"></i>
 <span class="nav-text">Memo Database</span>
 </button>
-<button class="sidebar-btn" id="btnPersonnel" onclick="switchTab('personnel');">
+<button class="sidebar-btn" id="btnPersonnel" onclick="switchTab('personnel');" type="button">
 <i aria-hidden="true" class="fi fi-rr-id-badge nav-icon"></i>
 <span class="nav-text">Personnel Management</span>
 </button>
-<button class="sidebar-btn hidden" id="btnAdminMgmt" onclick="switchTab('adminMgmt');" aria-label="User Management">
+<button class="sidebar-btn hidden" id="btnAdminMgmt" onclick="switchTab('adminMgmt');" aria-label="User Management" type="button">
 <i aria-hidden="true" class="fi fi-rr-users nav-icon"></i>
 <span class="nav-text">User Management</span>
 </button>
-<button class="sidebar-btn" id="btnActivityManagement" onclick="switchTab('activityManagement');">
+<button class="sidebar-btn" id="btnActivityManagement" onclick="switchTab('activityManagement');" type="button">
 <i aria-hidden="true" class="fi fi-rr-calendar nav-icon"></i>
 <span class="nav-text">Activity Management</span>
 </button>
-<button class="sidebar-btn" id="btnMatrixCompliances" onclick="switchTab('matrixCompliances');">
+<button class="sidebar-btn" id="btnMatrixCompliances" onclick="switchTab('matrixCompliances');" type="button">
 <i aria-hidden="true" class="fi fi-rr-list-check nav-icon"></i>
 <span class="nav-text">Matrix of Compliances</span>
 </button>
@@ -161,12 +161,12 @@
 <i aria-hidden="true" class="fi fi-rr-file-edit nav-icon"></i>
 <span class="nav-text">Admin Proof Reader</span>
 </button>
-<button aria-label="Users Chat" class="sidebar-btn" id="btnUsersChat" onclick="switchTab('usersChat');" title="Users Chat">
+<button aria-label="Users Chat" class="sidebar-btn" id="btnUsersChat" onclick="switchTab('usersChat');" title="Users Chat" type="button">
 <i aria-hidden="true" class="fi fi-rr-comment-alt nav-icon"></i>
 <span class="nav-text">Users Chat</span>
 <span aria-label="Unread messages" class="users-chat-unread-badge hidden" id="usersChatUnreadBadge">0</span>
 </button>
-<button class="sidebar-btn" id="btnSettings" onclick="switchTab('settings');">
+<button class="sidebar-btn" id="btnSettings" onclick="switchTab('settings');" type="button">
 <i aria-hidden="true" class="fi fi-rr-settings nav-icon"></i>
 <span class="nav-text">Settings</span>
 </button>
@@ -477,7 +477,7 @@
       <section class="pf-info-panel pf-profile-section glass-panel" aria-labelledby="pfServiceInfoTitle">
         <div class="pf-section-heading">
           <div><span class="pf-section-eyebrow">PERSONNEL RECORD</span><h3 id="pfServiceInfoTitle">Service and Assignment Information</h3><p>Information retrieved from your linked Personnel record, when a unique match is available.</p></div>
-          <span class="pf-section-icon-badge"><i aria-hidden="true" class="fi fi-rr-building"></i></span>
+          <span class="pf-section-icon-badge"><i aria-hidden="true" class="fi fi-rr-building-user"></i></span>
         </div>
         <div class="pf-info-grid">
           <div class="pf-info-item"><span>Designation / Position</span><strong class="profile-value" id="profDesignation">Not Available</strong></div>
@@ -542,13 +542,13 @@
 <div class="modal-content glass-panel profile-settings-modal security-settings-modal" tabindex="-1">
 <div class="profile-modal-heading">
 <div class="profile-modal-title-wrap">
-<span aria-hidden="true" class="profile-modal-icon security-icon">🔒</span>
+<span aria-hidden="true" class="profile-modal-icon security-icon"><i class="fi fi-rr-shield-check"></i></span>
 <div><div class="profile-modal-eyebrow">ACCOUNT PROTECTION</div><h2 id="securitySettingsTitle">Security &amp; Authentication</h2><p id="securitySettingsDescription">Update your sign-in details and manage this session.</p></div>
 </div>
 <button aria-label="Close Security &amp; Authentication" class="profile-modal-close" onclick="closeProfileModal('securitySettingsModal')" type="button">×</button>
 </div>
 <div class="profile-account-strip">
-<span aria-hidden="true" class="profile-account-avatar">👤</span>
+<span aria-hidden="true" class="profile-account-avatar"><i class="fi fi-rr-user"></i></span>
 <div class="profile-account-copy"><strong id="securityCurrentUsername">Current account</strong><span>Your account credentials are private.</span></div>
 <span class="profile-status-pill"><span></span> Signed in</span>
 </div>
@@ -558,10 +558,10 @@
 <div class="profile-input-wrap"><span aria-hidden="true" class="profile-input-icon">@</span><input autocapitalize="none" autocomplete="username" id="newUsernameInput" maxlength="80" placeholder="Enter a new username" spellcheck="false" type="text"/></div>
 <small class="profile-field-hint">Your username must be unique. Your existing account role and permissions are retained.</small>
 </div>
-<div class="profile-security-note hidden" id="alphaUsernameLockNotice" role="note"><span aria-hidden="true">🔒</span><p>The Alpha Admin username is centrally managed by the backend and cannot be changed here. You can still update your authentication credential.</p></div>
+<div class="profile-security-note hidden" id="alphaUsernameLockNotice" role="note"><i class="fi fi-rr-lock" aria-hidden="true"></i><p>The Alpha Admin username is centrally managed by the backend and cannot be changed here. You can still update your authentication credential.</p></div>
 <div class="profile-modal-field">
 <label for="newCredential">New PIN or password <span class="field-optional">Optional</span></label>
-<div class="profile-input-wrap"><span aria-hidden="true" class="profile-input-icon">🔑</span><input aria-describedby="credentialStrengthText" autocomplete="new-password" id="newCredential" placeholder="Enter a new PIN or password" type="password"/><button aria-label="Show PIN or password" aria-pressed="false" class="credential-visibility-toggle" id="toggleCredentialVisibility" onclick="toggleProfileCredentialVisibility()" type="button"><svg aria-hidden="true" viewbox="0 0 24 24"><path d="M2.5 12s3.4-6.5 9.5-6.5 9.5 6.5 9.5 6.5-3.4 6.5-9.5 6.5S2.5 12 2.5 12Z"></path><circle cx="12" cy="12" r="3"></circle></svg></button></div>
+<div class="profile-input-wrap"><span aria-hidden="true" class="profile-input-icon"><i class="fi fi-rr-lock"></i></span><input aria-describedby="credentialStrengthText" autocomplete="new-password" id="newCredential" placeholder="Enter a new PIN or password" type="password"/><button aria-label="Show PIN or password" aria-pressed="false" class="credential-visibility-toggle" id="toggleCredentialVisibility" onclick="toggleProfileCredentialVisibility()" type="button"><i aria-hidden="true" class="fi fi-rr-eye spades-password-visibility-glyph"></i></button></div>
 <div aria-hidden="true" class="credential-strength"><span id="credentialStrengthBar"></span></div>
 <small aria-live="polite" class="profile-field-hint" id="credentialStrengthText">Enter a new credential to see its strength guidance. This is an estimate only.</small>
 </div>
@@ -577,7 +577,7 @@
 <div class="modal-content glass-panel profile-settings-modal profile-edit-modal" tabindex="-1">
 <div class="profile-modal-heading">
 <div class="profile-modal-title-wrap">
-<span aria-hidden="true" class="profile-modal-icon profile-icon">👤</span>
+<span aria-hidden="true" class="profile-modal-icon profile-icon"><i class="fi fi-rr-user"></i></span>
 <div><div class="profile-modal-eyebrow">YOUR ACCOUNT</div><h2 id="profileSettingsTitle">Profile Settings</h2><p id="profileSettingsDescription">Keep your personal and contact information up to date.</p></div>
 </div>
 <button aria-label="Close Profile Settings" class="profile-modal-close" onclick="closeProfileModal('profileSettingsModal')" type="button">×</button>
@@ -588,7 +588,7 @@
 <span class="profile-edit-identity-badge">Personal details</span>
 </div>
 <div class="profile-modal-section">
-<div class="profile-modal-section-head"><span aria-hidden="true" class="profile-section-icon">👤</span><div><h3>Identity &amp; name</h3><p>These details appear on your profile and account records.</p></div></div>
+<div class="profile-modal-section-head"><span aria-hidden="true" class="profile-section-icon"><i class="fi fi-rr-user"></i></span><div><h3>Identity &amp; name</h3><p>These details appear on your profile and account records.</p></div></div>
 <div class="profile-edit-grid">
 <label for="editProfileRank"><span class="profile-field-label-row"><span>Rank</span><span class="field-optional">Optional</span></span><input autocomplete="organization-title" id="editProfileRank" placeholder="e.g. PCpl" type="text"/></label>
 <label for="editProfileQlf"><span class="profile-field-label-row"><span>Qualifier</span><span class="field-optional">Optional</span></span><input id="editProfileQlf" placeholder="e.g. (PNP)" type="text"/></label>
@@ -598,7 +598,7 @@
 </div>
 </div>
 <div class="profile-modal-section">
-<div class="profile-modal-section-head"><span aria-hidden="true" class="profile-section-icon contact-section-icon">✉</span><div><h3>Contact information</h3><p>Use contact details that you can currently access.</p></div></div>
+<div class="profile-modal-section-head"><span aria-hidden="true" class="profile-section-icon contact-section-icon"><i class="fi fi-rr-comment-alt"></i></span><div><h3>Contact information</h3><p>Use contact details that you can currently access.</p></div></div>
 <div class="profile-edit-grid">
 <label for="editProfileEmail"><span class="profile-field-label-row"><span>Email address</span></span><input autocomplete="email" id="editProfileEmail" placeholder="name@example.com" type="email"/></label>
 <label for="editProfileContact"><span class="profile-field-label-row"><span>Contact number</span></span><input autocomplete="tel" id="editProfileContact" inputmode="tel" placeholder="Enter contact number" type="tel"/></label>
@@ -610,7 +610,7 @@
 <button aria-label="Cancel profile editing" class="action-btn spades-force-icon-only" data-spades-icon-name="fi-rr-cross" onclick="closeProfileModal('profileSettingsModal')" title="Cancel profile editing" type="button"><i aria-hidden="true" class="fi fi-rr-cross"></i></button>
 </div>
 <div class="profile-settings-divider"></div>
-<div class="profile-modal-section-head preferences-heading"><span aria-hidden="true" class="profile-section-icon preferences-section-icon">⚙</span><div><h3>Profile preferences</h3><p>Personalize how information is displayed on this device.</p></div></div>
+<div class="profile-modal-section-head preferences-heading"><span aria-hidden="true" class="profile-section-icon preferences-section-icon"><i class="fi fi-rr-settings"></i></span><div><h3>Profile preferences</h3><p>Personalize how information is displayed on this device.</p></div></div>
 <div class="profile-preferences-card">
 <div class="profile-preference-row"><div><strong>Profile display</strong><small>Choose the spacing used on the profile page.</small></div><select aria-label="Profile display density" id="profileDisplayDensity" onchange="saveProfilePreferences()"><option value="Comfortable">Comfortable</option><option value="Compact">Compact</option></select></div>
 <div class="profile-preference-row"><div><strong>Show activity summary</strong><small>Display your memo and activity summary.</small></div><label aria-label="Show activity summary" class="switch profile-preference-switch"><input checked="" id="profileShowActivity" onchange="saveProfilePreferences()" type="checkbox"/><span class="slider"></span></label></div>
@@ -694,9 +694,9 @@
 <option value="">All Sections</option>
 </select>
 <span aria-live="polite" class="personnel-filter-result-count" id="personnelFilterResultCount">Showing all personnel</span>
-<button class="action-btn" onclick="clearPersonnelFilters()">Clear Filters</button>
+<button class="action-btn" onclick="clearPersonnelFilters()" type="button">Clear Filters</button>
 <button class="action-btn" id="personnelDownloadExcelBtn" onclick="downloadPersonnelListExcel()" type="button" title="Download all personnel matching the current filters as an Excel workbook"><i class="fi fi-rr-file-excel" aria-hidden="true"></i> Download Excel</button>
-<button class="action-btn" onclick="loadPersonnel()">↻ Refresh</button>
+<button class="action-btn" onclick="loadPersonnel()" type="button">↻ Refresh</button>
 </div>
 <div id="personnelTablesContainer"></div>
 </div>
@@ -731,7 +731,7 @@
 <div style="font-size:12px;color:var(--text-muted);margin-top:4px;">Duty personnel schedule and sequence management</div>
 </div>
 <div class="personnel-actions">
-<button class="action-btn approve-btn" id="dutyEditSeqBtn" onclick="openDutySequenceModal()" style="color:white;font-weight:bold;display:none;">⚙ Modify Duty Sequence</button>
+<button class="action-btn approve-btn" id="dutyEditSeqBtn" data-spades-icon-name="fi-rr-settings" onclick="openDutySequenceModal()" style="color:white;font-weight:bold;display:none;" type="button">Modify Duty Sequence</button>
 </div>
 </div>
 <div class="duty-calendar-wrap glass-panel">
@@ -765,7 +765,7 @@
 <input id="bmiSearchInput" list="bmiSearchSuggestions" oninput="renderBmiTable()" placeholder="Search personnel..." style="margin:0;padding:8px 12px;font-size:13px;border-radius:var(--radius-sm);border:1px solid var(--border-color);width:200px;height:36px;box-sizing:border-box;" type="text"/>
 <datalist id="bmiSearchSuggestions"></datalist>
 <button aria-label="Personnel Management · BMI Monitoring: Add BMI Record" class="action-btn approve-btn" data-spades-action-key="personnel-bmi-add-record" id="bmiAddBtn" onclick="openBmiModal()" style="color:white;font-weight:bold;display:none;margin:0;height:36px;padding:0 14px;font-size:13px;box-sizing:border-box;" title="Personnel Management · BMI Monitoring · Add BMI Record" type="button">＋ Add BMI Record</button>
-<button class="action-btn" id="bmiDownloadBtn" onclick="downloadBmiExcel()" style="margin:0;display:none;height:36px;padding:0 14px;font-size:13px;box-sizing:border-box;">⬇ Download Excel</button>
+<button class="action-btn" id="bmiDownloadBtn" onclick="downloadBmiExcel()" style="margin:0;display:none;height:36px;padding:0 14px;font-size:13px;box-sizing:border-box;" type="button">Download Excel</button>
 </div>
 </div>
 <div class="bmi-classification-summary" id="bmiClassificationSummary"></div>
@@ -897,7 +897,7 @@
 </div>
 <div class="users-chat-composer-wrap">
 <div class="users-chat-attachment hidden" id="usersChatAttachment">
-<span aria-hidden="true">📎</span>
+<i class="fi fi-rr-paperclip-vertical" aria-hidden="true"></i>
 <span class="users-chat-attachment-name" id="usersChatAttachmentName"></span>
 <button aria-label="Remove attachment" class="users-chat-attachment-remove" onclick="clearChatAttachment()" title="Remove attachment" type="button">×</button>
 </div>
@@ -909,7 +909,7 @@
 <div class="users-chat-composer">
 <input class="users-chat-file-input" id="usersChatFile" onchange="handleChatAttachmentChange(event)" type="file"/>
 <button aria-label="Attach file" class="action-btn users-chat-attach-btn" onclick="document.getElementById('usersChatFile').click()" title="Attach file" type="button">
-<i aria-hidden="true" class="fi fi-rr-paperclip"></i>
+<i aria-hidden="true" class="fi fi-rr-paperclip-vertical"></i>
 </button>
 <div aria-multiline="true" class="users-chat-input" contenteditable="true" data-placeholder="Write a message..." id="usersChatInput" oninput="updateChatFormatState()" onkeydown="handleUsersChatKeydown(event)" role="textbox"></div>
 <button aria-label="Send message" class="users-chat-send" onclick="sendUsersChatMessage()" title="Send message" type="button"><i aria-hidden="true" class="fi fi-rr-paper-plane"></i><span>Send</span></button>
@@ -967,8 +967,8 @@
 <div class="pagination-container hidden" id="archivedActivityPagination">
 <span id="archivedActivityPageInfo" style="font-weight:bold;">Page 1 of 1</span>
 <div class="pagination-buttons">
-<button class="page-btn" id="prevArchivedActivityBtn" onclick="changeArchivedActivityPage(-1)" aria-label="Previous archived activity page" title="Previous archived activity page">Prev</button>
-<button class="page-btn" id="nextArchivedActivityBtn" onclick="changeArchivedActivityPage(1)" aria-label="Next archived activity page" title="Next archived activity page">Next</button>
+<button class="page-btn" id="prevArchivedActivityBtn" onclick="changeArchivedActivityPage(-1)" aria-label="Previous archived activity page" title="Previous archived activity page" type="button">Prev</button>
+<button class="page-btn" id="nextArchivedActivityBtn" onclick="changeArchivedActivityPage(1)" aria-label="Next archived activity page" title="Next archived activity page" type="button">Next</button>
 </div>
 </div>
 </details>
@@ -1290,7 +1290,7 @@
 <div id="settingsMainPanel">
 <header class="settings-page-header">
 <div class="settings-page-heading">
-<div aria-hidden="true" class="settings-page-icon">⚙</div>
+<div aria-hidden="true" class="settings-page-icon"><i class="fi fi-rr-settings"></i></div>
 <div>
 <div class="settings-eyebrow">PERSONALIZE YOUR WORKSPACE</div>
 <h2>System Settings</h2>
@@ -1314,7 +1314,7 @@
 <h3>Notifications</h3>
 <div class="setting-row"><span>Live Activity Notifications</span><label class="switch"><input id="setLiveNotif" onchange="saveSettings()" type="checkbox"/><span class="slider"></span></label></div>
 <div class="setting-row"><span>Notification Sound</span><label class="switch"><input id="setNotifSound" onchange="saveSettings()" type="checkbox"/><span class="slider"></span></label></div>
-<div class="setting-row" style="align-items:flex-start;"><div style="display:flex;flex-direction:column;gap:4px;min-width:0;"><span>Sound Selection</span><small style="color:var(--text-muted);font-size:11px;">MP3 files from the sounds folder</small></div><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end;"><select id="setNotificationSound" onchange="saveSettings()" style="min-width:175px;"></select><button class="action-btn" onclick="testNotificationSound()" style="padding:7px 10px;" type="button">▶ Test</button></div></div>
+<div class="setting-row" style="align-items:flex-start;"><div style="display:flex;flex-direction:column;gap:4px;min-width:0;"><span>Sound Selection</span><small style="color:var(--text-muted);font-size:11px;">MP3 files from the sounds folder</small></div><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end;"><select id="setNotificationSound" onchange="saveSettings()" style="min-width:175px;"></select><button class="action-btn" onclick="testNotificationSound()" style="padding:7px 10px;" type="button">Test</button></div></div>
 </div>
 <div class="settings-section glass-panel">
 <h3>Memo Settings</h3>
@@ -1383,10 +1383,10 @@
 </div>
 </div>
 <div aria-label="User account summary" class="um-summary-grid">
-<div class="um-summary-card"><span aria-hidden="true" class="um-summary-icon um-icon-total">☷</span><div><span class="um-summary-label">Total Accounts</span><strong id="umTotalUsers">—</strong><small>Registered accounts</small></div></div>
-<div class="um-summary-card"><span aria-hidden="true" class="um-summary-icon um-icon-active">✓</span><div><span class="um-summary-label">Active Accounts</span><strong id="umActiveUsers">—</strong><small>Approved and active</small></div></div>
-<div class="um-summary-card"><span aria-hidden="true" class="um-summary-icon um-icon-pending">⏲</span><div><span class="um-summary-label">Pending Approval</span><strong id="umPendingUsers">—</strong><small>Awaiting review</small></div></div>
-<div class="um-summary-card"><span aria-hidden="true" class="um-summary-icon um-icon-admin">🛡</span><div><span class="um-summary-label">Admin Accounts</span><strong id="umAdminUsers">—</strong><small>Assigned administrators</small></div></div>
+<div class="um-summary-card"><span aria-hidden="true" class="um-summary-icon um-icon-total"><i class="fi fi-rr-users"></i></span><div><span class="um-summary-label">Total Accounts</span><strong id="umTotalUsers">—</strong><small>Registered accounts</small></div></div>
+<div class="um-summary-card"><span aria-hidden="true" class="um-summary-icon um-icon-active"><i class="fi fi-rr-check-circle"></i></span><div><span class="um-summary-label">Active Accounts</span><strong id="umActiveUsers">—</strong><small>Approved and active</small></div></div>
+<div class="um-summary-card"><span aria-hidden="true" class="um-summary-icon um-icon-pending"><i class="fi fi-rr-clock"></i></span><div><span class="um-summary-label">Pending Approval</span><strong id="umPendingUsers">—</strong><small>Awaiting review</small></div></div>
+<div class="um-summary-card"><span aria-hidden="true" class="um-summary-icon um-icon-admin"><i class="fi fi-rr-shield-check"></i></span><div><span class="um-summary-label">Admin Accounts</span><strong id="umAdminUsers">—</strong><small>Assigned administrators</small></div></div>
 </div>
 <section aria-labelledby="umAccountsHeading" class="um-panel um-accounts-panel">
 <div class="um-panel-heading">
@@ -1394,7 +1394,7 @@
 <span class="um-secure-tag"><span></span> Restricted access</span>
 </div>
 <div class="um-toolbar">
-<label class="um-search" for="adminUserSearch"><span aria-hidden="true">⚲</span><input autocomplete="off" id="adminUserSearch" oninput="renderAdminUsers()" placeholder="Search name or username…" type="search"/></label>
+<label class="um-search" for="adminUserSearch"><i class="fi fi-rr-search" aria-hidden="true"></i><input autocomplete="off" id="adminUserSearch" oninput="renderAdminUsers()" placeholder="Search name or username…" type="search"/></label>
 <label class="um-filter-label" for="adminStatusFilter">Status<select id="adminStatusFilter" onchange="renderAdminUsers()"><option value="all">All statuses</option><option value="active">Active</option><option value="pending">Pending</option></select></label>
 <label class="um-filter-label" for="adminRoleFilter">Role<select id="adminRoleFilter" onchange="renderAdminUsers()"><option value="all">All roles</option><option value="Admin">Admin</option><option value="Regular User">Regular User</option></select></label>
 </div>
@@ -1408,7 +1408,7 @@
 </section>
 <section aria-labelledby="umAnnouncementHeading" class="um-panel um-announcement-panel">
 <div class="um-panel-heading">
-<div aria-hidden="true" class="um-announcement-title-icon">📢</div>
+<div aria-hidden="true" class="um-announcement-title-icon"><i class="fi fi-rr-bell"></i></div>
 <div><h3 id="umAnnouncementHeading">Global System Announcement</h3><p>Publish a notice that is displayed to users throughout the system.</p></div>
 </div>
 <label class="um-announcement-label" for="adminAnnouncementText">Announcement message</label>
@@ -1431,19 +1431,19 @@
 <div class="chat-msg bot">Hello! I’m your SPADES assistant. Ask me about memo workflows, personnel tools, activity records, profile settings, or how to use the portal.</div>
 </div>
 <div class="chatbot-attachment-preview hidden" id="chatbotAttachmentPreview" aria-live="polite">
-  <i class="fi fi-rr-paperclip" aria-hidden="true"></i>
+  <i class="fi fi-rr-paperclip-vertical" aria-hidden="true"></i>
   <span id="chatbotAttachmentName"></span>
   <button type="button" class="chatbot-attachment-remove" onclick="clearChatbotAttachment()" aria-label="Remove attachment" title="Remove attachment">×</button>
 </div>
 <div class="chat-input-area">
 <input aria-label="Message the SPADES AI Assistant" autocomplete="off" id="chatInput" maxlength="1600" onkeydown="handleChat(event)" placeholder="Ask about SPADES…" type="text"/>
 <input accept=".pdf,.txt,.png,.jpg,.jpeg,.webp,application/pdf,text/plain,image/png,image/jpeg,image/webp" aria-label="Choose a file for the AI assistant" class="chatbot-file-input" id="chatbotFileInput" onchange="handleChatbotAttachmentChange(event)" type="file"/>
-<button aria-label="Attach file" class="chatbot-attach-btn" id="chatbotAttachBtn" onclick="document.getElementById('chatbotFileInput').click()" title="Attach file" type="button"><i aria-hidden="true" class="fi fi-rr-paperclip"></i></button>
+<button aria-label="Attach file" class="chatbot-attach-btn" id="chatbotAttachBtn" onclick="document.getElementById('chatbotFileInput').click()" title="Attach file" type="button"><i aria-hidden="true" class="fi fi-rr-paperclip-vertical"></i></button>
 <button aria-label="Send message" id="chatSendBtn" onclick="sendChatbotMessage()" title="Send message" type="button"><i aria-hidden="true" class="fi fi-rr-paper-plane"></i></button>
 </div>
 <div class="chatbot-footnote">AI responses can be imperfect. Supported attachments: PDF, TXT, PNG, JPG, and WEBP (maximum 8 MB). Do not upload passwords or sensitive personal information.</div>
 </section>
-<button aria-expanded="false" aria-label="Open SPADES AI Assistant" class="spades-force-icon-only" data-spades-icon-name="fi-rr-comment-dots" id="chatbot-bubble" onclick="toggleChat()" title="Open SPADES AI Assistant"><i aria-hidden="true" class="fi fi-rr-comment-dots"></i></button>
+<button aria-expanded="false" aria-label="Open SPADES AI Assistant" class="spades-force-icon-only" data-spades-icon-name="fi-rr-comment-dots" id="chatbot-bubble" onclick="toggleChat()" title="Open SPADES AI Assistant" type="button"><i aria-hidden="true" class="fi fi-rr-comment-dots"></i></button>
 </div>
 <!-- INCOMING CHAT POPUPS (Messenger-style) -->
 <div aria-atomic="false" aria-live="polite" id="incomingChatContainer"></div>
@@ -1451,7 +1451,7 @@
 <div class="modal-overlay hidden" id="systemAnnouncementModal" style="z-index: 1000;">
 <div class="modal-content glass-panel modal-uniform-shell" style="max-width: 450px;"><header class="modal-uniform-header"><div class="modal-uniform-header-copy"><span class="modal-uniform-kicker">DASHBOARD</span><h2>System Announcement</h2><p>Important system notices and updates for SPADES users.</p></div><button aria-label="Close announcement" class="action-btn icon-action-btn modal-uniform-close" onclick="closeAnnouncementModal()" title="Close announcement" type="button"><i aria-hidden="true" class="fi fi-rr-cross-small"></i></button></header>
 <p id="globalAnnouncementMsg" style="font-size: 15px; margin-bottom: 25px; line-height: 1.6; white-space: pre-wrap; text-align: left;"></p>
-<button onclick="closeAnnouncementModal()">Understood</button>
+<button onclick="closeAnnouncementModal()" type="button">Understood</button>
 </div>
 </div>
 <div aria-labelledby="archivedPersonnelDetailsName" aria-modal="true" class="modal-overlay hidden" id="archivedPersonnelDetailsModal" role="dialog" style="z-index: 2050;">
@@ -1470,8 +1470,8 @@
 <div class="modal-content glass-panel modal-uniform-shell"><header class="modal-uniform-header"><div class="modal-uniform-header-copy"><span class="modal-uniform-kicker">SYSTEM CONFIRMATION</span><h2 id="customConfirmTitle">Confirm Action</h2><p>Review this request before proceeding.</p></div><button aria-label="Cancel confirmation" class="action-btn icon-action-btn modal-uniform-close" onclick="document.getElementById('customConfirmNoBtn').click()" title="Cancel confirmation" type="button"><i aria-hidden="true" class="fi fi-rr-cross-small"></i></button></header>
 <p id="customConfirmMessage" style="font-size: 15px; margin-bottom: 20px;"></p>
 <div style="display: flex; gap: 10px;">
-<button class="approve-btn" id="customConfirmYesBtn" style="flex: 1;">Yes</button>
-<button id="customConfirmNoBtn" style="flex: 1; background: #e2e8f0; color: #475569;">Cancel</button>
+<button class="approve-btn" id="customConfirmYesBtn" style="flex: 1;" type="button">Yes</button>
+<button id="customConfirmNoBtn" style="flex: 1; background: #e2e8f0; color: #475569;" type="button">Cancel</button>
 </div>
 </div>
 </div>
@@ -1565,15 +1565,15 @@
 </div>
 <button id="memoSubmitBtn" type="submit">Submit Data</button>
 </form>
-<button class="spades-modal-secondary" onclick="closeMemoModal()" style="margin-top:8px;width:100%;">Cancel and Close</button>
+<button class="spades-modal-secondary" onclick="closeMemoModal()" style="margin-top:8px;width:100%;" type="button">Cancel and Close</button>
 </div>
 </div>
 <div aria-describedby="adminCredentialDescription" aria-labelledby="adminCredentialTitle" aria-modal="true" class="modal-overlay hidden" id="adminModal" role="dialog">
 <div class="modal-content glass-panel alpha-credential-modal modal-uniform-shell"><header class="modal-uniform-header"><div class="modal-uniform-header-copy"><span class="modal-uniform-kicker">USER MANAGEMENT</span><h2 id="adminCredentialTitle">Verify Alpha Admin</h2><p id="adminCredentialDescription">Confirm your Alpha Admin credential to open User Management.</p></div><button aria-label="Close credential verification" class="action-btn icon-action-btn modal-uniform-close" onclick="closeAdminModal()" title="Close credential verification" type="button"><i aria-hidden="true" class="fi fi-rr-cross-small"></i></button></header>
 <label class="alpha-credential-label" for="adminPassInput">Alpha Admin credential</label>
-<div class="alpha-credential-input-wrap"><input aria-label="Alpha Admin credential" autocomplete="current-password" id="adminPassInput" placeholder="Enter your PIN or password" type="password"/><button aria-label="Show credential" aria-pressed="false" class="alpha-credential-eye" id="toggleAdminCredentialVisibility" onclick="toggleAdminCredentialVisibility()" type="button"><svg aria-hidden="true" viewbox="0 0 24 24"><path d="M2.5 12s3.4-6.5 9.5-6.5 9.5 6.5 9.5 6.5-3.4 6.5-9.5 6.5S2.5 12 2.5 12Z"></path><circle cx="12" cy="12" r="3"></circle></svg></button></div>
-<p class="alpha-credential-footnote"><span aria-hidden="true">🔒</span> Your credential is verified securely by the system. It is not stored in this page.</p>
-<div class="alpha-credential-actions"><button class="alpha-credential-cancel" onclick="closeAdminModal()" type="button">Cancel</button><button class="alpha-credential-submit" id="verifyAdminButton" onclick="verifyAdmin()" type="button"><span aria-hidden="true">🔑</span> Verify and Continue</button></div>
+<div class="alpha-credential-input-wrap"><input aria-label="Alpha Admin credential" autocomplete="current-password" id="adminPassInput" placeholder="Enter your PIN or password" type="password"/><button aria-label="Show credential" aria-pressed="false" class="alpha-credential-eye" id="toggleAdminCredentialVisibility" onclick="toggleAdminCredentialVisibility()" type="button"><i aria-hidden="true" class="fi fi-rr-eye spades-password-visibility-glyph"></i></button></div>
+<p class="alpha-credential-footnote"><i class="fi fi-rr-lock" aria-hidden="true"></i> Your credential is verified securely by the system. It is not stored in this page.</p>
+<div class="alpha-credential-actions"><button class="alpha-credential-cancel" onclick="closeAdminModal()" type="button">Cancel</button><button class="alpha-credential-submit" id="verifyAdminButton" onclick="verifyAdmin()" type="button">Verify and Continue</button></div>
 </div>
 </div>
 <div class="modal-overlay hidden" id="actionModal">
@@ -1616,8 +1616,8 @@
 <input class="hidden" id="actionNewOfficeDestinationOther" placeholder="Enter Office Destination" style="background: white; margin:0;" type="text"/>
 </div>
 <div style="display: flex; gap: 10px; margin-top: 15px;">
-<button id="actionConfirmBtn" onclick="executeAction()" style="flex: 1;">Confirm</button>
-<button onclick="closeActionModal()" style="flex: 1; background: #e2e8f0; color: #475569;">Cancel</button>
+<button id="actionConfirmBtn" onclick="executeAction()" style="flex: 1;" type="button">Confirm</button>
+<button onclick="closeActionModal()" style="flex: 1; background: #e2e8f0; color: #475569;" type="button">Cancel</button>
 </div>
 </div>
 </div>
@@ -1706,7 +1706,7 @@
 <thead><tr><th scope="col">Date</th><th scope="col">Activity Title</th><th scope="col">Assigned Venue</th><th scope="col">Requesting Office</th><th scope="col">Concerned Office</th><th scope="col">Requested Service/s</th><th scope="col">Time</th><th scope="col">Status</th><th id="activityActionHeader" scope="col">Actions</th></tr></thead>
 <tbody id="activityTableBody"></tbody>
 </table></div>
-<div class="pagination-container hidden" id="activityPagination"><span id="activityPageInfo" style="font-weight:bold;">Page 1 of 1</span><div class="pagination-buttons"><button class="page-btn" id="prevActivityBtn" onclick="changeActivityPage(-1)" aria-label="Previous activity page" title="Previous activity page">Prev</button><button class="page-btn" id="nextActivityBtn" onclick="changeActivityPage(1)" aria-label="Next activity page" title="Next activity page">Next</button></div></div>
+<div class="pagination-container hidden" id="activityPagination"><span id="activityPageInfo" style="font-weight:bold;">Page 1 of 1</span><div class="pagination-buttons"><button class="page-btn" id="prevActivityBtn" onclick="changeActivityPage(-1)" aria-label="Previous activity page" title="Previous activity page" type="button">Prev</button><button class="page-btn" id="nextActivityBtn" onclick="changeActivityPage(1)" aria-label="Next activity page" title="Next activity page" type="button">Next</button></div></div>
 </div>
 </div>
 <div aria-labelledby="activityModalTitle" aria-modal="true" class="modal-overlay hidden" id="activityModal" onclick="if(event.target===this)closeActivityModal()" role="dialog">
@@ -1818,8 +1818,8 @@
 <div class="duty-sequence-list" id="dutySequenceList"></div>
 <p class="duty-sequence-note">Removing a name here only removes it from the Duty Office rotation; the personnel record remains in Personnel Management.</p>
 <div style="display:flex;gap:10px;margin-top:18px;">
-<button class="approve-btn" id="dutySequenceSaveBtn" onclick="saveDutySequence()" style="flex:1;margin:0;color:white;">Save Sequence</button>
-<button class="action-btn" onclick="closeDutySequenceModal()" style="flex:1;margin:0;">Cancel</button>
+<button class="approve-btn" id="dutySequenceSaveBtn" onclick="saveDutySequence()" style="flex:1;margin:0;color:white;" type="button">Save Sequence</button>
+<button class="action-btn" onclick="closeDutySequenceModal()" style="flex:1;margin:0;" type="button">Cancel</button>
 </div>
 </div>
 </div>
@@ -1876,8 +1876,8 @@
 </div>
 </div>
 <div style="display:flex;gap:10px;margin-top:18px;">
-<button class="approve-btn" onclick="saveBmiRecord()" style="flex:1;margin:0;color:white;">Save Record</button>
-<button class="action-btn" onclick="closeBmiModal()" style="flex:1;margin:0;">Cancel</button>
+<button class="approve-btn" onclick="saveBmiRecord()" style="flex:1;margin:0;color:white;" type="button">Save Record</button>
+<button class="action-btn" onclick="closeBmiModal()" style="flex:1;margin:0;" type="button">Cancel</button>
 </div>
 </div>
 </div>
@@ -1908,8 +1908,8 @@
 </div>
 </div>
 <div style="display:flex;gap:10px;margin-top:18px;">
-<button class="approve-btn" onclick="saveSquad()" style="flex:1;margin:0;color:white;">Save Squad</button>
-<button class="action-btn" onclick="closeSquadModal()" style="flex:1;margin:0;">Cancel</button>
+<button class="approve-btn" onclick="saveSquad()" style="flex:1;margin:0;color:white;" type="button">Save Squad</button>
+<button class="action-btn" onclick="closeSquadModal()" style="flex:1;margin:0;" type="button">Cancel</button>
 </div>
 </div>
 </div>
@@ -1919,7 +1919,7 @@
 <div style="display:flex;flex-direction:column;gap:12px;">
 <div>
 <label style="font-size:13px;font-weight:600;">Name of Personnel</label>
-<input class="leave-personnel-search" id="leavePersonnelSearch" oninput="filterLeavePersonnel(this.value)" placeholder="🔍 Search personnel by name or rank..." type="text"/>
+<input class="leave-personnel-search" id="leavePersonnelSearch" oninput="filterLeavePersonnel(this.value)" placeholder="Search personnel by name or rank..." type="text"/>
 <input id="leavePersonnelSelect" type="hidden" value=""/>
 <div class="leave-personnel-table" id="leavePersonnelTable"></div>
 <div id="leavePersonnelSelected" style="font-size:12px;color:var(--success);font-weight:600;margin-top:6px;display:none;"></div>
@@ -1961,8 +1961,8 @@
 </div>
 </div>
 <div style="display:flex;gap:10px;margin-top:18px;">
-<button class="approve-btn" onclick="saveLeaveEntry()" style="flex:1;margin:0;color:white;">Save Leave Entry</button>
-<button class="action-btn" onclick="closeLeaveModal()" style="flex:1;margin:0;">Cancel</button>
+<button class="approve-btn" onclick="saveLeaveEntry()" style="flex:1;margin:0;color:white;" type="button">Save Leave Entry</button>
+<button class="action-btn" onclick="closeLeaveModal()" style="flex:1;margin:0;" type="button">Cancel</button>
 </div>
 </div>
 </div>
@@ -1993,8 +1993,8 @@
 </div>
 </div>
 <div style="display:flex;gap:10px;margin-top:18px;">
-<button class="approve-btn" onclick="saveArea()" style="flex:1;margin:0;color:white;">Save Area</button>
-<button class="action-btn" onclick="closeAreaModal()" style="flex:1;margin:0;">Cancel</button>
+<button class="approve-btn" onclick="saveArea()" style="flex:1;margin:0;color:white;" type="button">Save Area</button>
+<button class="action-btn" onclick="closeAreaModal()" style="flex:1;margin:0;" type="button">Cancel</button>
 </div>
 </div>
 </div>
@@ -2005,8 +2005,8 @@
 <h4 style="margin:0 0 10px;font-size:14px;color:var(--primary);">Designated Personnel In-Charge</h4>
 <div id="areaDetailsPersonnel" style="display:flex;flex-direction:column;gap:8px;"></div>
 <div id="areaDetailsActions" style="display:flex;gap:10px;margin-top:18px;">
-<button class="action-btn approve-btn" id="areaEditBtn" onclick="editAreaFromDetails()" style="flex:1;margin:0;color:white;display:none;">Edit Personnel</button>
-<button class="action-btn delete-btn" id="areaDeleteBtn" onclick="deleteAreaFromDetails()" style="flex:1;margin:0;display:none;">Delete Area</button>
+<button class="action-btn approve-btn" id="areaEditBtn" onclick="editAreaFromDetails()" style="flex:1;margin:0;color:white;display:none;" type="button">Edit Personnel</button>
+<button class="action-btn delete-btn" id="areaDeleteBtn" onclick="deleteAreaFromDetails()" style="flex:1;margin:0;display:none;" type="button">Delete Area</button>
 </div>
 </div>
 </div>
@@ -2054,8 +2054,8 @@
 <h4 style="margin:0 0 10px;font-size:14px;color:var(--primary);">Squad Members</h4>
 <div id="squadDetailsMembers" style="display:flex;flex-direction:column;gap:8px;"></div>
 <div id="squadDetailsActions" style="display:flex;gap:10px;margin-top:18px;">
-<button class="action-btn approve-btn" id="squadDetailsEditBtn" onclick="editSquadFromDetails()" style="flex:1;margin:0;color:white;display:none;">Edit Squad</button>
-<button class="action-btn delete-btn" id="squadDetailsDeleteBtn" onclick="deleteSquadFromDetails()" style="flex:1;margin:0;display:none;">Delete Squad</button>
+<button class="action-btn approve-btn" id="squadDetailsEditBtn" onclick="editSquadFromDetails()" style="flex:1;margin:0;color:white;display:none;" type="button">Edit Squad</button>
+<button class="action-btn delete-btn" id="squadDetailsDeleteBtn" onclick="deleteSquadFromDetails()" style="flex:1;margin:0;display:none;" type="button">Delete Squad</button>
 </div>
 </div>
 </div>
@@ -2073,10 +2073,10 @@
 <div class="profile-card-section-title"><span>Personnel Information</span><span class="profile-card-section-line"></span></div>
 <div class="profile-card-body" id="profileCardBody"></div>
 <div style="padding:0 24px 20px 24px;display:flex;gap:10px;">
-<button class="action-btn browse-folder-btn" id="profileCardBrowseBtn" onclick="openPersonnelFolderBrowser()" style="flex:1 1 100px;margin:0;background:#059669;color:#fff;border:none;" type="button">👁 Browse</button>
-<button class="action-btn approve-btn" id="profileCardEditBtn" onclick="editDetailsFromProfile()" style="flex:1 1 105px;margin:0;color:white;display:none;">Edit Details</button>
-<button class="action-btn delete-btn" id="profileCardArchiveBtn" onclick="archiveDetailsFromProfile()" style="flex:1 1 120px;margin:0;display:none;">Archive Personnel</button>
-<button class="action-btn" onclick="closePersonnelProfile()" style="flex:1 1 80px;margin:0;">Close</button>
+<button class="action-btn browse-folder-btn" id="profileCardBrowseBtn" onclick="openPersonnelFolderBrowser()" style="flex:1 1 100px;margin:0;background:#059669;color:#fff;border:none;" type="button">Browse</button>
+<button class="action-btn approve-btn" id="profileCardEditBtn" onclick="editDetailsFromProfile()" style="flex:1 1 105px;margin:0;color:white;display:none;" type="button">Edit Details</button>
+<button class="action-btn delete-btn" id="profileCardArchiveBtn" onclick="archiveDetailsFromProfile()" style="flex:1 1 120px;margin:0;display:none;" type="button">Archive Personnel</button>
+<button class="action-btn" onclick="closePersonnelProfile()" style="flex:1 1 80px;margin:0;" type="button">Close</button>
 </div>
 </div>
 </div>
@@ -2171,7 +2171,7 @@
 <progress id="myFilesUploadProgressBar" max="100" value="0">0%</progress>
 </div>
 <div class="my-files-selection-row" hidden="" id="myFilesSelectionRow">
-<span class="my-files-selection-icon"><i aria-hidden="true" class="fi fi-rr-paperclip"></i></span>
+<span class="my-files-selection-icon"><i aria-hidden="true" class="fi fi-rr-paperclip-vertical"></i></span>
 <span class="my-files-selection-copy" id="myFilesSelectionText">No files selected</span>
 <button class="my-files-clear-selection" id="myFilesClearSelection" onclick="clearMyFilesSelection()" type="button">Clear selection</button>
 </div>
@@ -2196,7 +2196,7 @@
 <div class="profile-card-banner file-preview-banner">
 <div class="file-preview-heading"><span class="file-preview-kicker">FILE PREVIEW</span><span class="profile-card-banner-label" id="previewFileName">File</span></div>
 <div class="file-preview-header-actions">
-<button aria-label="Download file" class="profile-card-download" id="previewDownloadBtn" onclick="downloadPreviewFile()" title="Download file" type="button"><i aria-hidden="true" class="fi fi-rr-download"></i></button>
+<button aria-label="Download file" class="profile-card-download spades-force-icon-only" id="previewDownloadBtn" onclick="downloadPreviewFile()" title="Download file" type="button"><i aria-hidden="true" class="fi fi-rr-download"></i></button>
 <button aria-label="Close preview" class="profile-card-close" onclick="closeFilePreview()" type="button">×</button>
 </div>
 </div>

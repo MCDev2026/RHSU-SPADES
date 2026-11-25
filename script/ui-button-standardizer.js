@@ -39,6 +39,9 @@
   // standardizer restores visible labels elsewhere in the application.
   const FORCE_ICON_ONLY_SELECTOR = [
     '.spades-force-icon-only', '.pf-icon-only-control', '.spades-month-nav-icon-only',
+    // Personnel Folder delete and File Preview download controls must never
+    // regain visible text labels during global button standardization.
+    '.folder-entry-delete', '#previewDownloadBtn',
     '#chatbot-bubble',
     '#profileHeaderBtn', '#pageRefreshBtn', '#prevMemoBtn', '#nextMemoBtn',
     '#prevActivityBtn', '#nextActivityBtn', '#prevArchivedActivityBtn', '#nextArchivedActivityBtn',
@@ -303,16 +306,12 @@
     button.setAttribute('data-spades-tooltip', label);
     button.setAttribute('aria-pressed', pressed ? 'true' : 'false');
 
-    // Keep the existing eye / eye-off SVG. The visibility toggle handlers update
-    // this SVG when the password is revealed or concealed; replacing it with a
-    // static icon would remove that useful state indicator.
-    let svg = button.querySelector('svg');
-    if (!svg) {
-      svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-      svg.setAttribute('viewBox', '0 0 24 24');
-      svg.innerHTML = '<path d="M2.5 12s3.4-6.5 9.5-6.5 9.5 6.5 9.5 6.5-3.4 6.5-9.5 6.5S2.5 12 2.5 12Z"></path><circle cx="12" cy="12" r="3"></circle>';
-    }
-    svg.setAttribute('aria-hidden', 'true');
+    // Use the installed Flaticon Uicons font for both visibility states.
+    // The crossed-eye state indicates that the credential is currently visible.
+    let icon = button.querySelector('.spades-password-visibility-glyph');
+    if (!icon) icon = document.createElement('i');
+    icon.className = 'fi ' + (pressed ? 'fi-rr-eye-crossed' : 'fi-rr-eye') + ' spades-password-visibility-glyph';
+    icon.setAttribute('aria-hidden', 'true');
 
     let srLabel = button.querySelector('.spades-password-visibility-sr');
     if (!srLabel) {
@@ -320,8 +319,8 @@
       srLabel.className = 'spades-visually-hidden spades-password-visibility-sr';
     }
     srLabel.textContent = label;
-    if (button.children.length !== 2 || button.children[0] !== svg || button.children[1] !== srLabel) {
-      button.replaceChildren(svg, srLabel);
+    if (button.children.length !== 2 || button.children[0] !== icon || button.children[1] !== srLabel) {
+      button.replaceChildren(icon, srLabel);
     }
     return true;
   }

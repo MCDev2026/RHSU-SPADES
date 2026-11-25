@@ -3288,7 +3288,7 @@ body.profile-modal-open { overflow:hidden; }
 
 /* ===== Credential visibility icons and Alpha Admin verification dialog ===== */
 .credential-visibility-toggle { display:inline-flex; align-items:center; justify-content:center; width:34px; height:34px; padding:6px; border:0; border-radius:8px; background:rgba(100,116,139,.1); color:var(--text-muted); cursor:pointer; }
-.credential-visibility-toggle svg, .alpha-credential-eye svg { display:block; width:19px; height:19px; fill:none; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
+.credential-visibility-toggle .spades-password-visibility-glyph, .alpha-credential-eye .spades-password-visibility-glyph { display:block; width:19px; height:19px; font-size:19px; line-height:1; }
 .credential-visibility-toggle:hover, .alpha-credential-eye:hover { background:rgba(100,116,139,.18); color:var(--text-main); }
 .alpha-credential-modal { width:min(100%, 460px); padding:clamp(20px, 4vw, 30px); border-radius:22px; background:var(--ui-surface, #fff); }
 .alpha-credential-header { display:flex; align-items:flex-start; gap:14px; margin:0 0 25px; }
@@ -13914,11 +13914,13 @@ button.alpha-credential-eye.spades-password-visibility-icon {
   display: inline-grid !important;
   place-items: center !important;
 }
-button.credential-visibility-toggle.spades-password-visibility-icon svg,
-button.alpha-credential-eye.spades-password-visibility-icon svg {
+button.credential-visibility-toggle.spades-password-visibility-icon .spades-password-visibility-glyph,
+button.alpha-credential-eye.spades-password-visibility-icon .spades-password-visibility-glyph {
   display: block !important;
   width: 19px !important;
   height: 19px !important;
+  font-size: 19px !important;
+  line-height: 1 !important;
   margin: 0 !important;
   pointer-events: none !important;
 }
@@ -14911,4 +14913,39 @@ body.dark-mode .memo-barcode-admin-option { background:rgba(15,23,42,.72); }
   #memoSubmissionModal .memo-add-form > select,
   #memoSubmissionModal .memo-form-office-field,
   #memoSubmissionModal .memo-add-form #memoSubmitBtn { grid-column:1; }
+}
+
+/* Keep the Personnel Folder delete action icon-only without changing its compact row layout. */
+.modal-overlay .folder-entry-delete.spades-icon-only.spades-icon-danger {
+  display:inline-grid !important;
+  flex:0 0 36px !important;
+  width:36px !important;
+  min-width:36px !important;
+  max-width:36px !important;
+  height:36px !important;
+  min-height:36px !important;
+  max-height:36px !important;
+  padding:0 !important;
+  border:1px solid rgba(220,38,38,.22) !important;
+  border-radius:9px !important;
+  background:rgba(220,38,38,.07) !important;
+  color:#dc2626 !important;
+  box-shadow:none !important;
+}
+.modal-overlay .folder-entry-delete.spades-icon-only.spades-icon-danger:hover:not(:disabled) {
+  border-color:rgba(220,38,38,.45) !important;
+  background:rgba(220,38,38,.14) !important;
+  color:#dc2626 !important;
+  box-shadow:none !important;
+}
+@media (max-width:520px) {
+  .modal-overlay .folder-entry-delete.spades-icon-only.spades-icon-danger {
+    flex-basis:34px !important;
+    width:34px !important;
+    min-width:34px !important;
+    max-width:34px !important;
+    height:34px !important;
+    min-height:34px !important;
+    max-height:34px !important;
+  }
 }

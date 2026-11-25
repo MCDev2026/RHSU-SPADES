@@ -1199,7 +1199,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
 
         async function loadChatUsers() {
             const currentUser = localStorage.getItem('loggedInUser') || '';
-            if (!currentUser) return;
+            if (!currentUser) return false;
             try {
                 const auth = chatCredentialPayload();
                 const res = await fetch(API_URL, {
@@ -1218,10 +1218,12 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                     chatMode = 'global';
                 }
                 renderChatUserList();
+                return true;
             } catch (err) {
                 console.error('Chat users:', err);
                 const box = document.getElementById('chatDropdownUserList');
                 if (box) box.innerHTML = '<div class="chat-empty-users">Unable to load users.</div>';
+                return false;
             }
         }
 
@@ -1268,11 +1270,11 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         }
 
         async function loadChatMessages() {
-            if (!localStorage.getItem('loggedInUser')) return;
+            if (!localStorage.getItem('loggedInUser')) return false;
             if (chatMode === 'private' && !chatSelectedUser) {
                 const box = document.getElementById('usersChatMessages');
                 if (box) box.innerHTML = '<div style="text-align:center;color:var(--text-muted);font-size:12px;padding:25px;">Select a user to start a private conversation.</div>';
-                return;
+                return true;
             }
             try {
                 const auth = chatCredentialPayload();
@@ -1284,10 +1286,12 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 const data = await res.json();
                 if (!data.success) throw new Error(data.error || 'Unable to load chat messages.');
                 renderChatMessages(Array.isArray(data.messages) ? data.messages : []);
+                return true;
             } catch (err) {
                 console.error('Chat messages:', err);
                 const box = document.getElementById('usersChatMessages');
                 if (box) box.innerHTML = '<div style="text-align:center;color:var(--danger);font-size:12px;padding:25px;">Unable to load messages.</div>';
+                return false;
             }
         }
 
@@ -1428,7 +1432,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             const name = String(message?.attachmentName || '').trim();
             if (!attachmentId || !name) return '';
             return `<button type="button" class="chat-attachment-link" data-chat-attachment-id="${escapeAttr(attachmentId)}" data-chat-attachment-name="${escapeAttr(name)}" onclick="openChatAttachment(this.dataset.chatAttachmentId,this.dataset.chatAttachmentName)" title="Open attachment">
-                <span aria-hidden="true">📎</span><span>${escapeHtml(name)}</span>
+                <i class="fi fi-rr-paperclip-vertical" aria-hidden="true"></i><span>${escapeHtml(name)}</span>
             </button>`;
         }
 
@@ -1502,8 +1506,18 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             const box = document.getElementById('usersChatMessages');
             if (!box) return;
             const currentUser = localStorage.getItem('loggedInUser') || '';
+            const previousItems = Array.from(box.querySelectorAll('.user-chat-message'));
+            const boxRect = box.getBoundingClientRect();
+            const distanceFromBottom = box.scrollHeight - box.scrollTop - box.clientHeight;
+            const wasAtBottom = !previousItems.length || distanceFromBottom <= 80;
+            const anchor = previousItems.find(item => item.getBoundingClientRect().bottom > boxRect.top);
+            const anchorId = anchor?.getAttribute('data-chat-message-id') || '';
+            const anchorOffset = anchor ? anchor.getBoundingClientRect().top - boxRect.top : 0;
+            const previousScrollTop = box.scrollTop;
+
             if (!messages.length) {
                 box.innerHTML = '<div style="text-align:center;color:var(--text-muted);font-size:12px;padding:25px;">No messages yet. Start the conversation.</div>';
+                box.scrollTop = 0;
                 return;
             }
             box.innerHTML = messages.map(m => {
@@ -1511,13 +1525,26 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 const time = m.timestamp ? new Date(m.timestamp).toLocaleString(undefined,{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '';
                 const body = sanitizeChatMessageHtml(m.message || '');
                 const attachment = renderChatAttachmentMarkup(m);
-                return `<div class="user-chat-message${mine ? ' mine' : ''}">
+                return `<div class="user-chat-message${mine ? ' mine' : ''}" data-chat-message-id="${escapeAttr(m.id || '')}">
                     <div class="meta">${escapeHtml(m.sender || '')}${time ? ' · ' + escapeHtml(time) : ''}</div>
                     ${body ? `<div class="body">${body}</div>` : ''}
                     ${attachment}
                 </div>`;
             }).join('');
-            box.scrollTop = box.scrollHeight;
+
+            if (wasAtBottom) {
+                box.scrollTop = box.scrollHeight;
+            } else {
+                const newAnchor = anchorId
+                    ? Array.from(box.querySelectorAll('.user-chat-message')).find(item => item.getAttribute('data-chat-message-id') === anchorId)
+                    : null;
+                if (newAnchor) {
+                    const newOffset = newAnchor.getBoundingClientRect().top - box.getBoundingClientRect().top;
+                    box.scrollTop = Math.max(0, previousScrollTop + newOffset - anchorOffset);
+                } else {
+                    box.scrollTop = Math.min(previousScrollTop, Math.max(0, box.scrollHeight - box.clientHeight));
+                }
+            }
         }
 
         function applyChatFormat(command) {
@@ -1630,7 +1657,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
 
         function chatPopupInitials(name) {
             const clean = String(name || '').trim();
-            if (!clean) return '💬';
+            if (!clean) return 'U';
             const parts = clean.split(/\s+/).filter(Boolean);
             return (parts.length >= 2 ? parts[0][0] + parts[parts.length - 1][0] : parts[0].slice(0,2)).toUpperCase();
         }
@@ -1681,7 +1708,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             body.className = 'incoming-chat-message';
             const messageText = String(message.message || '').trim();
             const attachmentName = String(message.attachmentName || '').trim();
-            body.textContent = messageText || (attachmentName ? `📎 ${attachmentName}` : 'Attachment');
+            body.textContent = messageText || (attachmentName ? `Attachment: ${attachmentName}` : 'Attachment');
 
             const time = document.createElement('div');
             time.className = 'incoming-chat-time';
@@ -2014,7 +2041,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             if (input) input.value = '';
             if (sendButton) { sendButton.disabled = true; sendButton.setAttribute('aria-busy', 'true'); sendButton.setAttribute('aria-label', 'Sending message'); }
             if (attachButton) attachButton.disabled = true;
-            appendChatbotMessage('user', selectedFile ? `${question}\n📎 ${selectedFile.name}` : question);
+            appendChatbotMessage('user', selectedFile ? `${question}\nAttachment: ${selectedFile.name}` : question);
             const typing = appendChatbotMessage('bot', 'Thinking…', 'chatbot-typing');
 
             try {
@@ -2785,7 +2812,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         }
 
         async function refreshVisibleTabData() {
-            if (!localStorage.getItem('loggedInUser') || document.hidden || visibleRefreshInProgress || isSpadesUserActivelyEditing()) return;
+            if (!localStorage.getItem('loggedInUser') || document.hidden || visibleRefreshInProgress || isSpadesUserActivelyEditing()) return false;
             visibleRefreshInProgress = true;
             const tabName = sessionStorage.getItem('activeTab') || 'dashboard';
             try {
@@ -2793,14 +2820,58 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 else if (tabName === 'home') await loadData();
                 else if (tabName === 'personnel') await refreshActivePersonnelSubPage();
                 else if (tabName === 'activityManagement') await loadActivities();
+                else if (tabName === 'matrixCompliances') await loadMatrixCompliances();
+                else if (tabName === 'adminProofReader' && typeof window.loadProofReaderDashboard === 'function') await window.loadProofReaderDashboard(true);
                 else if (tabName === 'profile') await populateProfileData();
+                else if (tabName === 'settings') loadSettings();
                 else if (tabName === 'adminMgmt' && isAlphaAdmin() && hasFreshAlphaStepUp()) await loadAdminUsers();
+                else return false;
                 // Activity logs are part of the Dashboard summary. Do not fetch
                 // the full log sheet on every unrelated tab's refresh interval.
+                return true;
             } catch (error) {
                 console.warn('Automatic data refresh failed; the current view remains available.', error);
+                return false;
             } finally {
                 visibleRefreshInProgress = false;
+            }
+        }
+
+        async function refreshCurrentViewData() {
+            const button = document.getElementById('pageRefreshBtn');
+            if (button && button.disabled) return;
+            if (button) {
+                button.disabled = true;
+                button.setAttribute('aria-busy', 'true');
+            }
+            try {
+                const activeTab = sessionStorage.getItem('activeTab') || 'dashboard';
+                let refreshed = false;
+                if (!localStorage.getItem('loggedInUser') || document.hidden || visibleRefreshInProgress || isSpadesUserActivelyEditing()) {
+                    showNotification('Refresh Unavailable', 'Finish the current edit or wait for the existing refresh to complete before refreshing.');
+                    return;
+                }
+                if (activeTab === 'usersChat') {
+                    // Chat already has its own message polling. Keep manual refresh
+                    // serialized with other view refreshes rather than duplicating it.
+                    visibleRefreshInProgress = true;
+                    try {
+                        const usersLoaded = await loadChatUsers();
+                        const messagesLoaded = await loadChatMessages();
+                        refreshed = usersLoaded && messagesLoaded;
+                    } finally {
+                        visibleRefreshInProgress = false;
+                    }
+                } else {
+                    refreshed = await refreshVisibleTabData();
+                }
+                if (refreshed) showNotification('Data Refreshed', 'The current page data has been updated. Your viewing position is preserved.');
+                else showNotification('Refresh Unavailable', 'The current page could not be refreshed while editing, loading, or without an active session.');
+            } finally {
+                if (button) {
+                    button.disabled = false;
+                    button.removeAttribute('aria-busy');
+                }
             }
         }
 
@@ -3161,13 +3232,24 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 profileModalPreviousFocus = null;
             }
         }
+        function updateCredentialVisibilityIcon(button, isVisible) {
+            if (!button) return;
+            let icon = button.querySelector('.spades-password-visibility-glyph');
+            if (!icon) {
+                icon = document.createElement('i');
+                button.prepend(icon);
+            }
+            icon.className = 'fi ' + (isVisible ? 'fi-rr-eye-crossed' : 'fi-rr-eye') + ' spades-password-visibility-glyph';
+            icon.setAttribute('aria-hidden', 'true');
+        }
+
         function toggleProfileCredentialVisibility() {
             const input = document.getElementById('newCredential');
             const button = document.getElementById('toggleCredentialVisibility');
             if (!input || !button) return;
             const show = input.type === 'password';
             input.type = show ? 'text' : 'password';
-            button.innerHTML = show ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3l18 18"/><path d="M10.6 5.7A10.8 10.8 0 0 1 12 5.5c6.1 0 9.5 6.5 9.5 6.5a16 16 0 0 1-3.1 3.8M6.2 6.3C3.8 8 2.5 12 2.5 12s3.4 6.5 9.5 6.5a9.9 9.9 0 0 0 3-.5"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>' : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.4-6.5 9.5-6.5 9.5 6.5 9.5 6.5-3.4 6.5-9.5 6.5S2.5 12 2.5 12Z"/><circle cx="12" cy="12" r="3"/></svg>';
+            updateCredentialVisibilityIcon(button, show);
             button.setAttribute('aria-label', show ? 'Hide PIN or password' : 'Show PIN or password');
             button.setAttribute('aria-pressed', show ? 'true' : 'false');
             input.focus({ preventScroll: true });
@@ -3266,7 +3348,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             if (credential) { credential.value = ''; credential.type = 'password'; }
             if (username) username.value = '';
             const toggle = document.getElementById('toggleCredentialVisibility');
-            if (toggle) { toggle.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.4-6.5 9.5-6.5 9.5 6.5 9.5 6.5-3.4 6.5-9.5 6.5S2.5 12 2.5 12Z"></path><circle cx="12" cy="12" r="3"></circle></svg>'; toggle.setAttribute('aria-label', 'Show PIN or password'); toggle.setAttribute('aria-pressed', 'false'); }
+            if (toggle) { updateCredentialVisibilityIcon(toggle, false); toggle.setAttribute('aria-label', 'Show PIN or password'); toggle.setAttribute('aria-pressed', 'false'); }
             updateCredentialStrength();
             if (!document.getElementById('securitySettingsModal')?.classList.contains('hidden')) { const currentUser = localStorage.getItem('loggedInUser'); (currentUser === ALPHA_ADMIN_NAME ? credential : username)?.focus({ preventScroll: true }); }
         }
@@ -3348,7 +3430,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             if (!input || !button) return;
             const show = input.type === 'password';
             input.type = show ? 'text' : 'password';
-            button.innerHTML = show ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3l18 18"/><path d="M10.6 5.7A10.8 10.8 0 0 1 12 5.5c6.1 0 9.5 6.5 9.5 6.5a16 16 0 0 1-3.1 3.8M6.2 6.3C3.8 8 2.5 12 2.5 12s3.4 6.5 9.5 6.5a9.9 9.9 0 0 0 3-.5"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>' : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.4-6.5 9.5-6.5 9.5 6.5 9.5 6.5-3.4 6.5-9.5 6.5S2.5 12 2.5 12Z"/><circle cx="12" cy="12" r="3"/></svg>';
+            updateCredentialVisibilityIcon(button, show);
             button.setAttribute('aria-label', show ? 'Hide credential' : 'Show credential');
             button.setAttribute('aria-pressed', show ? 'true' : 'false');
             input.focus({ preventScroll: true });
@@ -3359,9 +3441,9 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             const toggle = document.getElementById('toggleAdminCredentialVisibility');
             modal?.classList.add('hidden');
             if (input) { input.value = ''; input.type = 'password'; input.disabled = false; }
-            if (toggle) { toggle.setAttribute('aria-label', 'Show credential'); toggle.setAttribute('aria-pressed', 'false'); toggle.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.4-6.5 9.5-6.5 9.5 6.5 9.5 6.5-3.4 6.5-9.5 6.5S2.5 12 2.5 12Z"/><circle cx="12" cy="12" r="3"/></svg>'; }
+            if (toggle) { toggle.setAttribute('aria-label', 'Show credential'); toggle.setAttribute('aria-pressed', 'false'); updateCredentialVisibilityIcon(toggle, false); }
             const verifyButton = document.getElementById('verifyAdminButton');
-            if (verifyButton) { verifyButton.disabled = false; verifyButton.innerHTML = '<span aria-hidden="true">&#128273;</span> Verify and Continue'; }
+            if (verifyButton) { verifyButton.disabled = false; verifyButton.textContent = 'Verify and Continue'; }
             pendingAdminAction = null;
         }
 
@@ -3383,13 +3465,13 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                     document.getElementById('adminModal').classList.add('hidden');
                     input.value = ''; input.type = 'password';
                     const toggle = document.getElementById('toggleAdminCredentialVisibility');
-                    if (toggle) { toggle.setAttribute('aria-label', 'Show credential'); toggle.setAttribute('aria-pressed', 'false'); }
+                    if (toggle) { toggle.setAttribute('aria-label', 'Show credential'); toggle.setAttribute('aria-pressed', 'false'); updateCredentialVisibilityIcon(toggle, false); }
                     const action = pendingAdminAction; pendingAdminAction = null;
                     if (action === 'open_mgmt') showAdminMgmtTab();
                     else if (action === 'backup_manager') openSpadesBackupManager();
                 } else { customAlert(data.error || 'Incorrect Alpha Admin credential.', 'Error'); input.value = ''; }
             } catch (error) { customAlert('Could not verify Alpha Admin credentials. Check the connection.', 'Error'); input.value = ''; }
-            finally { input.disabled = false; const verifyButton = document.getElementById('verifyAdminButton'); if (verifyButton) { verifyButton.disabled = false; verifyButton.innerHTML = '<span aria-hidden="true">🔑</span> Verify and Continue'; } }
+            finally { input.disabled = false; const verifyButton = document.getElementById('verifyAdminButton'); if (verifyButton) { verifyButton.disabled = false; verifyButton.textContent = 'Verify and Continue'; } }
         }
 
 
@@ -8915,7 +8997,8 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 ['Address', p.address || 'Not Provided'],
                 ['Remarks', p.remarks || '—']
             ];
-            body.innerHTML = rows.map(([label, value], i) => `<div class="profile-card-row"><span class="profile-card-row-icon" aria-hidden="true">${['▣','♙','▤','▧','⌂','☎','⌖','≡'][i]}</span><span class="profile-card-row-label">${label}</span><strong>${escapeHtml(String(value))}</strong></div>`).join('');
+            const profileRowIcons = ['fi-rr-id-badge', 'fi-rr-user', 'fi-rr-address-book', 'fi-rr-building-user', 'fi-rr-users-alt', 'fi-rr-comment-alt', 'fi-rr-home', 'fi-rr-list'];
+            body.innerHTML = rows.map(([label, value], i) => `<div class="profile-card-row"><span class="profile-card-row-icon" aria-hidden="true"><i class="fi ${profileRowIcons[i] || 'fi-rr-info'}"></i></span><span class="profile-card-row-label">${escapeHtml(label)}</span><strong>${escapeHtml(String(value))}</strong></div>`).join('');
             const editButton = document.getElementById('profileCardEditBtn');
             const archiveButton = document.getElementById('profileCardArchiveBtn');
             const browseButton = document.getElementById('profileCardBrowseBtn');
@@ -9000,7 +9083,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 const hoverHandlers = isFolder ? ''
                     : ' onmouseover="this.style.background=\'rgba(37,99,235,0.07)\'" onmouseout="this.style.background=\'\'"';
                 const deleteButton = isFolder ? ''
-                    : '<button type="button" class="folder-entry-delete" data-folder-delete="' + i + '" '
+                    : '<button type="button" class="folder-entry-delete spades-force-icon-only" data-folder-delete="' + i + '" '
                         + 'onclick="event.stopPropagation();deletePersonnelFolderFile(' + i + ')" '
                         + 'title="Delete file" aria-label="Delete ' + escapeAttr(name) + '">' 
                         + '<i class="fi fi-rr-trash" aria-hidden="true"></i></button>';
