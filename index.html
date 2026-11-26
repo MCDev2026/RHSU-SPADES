@@ -1242,7 +1242,8 @@
           <div><strong id="proofReaderEditorHeading">Document Preview</strong><small id="proofReaderEditorMode">Select text to attach a proofreading note.</small></div>
           <div class="proofreader-editor-tools">
             <span id="proofReaderVersionPill" class="proofreader-version-pill">Original</span>
-            <div class="proofreader-zoom-controls hidden" id="proofReaderZoomControls" role="group" aria-label="Document preview zoom">
+            <div class="proofreader-zoom-controls hidden" id="proofReaderZoomControls" role="group" aria-label="Document preview zoom" title="Scroll up to zoom in; scroll down to zoom out">
+              <span class="proofreader-wheel-zoom-hint">Scroll to zoom</span>
               <button aria-label="Zoom out" class="proofreader-zoom-button spades-force-icon-only" data-spades-icon-name="fi-rr-minus" id="proofReaderZoomOut" onclick="adjustProofReaderZoom(-1)" title="Zoom out" type="button"><i class="fi fi-rr-minus" aria-hidden="true"></i></button>
               <output aria-live="polite" class="proofreader-zoom-value" id="proofReaderZoomValue">100%</output>
               <button aria-label="Zoom in" class="proofreader-zoom-button spades-force-icon-only" data-spades-icon-name="fi-rr-plus" id="proofReaderZoomIn" onclick="adjustProofReaderZoom(1)" title="Zoom in" type="button"><i class="fi fi-rr-plus" aria-hidden="true"></i></button>
@@ -2207,7 +2208,7 @@
 </div>
 </div>
 <div class="file-preview-zoom-toolbar" id="filePreviewZoomToolbar" hidden aria-label="File preview zoom controls">
-  <span class="file-preview-zoom-caption">ZOOM</span>
+  <span class="file-preview-zoom-caption">ZOOM · SCROLL TO ZOOM</span>
   <div class="file-preview-zoom-controls" role="group" aria-label="Adjust preview zoom">
     <button aria-label="Zoom out" class="file-preview-zoom-btn spades-force-icon-only" data-spades-icon-name="fi-rr-minus" id="filePreviewZoomOut" onclick="adjustFilePreviewZoom(-1)" title="Zoom out" type="button"><i aria-hidden="true" class="fi fi-rr-minus"></i></button>
     <output aria-live="polite" class="file-preview-zoom-value" id="filePreviewZoomValue">100%</output>

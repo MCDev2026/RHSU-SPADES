@@ -3022,6 +3022,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             // Do not enforce new-credential creation rules during login. Existing accounts
             // may still have legacy PINs/passwords of different lengths; the backend hash/legacy
             // verifier is authoritative. New PIN/password rules remain enforced at creation/change.
+            const loginStartedAt = (window.performance && typeof window.performance.now === 'function') ? window.performance.now() : Date.now();
             const credentialInput = document.getElementById('loginCredential');
             const loginButton = document.querySelector('#loginPage .rhsu-login-submit');
             const loginLabel = loginButton?.querySelector('.rhsu-login-submit-label');
@@ -3043,16 +3044,16 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                     body:JSON.stringify({action:'login',username:user,pin:cred,credentialType:credentialMode}),
                     signal:controller.signal
                 });
-                const responseText = await response.text();
                 let result;
                 try {
-                    result = JSON.parse(responseText);
+                    // Parse the small authentication response once instead of
+                    // allocating a text copy and then parsing it separately.
+                    result = await response.json();
                 } catch (parseError) {
                     console.error('SPADES login endpoint returned a non-JSON response.', {
                         status:response.status,
                         redirected:response.redirected,
-                        contentType:response.headers.get('content-type') || 'unknown',
-                        responsePreview:String(responseText || '').slice(0, 240)
+                        contentType:response.headers.get('content-type') || 'unknown'
                     });
                     throw new Error('The Apps Script endpoint did not return a valid SPADES JSON response. Confirm that the latest Code.gs was saved and deployed to the same Web App URL used by this website.');
                 }
@@ -3065,6 +3066,8 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                     return;
                 }
                 const storedUser = String(result.username || user);
+                const loginCompletedAt = (window.performance && typeof window.performance.now === 'function') ? window.performance.now() : Date.now();
+                console.info('SPADES login verification response received in ' + Math.max(0, Math.round(loginCompletedAt - loginStartedAt)) + ' ms (network + backend + response parsing).');
                 localStorage.setItem('loggedInUser', storedUser);
                 // Store only the server-issued expiring session token, never the PIN/password.
                 localStorage.setItem('loggedCred', result.sessionToken);
@@ -5946,7 +5949,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 return;
             }
             const memoType = String(memo[7] || 'Regular Memo').trim() || 'Regular Memo';
-            const isCsw = memoType === 'CSW (Complete Staff Work)';
+            const isCsw = isCswMemoType(memoType);
             const barcode = String(memo[8] || '').trim();
             const classificationNames = {A:'Admin', S:'Supply', GSS:'General Services Section', BP:'Base Police', SSB:'Special Services Band', RCIA:'Regional Committee on Inspection & Acceptance'};
             activeMemoBarcode = barcode;
@@ -6173,6 +6176,11 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             document.getElementById('dashUsers').innerHTML = userHtml || '<div style="font-size:13px; color:var(--text-muted)">No data</div>';
         }
 
+        function isCswMemoType(value) {
+            const normalized = String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
+            return normalized === 'csw' || normalized === 'csw (complete staff work)';
+        }
+
         function renderMemoTable() {
             const tableBody = document.getElementById('dataTable');
             if (!tableBody) return;
@@ -6191,6 +6199,8 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 const control = String(row[2] || '');
                 const controlAttr = escapeAttr(control);
                 const subject = String(row[1] || '');
+                const memoType = String(row[7] || 'Regular Memo').trim();
+                const isCsw = isCswMemoType(memoType);
                 const destination = String(row[5] || 'N/A');
                 const status = String(row[4] || 'For Dispatched');
                 const encoder = String(row[3] || '');
@@ -6200,10 +6210,10 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                     currentIsEncoder ? `<button class="action-btn icon-action-btn" title="Edit Memo" aria-label="Edit Memo" data-memo-action="edit" data-control-number="${controlAttr}"><i class="fi fi-rr-edit" aria-hidden="true"></i></button>` : '',
                     alphaAdmin ? `<button class="action-btn delete-btn icon-action-btn" title="Delete Memo" aria-label="Delete Memo" data-memo-action="delete" data-control-number="${controlAttr}"><i class="fi fi-rr-trash" aria-hidden="true"></i></button>` : ''
                 ].filter(Boolean).join(' ');
-                return `<tr data-memo-control="${controlAttr}" tabindex="0" aria-label="Open memo information for ${escapeAttr(subject || control)}">
+                return `<tr data-memo-control="${controlAttr}" data-memo-type="${escapeAttr(memoType || 'Regular Memo')}" tabindex="0" aria-label="Open ${isCsw ? 'CSW memorandum' : 'memo'} information for ${escapeAttr(subject || control)}">
                     <td><input type="checkbox" class="row-checkbox" value="${controlAttr}" aria-label="Select memo ${controlAttr}"></td>
                     <td>${escapeHtml(row[0] || '')}</td>
-                    <td class="memo-clickable-subject">${escapeHtml(subject)}</td>
+                    <td class="memo-clickable-subject"><span class="memo-subject-cell-content"><span class="memo-subject-text">${escapeHtml(subject)}</span>${isCsw ? '<span class="memo-csw-indicator" title="Complete Staff Work memorandum" aria-label="CSW — Complete Staff Work">CSW</span>' : ''}</span></td>
                     <td>${escapeHtml(destination)}</td>
                     <td>${escapeHtml(control)}</td>
                     <td>${escapeHtml(encoder || 'N/A')}</td>
@@ -6265,7 +6275,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             activeMemoControlNumber = stableControl;
             activeMemoBarcode = String(memo[8] || '').trim();
             const memoType = String(memo[7] || 'Regular Memo').trim() || 'Regular Memo';
-            const isCsw = memoType === 'CSW (Complete Staff Work)';
+            const isCsw = isCswMemoType(memoType);
             setMemoInformationValue('memoInformationTitle', 'Memo Information');
             setMemoInformationValue('memoInformationSubtitle', memo[1] || stableControl);
             setMemoInformationValue('memoInformationType', memoType);
@@ -9853,6 +9863,10 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         let currentPptxSlideIndex = 0;
         let currentXlsxWorkbook = null;
         let currentXlsxSheetIndex = 0;
+        let sharedPreviewPdfJsPromise = null;
+        let currentPreviewPdfLoadingTask = null;
+        let currentPreviewPdfDocument = null;
+        let currentPreviewPdfObserver = null;
 
         function entryExtension(entry) { return getFileExtension(entry && entry.name); }
 
@@ -9874,6 +9888,19 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             if (currentPptxRenderer) {
                 try { currentPptxRenderer.destroy(); } catch (_) {}
                 currentPptxRenderer = null;
+            }
+            if (currentPreviewPdfObserver) {
+                try { currentPreviewPdfObserver.disconnect(); } catch (_) {}
+                currentPreviewPdfObserver = null;
+            }
+            if (currentPreviewPdfLoadingTask) {
+                try { Promise.resolve(currentPreviewPdfLoadingTask.destroy()).catch(() => {}); } catch (_) {}
+                currentPreviewPdfLoadingTask = null;
+            }
+            if (currentPreviewPdfDocument) {
+                const pdfDocument = currentPreviewPdfDocument;
+                currentPreviewPdfDocument = null;
+                try { Promise.resolve(pdfDocument.destroy()).catch(() => {}); } catch (_) {}
             }
             currentXlsxWorkbook = null;
             currentXlsxSheetIndex = 0;
@@ -10117,6 +10144,45 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             setFilePreviewZoom(1);
         }
 
+        function normalizedPreviewWheelDelta(event, element) {
+            let delta = Number(event && event.deltaY) || 0;
+            if (event && event.deltaMode === 1) delta *= 16;
+            else if (event && event.deltaMode === 2) delta *= Math.max(240, element?.clientHeight || 700);
+            return Math.max(-240, Math.min(240, delta));
+        }
+
+        function handleFilePreviewWheelZoom(event) {
+            const modal = document.getElementById('filePreviewModal');
+            const content = document.getElementById('previewContent');
+            if (!modal || modal.classList.contains('hidden') || !content || !content.querySelector('.file-preview-zoom-surface')) return;
+            if (event.target && event.target.closest && event.target.closest('button, a, input, select, textarea, [data-no-preview-wheel-zoom]')) return;
+            const delta = normalizedPreviewWheelDelta(event, content);
+            if (!delta) return;
+            const oldZoom = currentFilePreviewZoom;
+            const nextZoom = Math.round(Math.max(FILE_PREVIEW_ZOOM_MIN, Math.min(FILE_PREVIEW_ZOOM_MAX, oldZoom * Math.exp(-delta * 0.00135))) * 100) / 100;
+            if (Math.abs(nextZoom - oldZoom) < 0.005) return;
+            event.preventDefault();
+            const rect = content.getBoundingClientRect();
+            const anchorX = Math.max(0, event.clientX - rect.left - content.clientLeft);
+            const anchorY = Math.max(0, event.clientY - rect.top - content.clientTop);
+            const previousLeft = content.scrollLeft;
+            const previousTop = content.scrollTop;
+            setFilePreviewZoom(nextZoom);
+            // Force the zoomed layout to recalculate before restoring the cursor anchor.
+            void content.scrollWidth;
+            void content.scrollHeight;
+            const ratio = nextZoom / oldZoom;
+            content.scrollLeft = Math.max(0, (previousLeft + anchorX) * ratio - anchorX);
+            content.scrollTop = Math.max(0, (previousTop + anchorY) * ratio - anchorY);
+        }
+
+        function installFilePreviewWheelZoom() {
+            const content = document.getElementById('previewContent');
+            if (!content || content.dataset.wheelZoomBound === 'true') return;
+            content.dataset.wheelZoomBound = 'true';
+            content.addEventListener('wheel', handleFilePreviewWheelZoom, {passive:false});
+        }
+
         function setFilePreviewZoomEnabled(enabled) {
             const toolbar = document.getElementById('filePreviewZoomToolbar');
             if (toolbar) toolbar.hidden = !enabled;
@@ -10144,11 +10210,178 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             content.insertBefore(notice, content.firstChild);
         }
 
-        function renderOfficePdfPreview(blob, content, fileName) {
+        async function loadSharedPreviewPdfJs() {
+            if (window.pdfjsLib && typeof window.pdfjsLib.getDocument === 'function') {
+                if (window.pdfjsLib.GlobalWorkerOptions) {
+                    window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/6.5.438/pdf.worker.min.mjs';
+                }
+                return window.pdfjsLib;
+            }
+            if (!sharedPreviewPdfJsPromise) {
+                sharedPreviewPdfJsPromise = import('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/6.5.438/pdf.min.mjs')
+                    .then(library => {
+                        if (!library || typeof library.getDocument !== 'function') {
+                            throw new Error('The PDF preview library did not initialize correctly.');
+                        }
+                        library.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/6.5.438/pdf.worker.min.mjs';
+                        window.pdfjsLib = library;
+                        return library;
+                    })
+                    .catch(error => { sharedPreviewPdfJsPromise = null; throw error; });
+            }
+            return sharedPreviewPdfJsPromise;
+        }
+
+        function renderNativePdfPreviewFallback(blob, content, fileName) {
+            // Last-resort fallback when PDF.js cannot be reached. The toolbar zoom
+            // remains available; normal wheel zoom is handled whenever PDF.js renders.
             currentPreviewObjectUrl = URL.createObjectURL(blob);
             content.classList.remove('is-centered');
-            content.innerHTML = '<div class="office-pdf-preview-shell"><iframe class="file-preview-pdf" src="' + escapeAttr(currentPreviewObjectUrl) + '#toolbar=1&navpanes=1&scrollbar=1" title="' + escapeAttr(fileName || 'Office document') + ' PDF preview" loading="eager"></iframe></div>';
+            content.innerHTML = '<div class="office-pdf-preview-shell"><iframe class="file-preview-pdf file-preview-pdf-native-fallback" src="' + escapeAttr(currentPreviewObjectUrl) + '#toolbar=1&navpanes=1&scrollbar=1" title="' + escapeAttr(fileName || 'PDF document') + ' preview" loading="eager"></iframe></div>';
             wrapFilePreviewZoomSurface(content);
+            const frame = content.querySelector('.file-preview-pdf-native-fallback');
+            if (frame) {
+                frame.addEventListener('load', () => {
+                    try {
+                        const frameDocument = frame.contentDocument;
+                        frameDocument?.addEventListener('wheel', handleFilePreviewWheelZoom, {passive:false});
+                    } catch (_) { /* Chromium's built-in PDF viewer may be cross-origin. */ }
+                }, {once:true});
+            }
+        }
+
+        async function renderSharedPdfPreview(blob, content, fileName, requestSequence) {
+            content.classList.remove('is-centered');
+            content.innerHTML = '<div class="file-preview-pdf-pages" id="filePreviewPdfPages" aria-label="PDF pages"></div>';
+            const host = content.querySelector('#filePreviewPdfPages');
+            wrapFilePreviewZoomSurface(content);
+            if (!host) throw new Error('The PDF preview container could not be created.');
+
+            try {
+                const pdfjs = await loadSharedPreviewPdfJs();
+                if (requestSequence !== previewRequestSequence) return;
+                const bytes = new Uint8Array(await blob.arrayBuffer());
+                if (requestSequence !== previewRequestSequence) return;
+                currentPreviewPdfLoadingTask = pdfjs.getDocument({data:bytes, isEvalSupported:false});
+                const pdf = await currentPreviewPdfLoadingTask.promise;
+                currentPreviewPdfLoadingTask = null;
+                if (requestSequence !== previewRequestSequence) {
+                    try { await pdf.destroy(); } catch (_) {}
+                    return;
+                }
+                currentPreviewPdfDocument = pdf;
+                const availableWidth = Math.max(320, (content.clientWidth || 900) - 48);
+                const pageRenderJobs = [];
+
+                for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
+                    if (requestSequence !== previewRequestSequence) return;
+                    const page = await pdf.getPage(pageNumber);
+                    if (requestSequence !== previewRequestSequence) return;
+                    const naturalViewport = page.getViewport({scale:1});
+                    const baseScale = Math.min(1.4, Math.max(0.5, availableWidth / naturalViewport.width));
+                    const viewport = page.getViewport({scale:baseScale});
+                    const pageWrap = document.createElement('section');
+                    pageWrap.className = 'file-preview-pdf-page';
+                    pageWrap.dataset.pageNumber = String(pageNumber);
+                    pageWrap.dataset.renderState = 'pending';
+                    pageWrap.style.width = viewport.width + 'px';
+                    pageWrap.style.height = viewport.height + 'px';
+                    pageWrap.setAttribute('aria-label', 'PDF page ' + pageNumber);
+
+                    const canvas = document.createElement('canvas');
+                    canvas.className = 'file-preview-pdf-canvas';
+                    canvas.style.width = viewport.width + 'px';
+                    canvas.style.height = viewport.height + 'px';
+                    canvas.setAttribute('aria-hidden', 'true');
+                    pageWrap.appendChild(canvas);
+
+                    if (typeof pdfjs.TextLayer === 'function') {
+                        const textLayer = document.createElement('div');
+                        textLayer.className = 'proofreader-pdf-text-layer textLayer file-preview-pdf-text-layer';
+                        textLayer.style.width = viewport.width + 'px';
+                        textLayer.style.height = viewport.height + 'px';
+                        textLayer.style.setProperty('--scale-factor', String(viewport.scale));
+                        pageWrap.appendChild(textLayer);
+                        pageWrap._spadesTextLayer = textLayer;
+                    }
+                    pageWrap._spadesPdfPage = page;
+                    pageWrap._spadesPdfViewport = viewport;
+                    host.appendChild(pageWrap);
+                    pageRenderJobs.push(pageWrap);
+                }
+
+                const renderPage = async pageWrap => {
+                    if (!pageWrap || pageWrap.dataset.renderState !== 'pending' || requestSequence !== previewRequestSequence) return;
+                    pageWrap.dataset.renderState = 'rendering';
+                    try {
+                        const page = pageWrap._spadesPdfPage;
+                        const viewport = pageWrap._spadesPdfViewport;
+                        const canvas = pageWrap.querySelector('canvas');
+                        if (!page || !canvas) throw new Error('A PDF page could not be prepared.');
+                        const outputScale = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+                        canvas.width = Math.floor(viewport.width * outputScale);
+                        canvas.height = Math.floor(viewport.height * outputScale);
+                        const context = canvas.getContext('2d', {alpha:false});
+                        context.setTransform(outputScale, 0, 0, outputScale, 0, 0);
+                        await page.render({canvasContext:context, viewport}).promise;
+                        if (requestSequence !== previewRequestSequence) return;
+                        const textLayer = pageWrap._spadesTextLayer;
+                        if (textLayer && typeof pdfjs.TextLayer === 'function') {
+                            const textTask = new pdfjs.TextLayer({
+                                textContentSource:page.streamTextContent(),
+                                container:textLayer,
+                                viewport:viewport
+                            });
+                            await textTask.render();
+                        }
+                        if (requestSequence === previewRequestSequence) pageWrap.dataset.renderState = 'rendered';
+                    } catch (error) {
+                        if (requestSequence === previewRequestSequence) {
+                            pageWrap.dataset.renderState = 'error';
+                            pageWrap.innerHTML = '<div class="file-preview-pdf-page-error">Page ' + pageWrap.dataset.pageNumber + ' could not be rendered.</div>';
+                        }
+                        console.warn('SPADES PDF page rendering:', error);
+                    }
+                };
+
+                if ('IntersectionObserver' in window) {
+                    currentPreviewPdfObserver = new IntersectionObserver(entries => {
+                        entries.forEach(entry => {
+                            if (!entry.isIntersecting) return;
+                            currentPreviewPdfObserver?.unobserve(entry.target);
+                            renderPage(entry.target);
+                        });
+                    }, {root:content, rootMargin:'650px 0px', threshold:0.01});
+                    pageRenderJobs.forEach(page => currentPreviewPdfObserver.observe(page));
+                    // Render the first page immediately so the user sees content without scrolling.
+                    if (pageRenderJobs[0]) renderPage(pageRenderJobs[0]);
+                } else {
+                    for (const page of pageRenderJobs) await renderPage(page);
+                }
+                const meta = document.getElementById('previewMeta');
+                if (meta && requestSequence === previewRequestSequence) meta.textContent += ' · ' + pdf.numPages + ' page' + (pdf.numPages === 1 ? '' : 's');
+            } catch (error) {
+                if (requestSequence !== previewRequestSequence) return;
+                console.warn('SPADES PDF.js preview unavailable; using the native PDF fallback:', error);
+                if (currentPreviewPdfLoadingTask) {
+                    try { currentPreviewPdfLoadingTask.destroy(); } catch (_) {}
+                    currentPreviewPdfLoadingTask = null;
+                }
+                if (currentPreviewPdfDocument) {
+                    const documentToDestroy = currentPreviewPdfDocument;
+                    currentPreviewPdfDocument = null;
+                    try { Promise.resolve(documentToDestroy.destroy()).catch(() => {}); } catch (_) {}
+                }
+                if (currentPreviewPdfObserver) {
+                    currentPreviewPdfObserver.disconnect();
+                    currentPreviewPdfObserver = null;
+                }
+                renderNativePdfPreviewFallback(blob, content, fileName);
+            }
+        }
+
+        async function renderOfficePdfPreview(blob, content, fileName, requestSequence) {
+            await renderSharedPdfPreview(blob, content, fileName, requestSequence);
         }
 
         async function renderDocxPreview(blob, content, requestSequence) {
@@ -10281,7 +10514,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             const name = String(entry.name || 'File');
             if (nameEl) nameEl.textContent = name;
             if (metaEl) metaEl.textContent = (entry.isFolder ? 'Folder' : formatFolderBytes(entry.size)) + ' · ' + getFileTypeLabel(entry) + ' · ' + entryModifiedLabel(entry);
-            setFilePreviewFooterNote('Original file download is always preserved.');
+            setFilePreviewFooterNote('Scroll up or down over the preview to zoom. Original file download is always preserved.');
             if (content) {
                 content.classList.add('is-centered');
                 content.innerHTML = '<div class="file-preview-loading"><span class="my-files-spinner"></span><span>Preparing secure preview…</span></div>';
@@ -10313,8 +10546,9 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                     try {
                         const previewPdf = await loadOfficePreviewPdfBlob(entry, currentPreviewSource);
                         if (requestSequence !== previewRequestSequence || currentPreviewEntry !== entry) return;
-                        renderOfficePdfPreview(previewPdf, content, name);
-                        setFilePreviewFooterNote('Page-layout preview. Download returns the untouched original Office file.');
+                        await renderOfficePdfPreview(previewPdf, content, name, requestSequence);
+                        if (requestSequence !== previewRequestSequence || currentPreviewEntry !== entry) return;
+                        setFilePreviewFooterNote('Page-layout preview. Scroll up or down over the pages to zoom. Download returns the untouched original Office file.');
                         return;
                     } catch (conversionError) {
                         if (requestSequence !== previewRequestSequence || currentPreviewEntry !== entry) return;
@@ -10350,10 +10584,9 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                     content.innerHTML = '<img class="file-preview-image" src="' + escapeAttr(currentPreviewObjectUrl) + '" alt="' + escapeAttr(name) + '">';
                     wrapFilePreviewZoomSurface(content);
                 } else if (isPdf) {
-                    currentPreviewObjectUrl = URL.createObjectURL(blob);
-                    content.classList.add('is-centered');
-                    content.innerHTML = '<iframe class="file-preview-pdf" src="' + escapeAttr(currentPreviewObjectUrl) + '#toolbar=1&navpanes=1&scrollbar=1' + '" title="' + escapeAttr(name) + '" loading="eager"></iframe>';
-                    wrapFilePreviewZoomSurface(content);
+                    await renderSharedPdfPreview(blob, content, name, requestSequence);
+                    if (requestSequence !== previewRequestSequence || currentPreviewEntry !== entry) return;
+                    setFilePreviewFooterNote('Scroll up or down over the pages to zoom. Use the Download icon to save the original PDF.');
                 }
             } catch (error) {
                 if (requestSequence !== previewRequestSequence || currentPreviewEntry !== entry) return;
@@ -10402,6 +10635,9 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         }
 
 /* Admin Proof Reader is loaded from script/admin-proof-reader.js. */
+
+// Bind wheel-to-zoom once; normal page scrolling outside the preview is untouched.
+installFilePreviewWheelZoom();
 
 /* Preserve list scroll/visible-record position across all data-loading entry points. */
 (function installSpadesListLoaderWrappers() {

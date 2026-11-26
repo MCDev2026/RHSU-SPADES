@@ -507,6 +507,44 @@
     setProofReaderZoom(state.previewZoom + (Number(direction || 0) * PREVIEW_ZOOM_STEP));
   }
   function resetProofReaderZoom() { setProofReaderZoom(1); }
+
+  function handleProofReaderWheelZoom(event) {
+    const modal = byId('proofReaderWorkspaceModal');
+    if (!modal || modal.classList.contains('hidden')) return;
+    const target = event.target;
+    const textPreview = target && target.closest ? target.closest('#proofReaderDocumentPreview') : null;
+    const pdfPreview = target && target.closest ? target.closest('#proofReaderPdfPreviewWrap') : null;
+    if (!textPreview && !pdfPreview) return;
+    if (target && target.closest && target.closest('button, a, input, select, textarea, [data-no-preview-wheel-zoom]')) return;
+
+    const pdfPages = byId('proofReaderPdfPages');
+    const hasRenderedPdfPages = !!(pdfPages && pdfPages.children.length);
+    const scroller = textPreview || (hasRenderedPdfPages ? pdfPages : byId('proofReaderPdfPreviewWrap'));
+    if (!scroller) return;
+    let delta = Number(event.deltaY) || 0;
+    if (event.deltaMode === 1) delta *= 16;
+    else if (event.deltaMode === 2) delta *= Math.max(240, scroller.clientHeight || 700);
+    delta = Math.max(-240, Math.min(240, delta));
+    if (!delta) return;
+
+    const previousZoom = state.previewZoom;
+    const nextZoom = Math.round(Math.max(PREVIEW_ZOOM_MIN, Math.min(PREVIEW_ZOOM_MAX, previousZoom * Math.exp(-delta * 0.00135))) * 100) / 100;
+    if (Math.abs(nextZoom - previousZoom) < 0.005) return;
+    event.preventDefault();
+
+    const rect = scroller.getBoundingClientRect();
+    const anchorX = Math.max(0, event.clientX - rect.left - scroller.clientLeft);
+    const anchorY = Math.max(0, event.clientY - rect.top - scroller.clientTop);
+    const previousLeft = scroller.scrollLeft;
+    const previousTop = scroller.scrollTop;
+    setProofReaderZoom(nextZoom);
+    // Recalculate the scaled page/text surface before restoring the pointer anchor.
+    void scroller.scrollWidth;
+    void scroller.scrollHeight;
+    const ratio = nextZoom / previousZoom;
+    scroller.scrollLeft = Math.max(0, (previousLeft + anchorX) * ratio - anchorX);
+    scroller.scrollTop = Math.max(0, (previousTop + anchorY) * ratio - anchorY);
+  }
   function setAnnotationButtonLabel(editing) {
     const button = byId('proofReaderAddAnnotationBtn');
     if (button) button.innerHTML = editing ? '<i class="fi fi-rr-disk" aria-hidden="true"></i><span>Save Changes</span>' : '<i class="fi fi-rr-plus" aria-hidden="true"></i><span>Add Note</span>';
@@ -814,7 +852,10 @@
       host.innerHTML = '';
       state.pdfObjectUrl = URL.createObjectURL(blob);
       const frame = byId('proofReaderPdfPreview');
-      if (frame) frame.src = state.pdfObjectUrl;
+      if (frame) {
+        frame.src = state.pdfObjectUrl;
+        frame.style.pointerEvents = 'none';
+      }
       setVisible('proofReaderPdfFallback',true);
       applyProofReaderZoom();
     }
@@ -1109,6 +1150,7 @@
   document.addEventListener('DOMContentLoaded', () => {
     // Script is deferred, so DOM is generally already parsed; this hook also covers unusual loads.
     if (byId('proofReaderTableBody')) renderProofReaderTable();
+    document.addEventListener('wheel', handleProofReaderWheelZoom, {passive:false});
     byId('proofReaderDocumentPreview')?.addEventListener('click',event => {
       const mark = event.target.closest && event.target.closest('mark[data-note-id]');
       if (mark) openProofReaderAnnotation(mark.dataset.noteId);
