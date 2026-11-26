@@ -483,6 +483,10 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         }
         
         let allMemos = [];
+        let memoDataSyncTimer = null;
+        let memoDataSyncInFlight = false;
+        let lastMemoDataSyncVersion = '';
+        const MEMO_DATA_SYNC_POLL_MS = 10000;
         let dashboardSummaryCache = null;
         let dashboardSummaryPromise = null;
         let filteredMemos = [];
@@ -2735,6 +2739,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             }
             if (window.innerWidth <= 992) document.getElementById('navSidebar').classList.remove('open');
             sessionStorage.setItem('activeTab', tabName);
+            if (tabName === 'home' || tabName === 'dashboard') window.setTimeout(checkMemoDataSync, 0);
             if (tabName !== 'adminMgmt') updateSpadesAddressBar(tabName, { replace: !!options.skipAddressUpdate });
         }
 
@@ -2893,7 +2898,10 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 activityLogRefreshTimer = null;
             } else {
                 restartActivityLogRefresh();
-                if (localStorage.getItem('loggedInUser') && userSettings.autoRefresh !== false) refreshVisibleTabData();
+                if (localStorage.getItem('loggedInUser')) {
+                    checkMemoDataSync();
+                    if (userSettings.autoRefresh !== false) refreshVisibleTabData();
+                }
             }
         });
 
@@ -2989,6 +2997,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 const startPostLoginTasks = () => {
                     if (!localStorage.getItem('loggedInUser')) return;
                     restartActivityLogRefresh();
+                    startMemoDataSyncMonitor();
                     fetchSystemAnnouncement();
                     startActivityReminderMonitor();
                     if (typeof startProofReaderNotificationMonitor === 'function') startProofReaderNotificationMonitor();
@@ -3162,6 +3171,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             liveActivityLogs = [];
             lastLogCount = 0;
             if (activityLogRefreshTimer) { clearInterval(activityLogRefreshTimer); activityLogRefreshTimer = null; }
+            stopMemoDataSyncMonitor();
             if (activityRefreshTimer) { clearInterval(activityRefreshTimer); activityRefreshTimer = null; }
             stopActivityReminderMonitor();
             if (autoLogoutTimer) { clearTimeout(autoLogoutTimer); autoLogoutTimer = null; }
@@ -5874,6 +5884,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                     const result = await response.json();
                     if (!result || result.success !== true || !result.summary) throw new Error(result?.error || 'Dashboard summary is unavailable.');
                     dashboardSummaryCache = result.summary;
+                    if (result.summary.memoVersion != null) updateMemoDataSyncVersion(result.summary.memoVersion);
                     liveActivityLogs = sortActivityLogsLatestFirst(Array.isArray(result.summary.activityLogs) ? result.summary.activityLogs : []);
                     lastLogCount = liveActivityLogs.length;
                     renderExecutiveDashboard();
@@ -5884,12 +5895,20 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                     // Backward compatibility for a frontend deployed before its matching backend.
                     try {
                         const tasks = [loadMatrixCompliances(), fetchActivityLogs()];
-                        if (typeof userHasAccess !== 'function' || userHasAccess('home')) tasks.push(loadData());
+                        let memoLoadTask = null;
+                        if (typeof userHasAccess !== 'function' || userHasAccess('home')) {
+                            memoLoadTask = loadData();
+                            tasks.push(memoLoadTask);
+                        }
                         if (typeof userHasAccess !== 'function' || userHasAccess('personnel')) tasks.push(loadAllPersonnelManagementData(true));
                         if (typeof userHasAccess !== 'function' || userHasAccess('activityManagement')) tasks.push(loadActivities());
-                        await Promise.allSettled(tasks);
+                        const results = await Promise.allSettled(tasks);
                         renderExecutiveDashboard();
-                        return false;
+                        if (memoLoadTask) {
+                            const memoResult = results[tasks.indexOf(memoLoadTask)];
+                            return !!memoResult && memoResult.status === 'fulfilled' && memoResult.value !== false;
+                        }
+                        return results.some(result => result.status === 'fulfilled');
                     } catch (fallbackError) {
                         console.error('Dashboard data could not be loaded:', fallbackError);
                         renderExecutiveDashboard();
@@ -5901,6 +5920,108 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             finally { dashboardSummaryPromise = null; }
         }
 
+        function updateMemoDataSyncVersion(version) {
+            const value = String(version == null ? '' : version).trim();
+            if (value) lastMemoDataSyncVersion = value;
+        }
+
+        async function fetchMemoDataSyncVersion() {
+            const response = await spadesAuthenticatedRead('get_memo_sync_version');
+            if (!response.ok) throw new Error('Memo data revision check failed.');
+            const result = await response.json();
+            if (!result || result.success !== true) throw new Error(result?.error || 'Memo data revision is unavailable.');
+            return String(result.version || '0');
+        }
+
+        function isMemoDataBeingEdited() {
+            return !!document.querySelector('#memoSubmissionModal:not(.hidden), #actionModal:not(.hidden), #memoBarcodeSettingsModal:not(.hidden)');
+        }
+
+        function refreshOpenMemoInformationFromCache() {
+            const modal = document.getElementById('memoInformationModal');
+            if (!modal || modal.classList.contains('hidden') || !activeMemoControlNumber) return;
+            const memo = (allMemos || []).find(row => String(row[2] || '').trim() === String(activeMemoControlNumber).trim());
+            if (!memo) {
+                closeMemoInformation();
+                return;
+            }
+            const memoType = String(memo[7] || 'Regular Memo').trim() || 'Regular Memo';
+            const isCsw = memoType === 'CSW (Complete Staff Work)';
+            const barcode = String(memo[8] || '').trim();
+            const classificationNames = {A:'Admin', S:'Supply', GSS:'General Services Section', BP:'Base Police', SSB:'Special Services Band', RCIA:'Regional Committee on Inspection & Acceptance'};
+            activeMemoBarcode = barcode;
+            setMemoInformationValue('memoInformationSubtitle', memo[1] || memo[2]);
+            setMemoInformationValue('memoInformationType', memoType);
+            setMemoInformationValue('memoInformationSubject', memo[1]);
+            setMemoInformationValue('memoInformationDate', memo[0]);
+            setMemoInformationValue('memoInformationControl', memo[2]);
+            setMemoInformationValue('memoInformationDestination', memo[5] || 'N/A');
+            setMemoInformationValue('memoInformationEncoder', memo[3] || 'N/A');
+            setMemoInformationValue('memoInformationStatus', memo[4] || 'For Dispatched');
+            setMemoInformationValue('memoInformationClassification', classificationNames[String(memo[6] || '').trim()] || memo[6] || 'N/A');
+            document.getElementById('memoBarcodePanel')?.classList.toggle('hidden', !isCsw);
+            setMemoInformationValue('memoBarcodeValue', barcode || 'Not generated');
+            setMemoInformationValue('memoBarcodeMeta', barcode ? [memo[9] ? `Generated: ${memo[9]}` : '', memo[10] ? `Generated by: ${memo[10]}` : ''].filter(Boolean).join(' · ') : '');
+            document.getElementById('memoBarcodeCopyBtn')?.classList.toggle('hidden', !barcode);
+            if (barcode || !isCsw) document.getElementById('memoBarcodeGenerateBtn')?.classList.add('hidden');
+        }
+
+        async function checkMemoDataSync() {
+            if (memoDataSyncInFlight || !localStorage.getItem('loggedInUser') || document.hidden) return;
+            const activeTab = sessionStorage.getItem('activeTab') || 'dashboard';
+            if (activeTab !== 'home' && activeTab !== 'dashboard') return;
+            const username = String(localStorage.getItem('loggedInUser') || '').trim();
+            if (userAccessContextLoadedFor !== username) return;
+            if (typeof userHasAccess === 'function' && !userHasAccess('home')) return;
+            memoDataSyncInFlight = true;
+            try {
+                const version = await fetchMemoDataSyncVersion();
+                if (!lastMemoDataSyncVersion) {
+                    lastMemoDataSyncVersion = version;
+                    return;
+                }
+                if (version === lastMemoDataSyncVersion) return;
+                const revisionBeforeRefresh = lastMemoDataSyncVersion;
+                if (activeTab === 'home') {
+                    if (isMemoDataBeingEdited()) return;
+                    const loaded = await loadData();
+                    if (loaded === false) return;
+                    refreshOpenMemoInformationFromCache();
+                } else {
+                    const loaded = await loadExecutiveDashboard();
+                    if (loaded === false) return;
+                }
+                // A Memo Database response may carry a newer paired revision if a
+                // write landed during its read. Never overwrite that newer revision.
+                if (lastMemoDataSyncVersion === revisionBeforeRefresh) lastMemoDataSyncVersion = version;
+            } catch (error) {
+                // A transient network failure is retried on the next lightweight poll.
+                console.warn('Live Memo Database synchronization was deferred:', error);
+            } finally {
+                memoDataSyncInFlight = false;
+            }
+        }
+
+        function startMemoDataSyncMonitor() {
+            if (memoDataSyncTimer) window.clearInterval(memoDataSyncTimer);
+            memoDataSyncTimer = null;
+            if (!localStorage.getItem('loggedInUser')) return;
+            // Establish the initial server revision without blocking the first screen.
+            // A paired memo/dashboard load may finish first; never overwrite its
+            // newer revision with this earlier standalone request's response.
+            fetchMemoDataSyncVersion().then(version => {
+                if (localStorage.getItem('loggedInUser') && !lastMemoDataSyncVersion) lastMemoDataSyncVersion = version;
+            }).catch(() => {});
+            memoDataSyncTimer = window.setInterval(checkMemoDataSync, MEMO_DATA_SYNC_POLL_MS);
+        }
+
+        function stopMemoDataSyncMonitor() {
+            if (memoDataSyncTimer) window.clearInterval(memoDataSyncTimer);
+            memoDataSyncTimer = null;
+            memoDataSyncInFlight = false;
+            lastMemoDataSyncVersion = '';
+        }
+
         async function loadData() {
             const tableBody = document.getElementById('dataTable');
             const scrollElement = document.querySelector('#tabHome .memo-table-wrapper');
@@ -5908,17 +6029,32 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             const scrollLeft = scrollElement ? scrollElement.scrollLeft : 0;
             updateMemoBarcodeSettingsButton();
             try {
-                const response = await spadesAuthenticatedRead('get_memos');
+                let response = await spadesAuthenticatedRead('get_memos_sync');
                 if (!response.ok) throw new Error('Memo records could not be loaded.');
-                const data = await response.json();
-                if (!tableBody) return;
-                if (!Array.isArray(data) || data.length === 0) {
+                let result = await response.json();
+                let data = null;
+                if (result && result.success === true && Array.isArray(result.rows)) {
+                    data = result.rows;
+                    updateMemoDataSyncVersion(result.version);
+                } else if (Array.isArray(result)) {
+                    // Backward compatibility while an older Apps Script deployment is being updated.
+                    data = result;
+                } else {
+                    response = await spadesAuthenticatedRead('get_memos');
+                    if (!response.ok) throw new Error('Memo records could not be loaded.');
+                    result = await response.json();
+                    if (Array.isArray(result)) data = result;
+                }
+                if (!Array.isArray(data)) throw new Error((result && result.error) || 'The server returned invalid memo data.');
+                if (!tableBody) return false;
+                if (data.length === 0) {
                     allMemos = [];
                     filteredMemos = [];
                     tableBody.innerHTML = "<tr><td colspan='8' style='text-align:center;'>No memos found.</td></tr>";
                     document.getElementById('memoPagination')?.classList.add('hidden');
                     updateDashboard();
-                    return;
+                    refreshOpenMemoInformationFromCache();
+                    return true;
                 }
 
                 // The existing control number in column C remains the stable memo key.
@@ -5963,14 +6099,17 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                     if (savedSearch && searchInput && !searchInput.value) searchInput.value = savedSearch;
                 }
                 searchTable(true);
+                refreshOpenMemoInformationFromCache();
                 if (scrollElement) {
                     scrollElement.scrollTop = scrollTop;
                     scrollElement.scrollLeft = scrollLeft;
                 }
                 if (!document.getElementById('tabDashboard')?.classList.contains('hidden')) renderExecutiveDashboard();
+                return true;
             } catch (err) {
                 console.error('Memo records could not be loaded:', err);
                 if (tableBody && !allMemos.length) tableBody.innerHTML = "<tr><td colspan='8' style='text-align:center;'>Unable to load memo records. Please retry.</td></tr>";
+                return false;
             }
         }
 
@@ -6182,6 +6321,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             try {
                 const result = await memoApi('generate_memo_barcode', {controlNumber});
                 const generatedBarcode = String(result.barcode || '').trim();
+                updateMemoDataSyncVersion(result.memoVersion);
                 const memo = (allMemos || []).find(row => String(row[2] || '').trim() === controlNumber);
                 if (memo) {
                     memo[8] = generatedBarcode;
@@ -6378,6 +6518,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 if (!result || result.success !== true || !result.controlNumber) {
                     throw new Error((result && result.error) || 'The server did not return a control number.');
                 }
+                updateMemoDataSyncVersion(result.memoVersion);
                 logActivity(`encoded a new memo: "${subject}" for ${officeDestination}`);
                 document.getElementById('memoSubject').value = "";
                 if (document.getElementById('memoType')) document.getElementById('memoType').value = 'Regular Memo';
@@ -6475,17 +6616,20 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                     const response = await fetch(API_URL, { method: 'POST', mode: 'cors', headers: {'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({ action: 'update', controlNumber: actionTargetControl, newSubject: newSubject, newStatus: newStatus, officeDestination: newOfficeDestination, password: pass, userName: currentUser }) });
                     const result = await response.json();
                     if (!result || result.success !== true) throw new Error((result && result.error) || 'The memo update was rejected.');
+                    updateMemoDataSyncVersion(result.memoVersion);
                     logActivity(`updated memo: ${actionTargetControl}`);
                 } else if (pendingAction === 'delete') {
                     const response = await fetch(API_URL, { method:'POST', mode:'cors', headers:{'Content-Type':'text/plain;charset=utf-8'}, body:JSON.stringify({ action:'delete', controlNumber:actionTargetControl, password:pass, userName:currentUser }) });
                     const result = await response.json();
                     if (!result || result.success !== true) throw new Error(result?.error || 'The memo could not be deleted.');
+                    updateMemoDataSyncVersion(result.memoVersion);
                     logActivity(`deleted memo: ${actionTargetControl}`);
                 } else if (pendingAction === 'batch_delete') {
                     for (const c of actionTargetControl) {
                         const response = await fetch(API_URL, { method:'POST', mode:'cors', headers:{'Content-Type':'text/plain;charset=utf-8'}, body:JSON.stringify({ action:'delete', controlNumber:c, password:pass, userName:currentUser }) });
                         const result = await response.json();
                         if (!result || result.success !== true) throw new Error(result?.error || `Memo ${c} could not be deleted.`);
+                        updateMemoDataSyncVersion(result.memoVersion);
                     }
                     logActivity(`batch deleted ${actionTargetControl.length} memos`);
                 } else if (pendingAction === 'batch_status') {
@@ -6497,6 +6641,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                         const response = await fetch(API_URL, { method: 'POST', mode: 'cors', headers: {'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({ action: 'update', controlNumber: c, newSubject: newSubject, newStatus: newStatus, officeDestination: newOfficeDestination, password: pass, userName: currentUser }) });
                         const result = await response.json();
                         if (!result || result.success !== true) throw new Error((result && result.error) || `Memo ${c} could not be updated.`);
+                        updateMemoDataSyncVersion(result.memoVersion);
                     }
                     logActivity(`bulk updated status to ${newStatus} for ${actionTargetControl.length} memos`);
                 }
@@ -9697,6 +9842,10 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         const PREVIEWABLE_OFFICE_EXTS = ['docx', 'xlsx', 'xlxs', 'pptx'];
         let currentPreviewSource = 'personnel';
         let currentPreviewBlob = null;
+        let currentFilePreviewZoom = 1;
+        const FILE_PREVIEW_ZOOM_MIN = 0.5;
+        const FILE_PREVIEW_ZOOM_MAX = 2.5;
+        const FILE_PREVIEW_ZOOM_STEP = 0.1;
         let docxPreviewLibraryPromise = null;
         let xlsxPreviewLibraryPromise = null;
         let pptxPreviewLibraryPromise = null;
@@ -9941,6 +10090,52 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             if (note) note.textContent = message || '';
         }
 
+        function updateFilePreviewZoomControls() {
+            const content = document.getElementById('previewContent');
+            const value = document.getElementById('filePreviewZoomValue');
+            const zoomOut = document.getElementById('filePreviewZoomOut');
+            const zoomIn = document.getElementById('filePreviewZoomIn');
+            const percentage = Math.round(currentFilePreviewZoom * 100);
+            if (value) value.textContent = percentage + '%';
+            if (zoomOut) zoomOut.disabled = currentFilePreviewZoom <= FILE_PREVIEW_ZOOM_MIN;
+            if (zoomIn) zoomIn.disabled = currentFilePreviewZoom >= FILE_PREVIEW_ZOOM_MAX;
+            const surface = content && content.querySelector('.file-preview-zoom-surface');
+            if (surface) surface.style.zoom = String(currentFilePreviewZoom);
+        }
+
+        function setFilePreviewZoom(value) {
+            const clamped = Math.min(FILE_PREVIEW_ZOOM_MAX, Math.max(FILE_PREVIEW_ZOOM_MIN, Number(value) || 1));
+            currentFilePreviewZoom = Math.round(clamped * 100) / 100;
+            updateFilePreviewZoomControls();
+        }
+
+        function adjustFilePreviewZoom(delta) {
+            setFilePreviewZoom(currentFilePreviewZoom + (Number(delta || 0) * FILE_PREVIEW_ZOOM_STEP));
+        }
+
+        function resetFilePreviewZoom() {
+            setFilePreviewZoom(1);
+        }
+
+        function setFilePreviewZoomEnabled(enabled) {
+            const toolbar = document.getElementById('filePreviewZoomToolbar');
+            if (toolbar) toolbar.hidden = !enabled;
+            if (enabled) resetFilePreviewZoom();
+        }
+
+        function wrapFilePreviewZoomSurface(content) {
+            if (!content) return null;
+            let surface = content.querySelector(':scope > .file-preview-zoom-surface');
+            if (!surface) {
+                surface = document.createElement('div');
+                surface.className = 'file-preview-zoom-surface';
+                while (content.firstChild) surface.appendChild(content.firstChild);
+                content.appendChild(surface);
+            }
+            updateFilePreviewZoomControls();
+            return surface;
+        }
+
         function addOfficeFallbackNotice(content) {
             if (!content) return;
             const notice = document.createElement('div');
@@ -9953,6 +10148,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             currentPreviewObjectUrl = URL.createObjectURL(blob);
             content.classList.remove('is-centered');
             content.innerHTML = '<div class="office-pdf-preview-shell"><iframe class="file-preview-pdf" src="' + escapeAttr(currentPreviewObjectUrl) + '#toolbar=1&navpanes=1&scrollbar=1" title="' + escapeAttr(fileName || 'Office document') + ' PDF preview" loading="eager"></iframe></div>';
+            wrapFilePreviewZoomSurface(content);
         }
 
         async function renderDocxPreview(blob, content, requestSequence) {
@@ -9979,6 +10175,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 experimental:true,
                 debug:false
             });
+            wrapFilePreviewZoomSurface(content);
         }
 
         function renderXlsxSheetByIndex(index) {
@@ -10027,6 +10224,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             const tabs = workbook.SheetNames.map((name, index) => '<button type="button" class="xlsx-sheet-tab ' + (index === 0 ? 'is-active' : '') + '" data-xlsx-sheet-index="' + index + '" onclick="renderXlsxSheetByIndex(' + index + ')">' + escapeHtml(name) + '</button>').join('');
             content.innerHTML = '<div class="xlsx-preview-shell"><div class="xlsx-preview-toolbar"><div class="xlsx-sheet-tabs">' + tabs + '</div><span class="xlsx-limit-note">Worksheet preview</span></div><div id="xlsxSheetPreviewTable" class="xlsx-sheet-table-host"></div></div>';
             renderXlsxSheetByIndex(0);
+            wrapFilePreviewZoomSurface(content);
         }
 
         async function renderPptxSlide(index, requestSequence) {
@@ -10060,6 +10258,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             if (!currentPptxRenderer.slideCount) throw new Error('No slides were found in this presentation.');
             content.classList.remove('is-centered');
             content.innerHTML = '<div class="pptx-preview-shell"><div class="pptx-preview-toolbar"><button type="button" id="pptxPreviousSlide" onclick="changePptxSlide(-1)" disabled>‹ Previous</button><span id="pptxSlideCounter">Slide 1</span><button type="button" id="pptxNextSlide" onclick="changePptxSlide(1)">Next ›</button></div><div class="pptx-slide-stage"><canvas id="pptxSlideCanvas"></canvas></div></div>';
+            wrapFilePreviewZoomSurface(content);
             await renderPptxSlide(0, requestSequence);
         }
 
@@ -10078,6 +10277,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             const content = document.getElementById('previewContent');
             const downloadBtn = document.getElementById('previewDownloadBtn');
             if (downloadBtn) downloadBtn.disabled = !!entry.isFolder;
+            setFilePreviewZoomEnabled(false);
             const name = String(entry.name || 'File');
             if (nameEl) nameEl.textContent = name;
             if (metaEl) metaEl.textContent = (entry.isFolder ? 'Folder' : formatFolderBytes(entry.size)) + ' · ' + getFileTypeLabel(entry) + ' · ' + entryModifiedLabel(entry);
@@ -10096,6 +10296,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             const isXlsx = ext === 'xlsx' || ext === 'xlxs';
             const isPptx = ext === 'pptx';
             const isOffice = isDocx || isXlsx || isPptx;
+            setFilePreviewZoomEnabled(!entry.isFolder && (isImage || isPdf || isOffice));
             if (entry.isFolder || (!isImage && !isPdf && !isOffice)) {
                 if (content) content.innerHTML = renderPreviewInfoBlock(entry, entry.isFolder
                     ? 'This is a folder. Open My Files to view the files saved in your account directory.'
@@ -10147,13 +10348,16 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                     currentPreviewObjectUrl = URL.createObjectURL(blob);
                     content.classList.add('is-centered');
                     content.innerHTML = '<img class="file-preview-image" src="' + escapeAttr(currentPreviewObjectUrl) + '" alt="' + escapeAttr(name) + '">';
+                    wrapFilePreviewZoomSurface(content);
                 } else if (isPdf) {
                     currentPreviewObjectUrl = URL.createObjectURL(blob);
                     content.classList.add('is-centered');
                     content.innerHTML = '<iframe class="file-preview-pdf" src="' + escapeAttr(currentPreviewObjectUrl) + '#toolbar=1&navpanes=1&scrollbar=1' + '" title="' + escapeAttr(name) + '" loading="eager"></iframe>';
+                    wrapFilePreviewZoomSurface(content);
                 }
             } catch (error) {
                 if (requestSequence !== previewRequestSequence || currentPreviewEntry !== entry) return;
+                setFilePreviewZoomEnabled(false);
                 if (content) content.innerHTML = renderPreviewInfoBlock(entry, 'Preview unavailable. ' + (error && error.message ? error.message : 'The file could not be rendered. Use Download to save the original.'));
                 setFilePreviewFooterNote('Preview unavailable. Download remains available for the original file.');
             }
@@ -10185,6 +10389,8 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             currentPreviewBlob = null;
             const content = document.getElementById('previewContent');
             if (content) content.innerHTML = '';
+            setFilePreviewZoomEnabled(false);
+            resetFilePreviewZoom();
             const meta = document.getElementById('previewMeta');
             if (meta) meta.textContent = '';
             currentPreviewEntry = null;

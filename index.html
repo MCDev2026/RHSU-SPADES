@@ -1242,6 +1242,12 @@
           <div><strong id="proofReaderEditorHeading">Document Preview</strong><small id="proofReaderEditorMode">Select text to attach a proofreading note.</small></div>
           <div class="proofreader-editor-tools">
             <span id="proofReaderVersionPill" class="proofreader-version-pill">Original</span>
+            <div class="proofreader-zoom-controls hidden" id="proofReaderZoomControls" role="group" aria-label="Document preview zoom">
+              <button aria-label="Zoom out" class="proofreader-zoom-button spades-force-icon-only" data-spades-icon-name="fi-rr-minus" id="proofReaderZoomOut" onclick="adjustProofReaderZoom(-1)" title="Zoom out" type="button"><i class="fi fi-rr-minus" aria-hidden="true"></i></button>
+              <output aria-live="polite" class="proofreader-zoom-value" id="proofReaderZoomValue">100%</output>
+              <button aria-label="Zoom in" class="proofreader-zoom-button spades-force-icon-only" data-spades-icon-name="fi-rr-plus" id="proofReaderZoomIn" onclick="adjustProofReaderZoom(1)" title="Zoom in" type="button"><i class="fi fi-rr-plus" aria-hidden="true"></i></button>
+              <button aria-label="Reset zoom" class="proofreader-zoom-button spades-force-icon-only" data-spades-icon-name="fi-rr-undo" id="proofReaderZoomReset" onclick="resetProofReaderZoom()" title="Reset zoom to 100%" type="button"><i class="fi fi-rr-undo" aria-hidden="true"></i></button>
+            </div>
             <button class="action-btn proofreader-edit-final-toggle hidden" id="proofReaderEditFinalToggle" onclick="toggleProofReaderFinalEditor()" type="button"><i class="fi fi-rr-edit" aria-hidden="true"></i><span>Edit Final Revision</span></button>
           </div>
         </div>
@@ -2199,6 +2205,15 @@
 <button aria-label="Download file" class="profile-card-download spades-force-icon-only" id="previewDownloadBtn" onclick="downloadPreviewFile()" title="Download file" type="button"><i aria-hidden="true" class="fi fi-rr-download"></i></button>
 <button aria-label="Close preview" class="profile-card-close" onclick="closeFilePreview()" type="button">×</button>
 </div>
+</div>
+<div class="file-preview-zoom-toolbar" id="filePreviewZoomToolbar" hidden aria-label="File preview zoom controls">
+  <span class="file-preview-zoom-caption">ZOOM</span>
+  <div class="file-preview-zoom-controls" role="group" aria-label="Adjust preview zoom">
+    <button aria-label="Zoom out" class="file-preview-zoom-btn spades-force-icon-only" data-spades-icon-name="fi-rr-minus" id="filePreviewZoomOut" onclick="adjustFilePreviewZoom(-1)" title="Zoom out" type="button"><i aria-hidden="true" class="fi fi-rr-minus"></i></button>
+    <output aria-live="polite" class="file-preview-zoom-value" id="filePreviewZoomValue">100%</output>
+    <button aria-label="Zoom in" class="file-preview-zoom-btn spades-force-icon-only" data-spades-icon-name="fi-rr-plus" id="filePreviewZoomIn" onclick="adjustFilePreviewZoom(1)" title="Zoom in" type="button"><i aria-hidden="true" class="fi fi-rr-plus"></i></button>
+    <button aria-label="Reset zoom" class="file-preview-zoom-btn file-preview-zoom-reset spades-force-icon-only" data-spades-icon-name="fi-rr-undo" id="filePreviewZoomReset" onclick="resetFilePreviewZoom()" title="Reset zoom to 100%" type="button"><i aria-hidden="true" class="fi fi-rr-undo"></i></button>
+  </div>
 </div>
 <div aria-live="polite" class="file-preview-content" id="previewContent"><div class="file-preview-loading">Choose a file to preview.</div></div>
 <div class="file-preview-meta-row"><span id="previewMeta"></span><span class="file-preview-local-note">Office files use a page-layout preview when available. Download always returns the original file.</span></div>

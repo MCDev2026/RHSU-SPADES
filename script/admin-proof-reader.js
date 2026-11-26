@@ -6,6 +6,9 @@
   'use strict';
 
   const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
+  const PREVIEW_ZOOM_MIN = 0.5;
+  const PREVIEW_ZOOM_MAX = 2.5;
+  const PREVIEW_ZOOM_STEP = 0.1;
   const REMARKS = ['For Revision', 'For Correction', 'Approved', 'Disapproved', 'Disregard'];
   const OPEN_REVIEW_STATUSES = ['Submitted for Proofreading', 'Assigned', 'Under Proofreading', 'Resubmitted for Proofreading'];
   const state = {
@@ -27,6 +30,7 @@
     canAnnotate: false,
     previewContent: '',
     previewMode: 'text',
+    previewZoom: 1,
     finalEditorVisible: false,
     notificationTimer: null,
     notificationBusy: false,
@@ -476,6 +480,33 @@
   }
   function setVisible(id, visible) { const element = byId(id); if (element) element.classList.toggle('hidden', !visible); }
   function setText(id, value) { const element = byId(id); if (element) element.textContent = value == null || value === '' ? '—' : String(value); }
+  function applyProofReaderZoom() {
+    // Scale only the document surface. PDF selection rectangles and page bounds
+    // receive the same CSS zoom factor, so their normalized annotation coordinates remain aligned.
+    const zoom = String(state.previewZoom || 1);
+    const textSurface = byId('proofReaderDocumentZoomSurface');
+    const pdfSurface = byId('proofReaderPdfZoomSurface');
+    const fallbackFrame = byId('proofReaderPdfPreview');
+    if (textSurface) textSurface.style.zoom = zoom;
+    if (pdfSurface) pdfSurface.style.zoom = zoom;
+    if (fallbackFrame) fallbackFrame.style.zoom = zoom;
+    const value = byId('proofReaderZoomValue');
+    const zoomOut = byId('proofReaderZoomOut');
+    const zoomIn = byId('proofReaderZoomIn');
+    if (value) value.textContent = Math.round(state.previewZoom * 100) + '%';
+    if (zoomOut) zoomOut.disabled = state.previewZoom <= PREVIEW_ZOOM_MIN;
+    if (zoomIn) zoomIn.disabled = state.previewZoom >= PREVIEW_ZOOM_MAX;
+  }
+  function setProofReaderZoom(value) {
+    const numeric = Number(value);
+    const clamped = Math.min(PREVIEW_ZOOM_MAX, Math.max(PREVIEW_ZOOM_MIN, Number.isFinite(numeric) ? numeric : 1));
+    state.previewZoom = Math.round(clamped * 100) / 100;
+    applyProofReaderZoom();
+  }
+  function adjustProofReaderZoom(direction) {
+    setProofReaderZoom(state.previewZoom + (Number(direction || 0) * PREVIEW_ZOOM_STEP));
+  }
+  function resetProofReaderZoom() { setProofReaderZoom(1); }
   function setAnnotationButtonLabel(editing) {
     const button = byId('proofReaderAddAnnotationBtn');
     if (button) button.innerHTML = editing ? '<i class="fi fi-rr-disk" aria-hidden="true"></i><span>Save Changes</span>' : '<i class="fi fi-rr-plus" aria-hidden="true"></i><span>Add Note</span>';
@@ -496,7 +527,10 @@
       cursor = end;
     });
     html += escapeHtml(content.slice(cursor));
-    target.innerHTML = content ? `<pre class="proofreader-preview-text">${html}</pre>` : '<div class="proofreader-empty">No text content is available for preview. Download the original file to inspect its full layout.</div>';
+    target.innerHTML = content
+      ? `<div class="proofreader-document-zoom-surface" id="proofReaderDocumentZoomSurface"><pre class="proofreader-preview-text">${html}</pre></div>`
+      : '<div class="proofreader-document-zoom-surface" id="proofReaderDocumentZoomSurface"><div class="proofreader-empty">No text content is available for preview. Download the original file to inspect its full layout.</div></div>';
+    applyProofReaderZoom();
   }
 
   function renderProofReaderAnnotationList() {
@@ -667,6 +701,7 @@
     setVisible('proofReaderDocumentPreviewWrap',!state.finalEditorVisible && state.previewMode === 'text');
     setVisible('proofReaderPdfPreviewWrap',!state.finalEditorVisible && state.previewMode === 'pdf');
     setVisible('proofReaderTextEditorWrap',state.finalEditorVisible);
+    setVisible('proofReaderZoomControls',!state.finalEditorVisible && state.previewMode === 'text');
     const button = byId('proofReaderEditFinalToggle');
     if (button) button.innerHTML = state.finalEditorVisible ? '<i class="fi fi-rr-eye" aria-hidden="true"></i><span>View Annotated Document</span>' : '<i class="fi fi-rr-edit" aria-hidden="true"></i><span>Edit Final Revision</span>';
   }
@@ -723,6 +758,10 @@
     const fallback = byId('proofReaderPdfFallback');
     if (!host || !base64) return;
     host.innerHTML = '';
+    const zoomSurface = document.createElement('div');
+    zoomSurface.className = 'proofreader-pdf-zoom-surface';
+    zoomSurface.id = 'proofReaderPdfZoomSurface';
+    host.appendChild(zoomSurface);
     const bytes = Uint8Array.from(atob(base64), character => character.charCodeAt(0));
     const blob = new Blob([bytes],{type:'application/pdf'});
     try {
@@ -754,7 +793,7 @@
         textLayer.style.width = `${viewport.width}px`;
         textLayer.style.height = `${viewport.height}px`;
         pageWrap.appendChild(textLayer);
-        host.appendChild(pageWrap);
+        zoomSurface.appendChild(pageWrap);
         const context = canvas.getContext('2d',{alpha:false});
         context.setTransform(outputScale,0,0,outputScale,0,0);
         await page.render({canvasContext:context,viewport:viewport}).promise;
@@ -769,6 +808,7 @@
       }
       setVisible('proofReaderPdfFallback',false);
       renderProofReaderPdfHighlights();
+      applyProofReaderZoom();
     } catch (error) {
       console.warn('PDF.js preview unavailable; falling back to native PDF preview:',error);
       host.innerHTML = '';
@@ -776,6 +816,7 @@
       const frame = byId('proofReaderPdfPreview');
       if (frame) frame.src = state.pdfObjectUrl;
       setVisible('proofReaderPdfFallback',true);
+      applyProofReaderZoom();
     }
   }
   function renderDetailGrid(record, data) {
@@ -802,6 +843,9 @@
       setText('proofReaderWorkspaceTitle','Loading document…');
       setText('proofReaderWorkspaceSubtitle','Retrieving authorized document details.');
       setVisible('proofReaderReviewActions',false); setVisible('proofReaderSenderActions',false); setVisible('proofReaderReadonlyActions',false);
+      setVisible('proofReaderZoomControls',false);
+      state.previewZoom = 1;
+      applyProofReaderZoom();
       modalOpen('proofReaderWorkspaceModal');
       clearPdfPreview();
       const result = await api('get_proofreading_document',{requestId:requestId});
@@ -812,6 +856,8 @@
       state.pendingSelection = null;
       state.editingAnnotationId = '';
       state.finalEditorVisible = false;
+      state.previewZoom = 1;
+      applyProofReaderZoom();
       const record = result.request;
       setText('proofReaderWorkspaceTitle',record.title);
       setText('proofReaderWorkspaceSubtitle',`${record.referenceNo} · ${record.currentFileName || record.originalFileName || 'Document'}`);
@@ -827,6 +873,7 @@
       state.previewContent = previewContent;
       setVisible('proofReaderDocumentPreviewWrap',previewMode === 'text');
       setVisible('proofReaderPdfPreviewWrap',previewMode === 'pdf' && !!previewPdf);
+      setVisible('proofReaderZoomControls',previewMode === 'text' || (previewMode === 'pdf' && !!previewPdf));
       setVisible('proofReaderTextEditorWrap',false);
       setVisible('proofReaderEditFinalToggle',!!result.canFinalRevise && currentMode === 'text');
       setVisible('proofReaderReviewActions',!!result.canReview);
@@ -897,6 +944,9 @@
     state.canAnnotate = false;
     state.previewContent = '';
     state.finalEditorVisible = false;
+    state.previewZoom = 1;
+    setVisible('proofReaderZoomControls',false);
+    applyProofReaderZoom();
     modalClose('proofReaderWorkspaceModal');
   }
   async function submitProofReaderReview() {
@@ -1048,6 +1098,8 @@
   window.removeProofReaderAnnotation = removeProofReaderAnnotation;
   window.openProofReaderAnnotation = openProofReaderAnnotation;
   window.toggleProofReaderFinalEditor = toggleProofReaderFinalEditor;
+  window.adjustProofReaderZoom = adjustProofReaderZoom;
+  window.resetProofReaderZoom = resetProofReaderZoom;
   window.downloadProofReaderCurrentDocument = downloadProofReaderCurrentDocument;
   window.downloadProofReaderOriginalDocument = downloadProofReaderOriginalDocument;
   window.resubmitProofReaderFinalVersion = resubmitProofReaderFinalVersion;
