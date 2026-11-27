@@ -7126,12 +7126,18 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             if (day === 5) return {name:'Duty Supply', remarks:'Persistent Friday duty'};
             if (day === 6) return {name:'Duty RBand', remarks:'Persistent Saturday duty'};
             if (day === 0) return {name:'Duty Water Operator', remarks:'Persistent Sunday duty'};
-            // Mon-Thu: rotate through sequence using week-based index
+            // Mon-Thu: restart the rotation at the beginning of each month.
+            // The first Mon-Thu date in the selected month receives the first name in the list.
+            // Count only earlier Mon-Thu dates so fixed Friday-Sunday assignments do not
+            // advance the rotating sequence.
             if (!seq || !seq.length) return {name:'—', remarks:''};
-            const onejan = new Date(dateObj.getFullYear(), 0, 1);
-            const weekNum = Math.ceil((((dateObj - onejan) / 86400000) + onejan.getDay() + 1) / 7);
-            const dayOffset = day === 1 ? 0 : day === 2 ? 1 : day === 3 ? 2 : 3; // Mon=0..Thu=3
-            const idx = (weekNum * 4 + dayOffset) % seq.length;
+            const monthStart = new Date(dateObj.getFullYear(), dateObj.getMonth(), 1);
+            let rotationDayIndex = 0;
+            for (let dayOfMonth = 1; dayOfMonth < dateObj.getDate(); dayOfMonth++) {
+                const priorDay = new Date(monthStart.getFullYear(), monthStart.getMonth(), dayOfMonth).getDay();
+                if (priorDay >= 1 && priorDay <= 4) rotationDayIndex++;
+            }
+            const idx = rotationDayIndex % seq.length;
             return {name: seq[idx], remarks:'Rotating duty (Mon–Thu)'};
         }
         function renderDutyCalendar() {
