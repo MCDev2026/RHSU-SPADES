@@ -6887,6 +6887,11 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         let currentAccessUsername = null;
         let bmiEditingId = null;
         let dutySequenceWorking = [];
+        let dutySequenceModalPeriod = '';
+        let dutySequenceModalRequestId = 0;
+        let dutySequenceModalLoading = false;
+        let dutySequenceModalLoadFailed = false;
+        let dutyCalendarSequenceRequestId = 0;
 
         const ACCESS_PAGES = [
             {key:'dashboard', label:'Dashboard'},
@@ -7001,7 +7006,10 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
 
             personnelManagementDataPromise = (async () => {
                 try {
-                    const response = await spadesAuthenticatedRead('get_personnel_management_bundle');
+                    const dutyBundlePeriod = getDutyPeriodKey(dutyCalendarDate);
+                    const response = await spadesAuthenticatedRead('get_personnel_management_bundle', {
+                        period: dutyBundlePeriod
+                    });
                     if (!response.ok) throw new Error(`Personnel Management request failed (${response.status}).`);
                     const data = await response.json();
                     if (!data || data.success !== true) throw new Error(data?.error || 'Invalid Personnel Management response.');
@@ -7009,6 +7017,9 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                     allPersonnel = Array.isArray(data.personnel) ? data.personnel : [];
                     archivedPersonnel = Array.isArray(data.archived) ? data.archived : [];
                     dutySequence = Array.isArray(data.sequence) ? data.sequence : [];
+                    if (dutyBundlePeriod !== getDutyPeriodKey(dutyCalendarDate)) {
+                        await loadDutySequence(getDutyPeriodKey(dutyCalendarDate));
+                    }
                     bmiRecords = Array.isArray(data.records) ? data.records.map(normalizeBmiRecordForDisplay) : [];
                     squads = Array.isArray(data.squads) ? data.squads : [];
                     leaveEntries = Array.isArray(data.entries) ? data.entries : [];
@@ -7066,24 +7077,48 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         }
 
         /* ---------- Duty Office ---------- */
-        async function loadDutySequence() {
+        function getDutyPeriodKey(dateObj) {
+            const date = dateObj instanceof Date && !Number.isNaN(dateObj.getTime()) ? dateObj : new Date();
+            return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+        }
+        function isValidDutyPeriod(period) {
+            const match = String(period || '').trim().match(/^(\d{4})-(\d{2})$/);
+            return !!match && Number(match[2]) >= 1 && Number(match[2]) <= 12;
+        }
+        function formatDutyPeriodLabel(period) {
+            if (!isValidDutyPeriod(period)) return String(period || 'selected month');
+            const [year, month] = String(period).split('-').map(Number);
+            return new Date(year, month - 1, 1).toLocaleDateString('en-US', {month:'long', year:'numeric'});
+        }
+        async function fetchDutySequenceForPeriod(period) {
+            if (!isValidDutyPeriod(period)) throw new Error('Select a valid Duty Office month.');
+            const res = await spadesAuthenticatedRead('get_duty_sequence', {period:String(period)});
+            if (!res.ok) throw new Error(`Request failed (${res.status})`);
+            const data = await res.json();
+            if (!data || data.success !== true || !Array.isArray(data.sequence)) {
+                throw new Error(data?.error || 'The Duty Office sequence could not be loaded.');
+            }
+            return data.sequence.slice();
+        }
+        async function loadDutySequence(period = getDutyPeriodKey(dutyCalendarDate)) {
+            const requestedPeriod = String(period || getDutyPeriodKey(dutyCalendarDate));
+            const requestId = ++dutyCalendarSequenceRequestId;
             let loaded = true;
             try {
-                const res = await spadesAuthenticatedRead('get_duty_sequence');
-                if (!res.ok) throw new Error(`Request failed (${res.status})`);
-                const data = await res.json();
-                if (data.success && Array.isArray(data.sequence)) dutySequence = data.sequence;
-                else {
-                    loaded = false;
-                    dutySequence = ['PMSg Siobal','PCMS Tayab','PMSg Graycochea','PMSg Oligo','PCpl Gandia','Pat Bao-anen','Pat Benitez','Pat Obra'];
-                }
+                const sequence = await fetchDutySequenceForPeriod(requestedPeriod);
+                // Ignore a late response when the user has already navigated to another month.
+                if (requestId !== dutyCalendarSequenceRequestId || requestedPeriod !== getDutyPeriodKey(dutyCalendarDate)) return false;
+                dutySequence = sequence;
             } catch (e) {
                 loaded = false;
                 console.warn('Duty Office sequence could not be loaded:', e);
+                if (requestId !== dutyCalendarSequenceRequestId || requestedPeriod !== getDutyPeriodKey(dutyCalendarDate)) return false;
                 dutySequence = ['PMSg Siobal','PCMS Tayab','PMSg Graycochea','PMSg Oligo','PCpl Gandia','Pat Bao-anen','Pat Benitez','Pat Obra'];
             }
-            renderDutyCalendar();
-            renderDutyTable();
+            if (requestId === dutyCalendarSequenceRequestId && requestedPeriod === getDutyPeriodKey(dutyCalendarDate)) {
+                renderDutyCalendar();
+                renderDutyTable();
+            }
             return loaded;
         }
         function getDutyAssignment(dateObj, seq) {
@@ -7127,8 +7162,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         }
         function changeDutyMonth(delta) {
             dutyCalendarDate = new Date(dutyCalendarDate.getFullYear(), dutyCalendarDate.getMonth() + Number(delta), 1);
-            renderDutyCalendar();
-            renderDutyTable();
+            loadDutySequence(getDutyPeriodKey(dutyCalendarDate));
         }
         function renderDutyTable() {
             const tbody = document.getElementById('dutyTableBody');
@@ -7201,14 +7235,47 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             }
         }
 
-        function openDutySequenceModal() {
+        async function openDutySequenceModal() {
             if (!canPersonnelAction('duty', 'edit')) { customAlert("You do not have permission to edit Duty Office entries.", "Permission Denied"); return; }
-            dutySequenceWorking = dutySequence.slice();
             const sequenceSearch = document.getElementById('dutySequenceSearch');
             if (sequenceSearch) sequenceSearch.value = '';
-            populateDutyPersonnelOptions();
+            const modal = document.getElementById('dutySequenceModal');
+            if (modal) modal.classList.remove('hidden');
+            await loadDutySequenceForModal(getDutyPeriodKey(dutyCalendarDate));
+        }
+        async function loadDutySequenceForModal(period) {
+            const selectedPeriod = String(period || '').trim();
+            if (!isValidDutyPeriod(selectedPeriod)) return customAlert('Select a valid month for the Duty Office sequence.', 'Invalid Month');
+            dutySequenceModalPeriod = selectedPeriod;
+            const monthInput = document.getElementById('dutySequenceMonth');
+            if (monthInput) monthInput.value = selectedPeriod;
+            const requestId = ++dutySequenceModalRequestId;
+            dutySequenceModalLoading = true;
+            dutySequenceModalLoadFailed = false;
+            dutySequenceWorking = [];
+            const controls = ['dutySequenceMonth','dutyPersonnelToAdd','dutySequenceAddPersonnelBtn','dutySequenceSaveBtn'];
+            controls.forEach(id => { const el = document.getElementById(id); if (el) el.disabled = true; });
             renderDutySequenceList();
-            document.getElementById('dutySequenceModal').classList.remove('hidden');
+            try {
+                const sequence = await fetchDutySequenceForPeriod(selectedPeriod);
+                if (requestId !== dutySequenceModalRequestId || selectedPeriod !== dutySequenceModalPeriod) return;
+                dutySequenceWorking = sequence.slice();
+                dutySequenceModalLoadFailed = false;
+            } catch (error) {
+                if (requestId !== dutySequenceModalRequestId || selectedPeriod !== dutySequenceModalPeriod) return;
+                dutySequenceModalLoadFailed = true;
+                customAlert(error.message || 'Failed to load the selected month’s Duty Office sequence.', 'Error');
+            } finally {
+                if (requestId === dutySequenceModalRequestId && selectedPeriod === dutySequenceModalPeriod) {
+                    dutySequenceModalLoading = false;
+                    controls.forEach(id => { const el = document.getElementById(id); if (el) el.disabled = false; });
+                    populateDutyPersonnelOptions();
+                    renderDutySequenceList();
+                }
+            }
+        }
+        function changeDutySequenceMonth(period) {
+            return loadDutySequenceForModal(period);
         }
         function populateDutyPersonnelOptions() {
             const select = document.getElementById('dutyPersonnelToAdd');
@@ -7225,6 +7292,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             if (available.some(p => p.value === current)) select.value = current;
         }
         function addDutyPersonnelToSequence() {
+            if (dutySequenceModalLoading) return;
             if (!canPersonnelAction('duty', 'edit')) return customAlert('You do not have permission to edit Duty Office entries.', 'Permission Denied');
             const select = document.getElementById('dutyPersonnelToAdd');
             const value = select ? String(select.value || '').trim() : '';
@@ -7238,11 +7306,17 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             populateDutyPersonnelOptions();
         }
 
-        function closeDutySequenceModal() { document.getElementById('dutySequenceModal').classList.add('hidden'); }
+        function closeDutySequenceModal() {
+            dutySequenceModalRequestId++;
+            dutySequenceModalLoading = false;
+            const modal = document.getElementById('dutySequenceModal');
+            if (modal) modal.classList.add('hidden');
+        }
         let dutyDragIndex = null;
         function filterDutySequenceList() { renderDutySequenceList(); }
 
         function removeDutyItem(index) {
+            if (dutySequenceModalLoading) return;
             if (!canPersonnelAction('duty', 'edit')) return customAlert('You do not have permission to edit Duty Office entries.', 'Permission Denied');
             const i = Number(index);
             const name = dutySequenceWorking[i];
@@ -7258,6 +7332,10 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         function renderDutySequenceList() {
             const list = document.getElementById('dutySequenceList');
             if (!list) return;
+            if (dutySequenceModalLoading) {
+                list.innerHTML = `<div class="duty-sequence-empty">Loading the Duty Office sequence for ${escapeHtml(formatDutyPeriodLabel(dutySequenceModalPeriod))}…</div>`;
+                return;
+            }
             const query = String(document.getElementById('dutySequenceSearch')?.value || '').trim().toLowerCase();
             const visibleItems = dutySequenceWorking.map((name, index) => ({name, index}))
                 .filter(item => !query || String(item.name).toLowerCase().includes(query));
@@ -7281,11 +7359,12 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
                 </span>
             </div>`).join('');
         }
-        function dutySeqDragStart(e, idx) { dutyDragIndex = Number(idx); e.currentTarget.classList.add('dragging'); try { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', String(idx)); } catch(err) {} }
+        function dutySeqDragStart(e, idx) { if (dutySequenceModalLoading) return; dutyDragIndex = Number(idx); e.currentTarget.classList.add('dragging'); try { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', String(idx)); } catch(err) {} }
         function dutySeqDragOver(e, idx) { e.preventDefault(); e.currentTarget.classList.add('drag-over'); try { e.dataTransfer.dropEffect = 'move'; } catch(err) {} }
         function dutySeqDragLeave(e) { e.currentTarget.classList.remove('drag-over'); }
         function dutySeqDrop(e, idx) {
             e.preventDefault();
+            if (dutySequenceModalLoading) return;
             e.currentTarget.classList.remove('drag-over');
             if (dutyDragIndex === null || dutyDragIndex === Number(idx)) return;
             const moved = dutySequenceWorking.splice(dutyDragIndex, 1)[0];
@@ -7300,6 +7379,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
         }
 
         function moveDutyItem(index, dir) {
+            if (dutySequenceModalLoading) return;
             const i = Number(index), d = Number(dir);
             const j = i + d;
             if (j < 0 || j >= dutySequenceWorking.length) return;
@@ -7308,21 +7388,36 @@ const API_URL = "https://script.google.com/macros/s/AKfycbx42FXBvP2w42kl5XO9ICUA
             populateDutyPersonnelOptions();
         }
         async function saveDutySequence() {
+            if (dutySequenceModalLoading) return;
+            if (dutySequenceModalLoadFailed) return customAlert('The selected month’s sequence was not loaded. Change the month or retry before saving.', 'Unable to Save');
             if (!canPersonnelAction('duty', 'edit')) return customAlert('You do not have permission to edit Duty Office entries.', 'Permission Denied');
+            const monthInput = document.getElementById('dutySequenceMonth');
+            const period = String((monthInput && monthInput.value) || dutySequenceModalPeriod || '').trim();
+            if (!isValidDutyPeriod(period)) return customAlert('Select a valid month before saving the Duty Office sequence.', 'Invalid Month');
+            if (period !== dutySequenceModalPeriod) return customAlert('The selected month is still loading. Please wait for its sequence to appear before saving.', 'Please Wait');
             const saveButton = document.getElementById('dutySequenceSaveBtn');
+            const monthLabel = formatDutyPeriodLabel(period);
             if (saveButton) { saveButton.disabled = true; saveButton.textContent = 'Saving…'; }
+            if (monthInput) monthInput.disabled = true;
             try {
                 const result = await postPersonnelMutation({
-                    action: 'save_duty_sequence', sequence: dutySequenceWorking,
+                    action: 'save_duty_sequence', period, sequence: dutySequenceWorking,
                     userName: localStorage.getItem('loggedInUser'),
                     credential: localStorage.getItem('loggedCred') || ''
                 });
-                dutySequence = Array.isArray(result.sequence) ? result.sequence.slice() : dutySequenceWorking.slice();
+                const savedSequence = Array.isArray(result.sequence) ? result.sequence.slice() : dutySequenceWorking.slice();
+                if (period === getDutyPeriodKey(dutyCalendarDate)) {
+                    dutySequence = savedSequence.slice();
+                    renderDutyCalendar();
+                    renderDutyTable();
+                }
                 closeDutySequenceModal();
-                customAlert('Duty sequence saved successfully.', 'Success');
-                renderDutyCalendar(); renderDutyTable();
+                customAlert(`Duty sequence for ${monthLabel} saved successfully. Changes were applied only to that month.`, 'Success');
             } catch (e) { customAlert(e.message || 'Failed to save duty sequence.', 'Error'); }
-            finally { if (saveButton) { saveButton.disabled = false; saveButton.textContent = 'Save Sequence'; } }
+            finally {
+                if (saveButton) { saveButton.disabled = false; saveButton.textContent = 'Save Sequence'; }
+                if (monthInput) monthInput.disabled = false;
+            }
         }
 
         /* ---------- BMI Monitoring ---------- */
